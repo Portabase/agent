@@ -44,7 +44,7 @@ impl ConfigService {
             fp.to_string()
         } else {
             format!(
-                "{}/config/{}",
+                "{}/{}",
                 crate::settings::CONFIG.data_path,
                 crate::settings::CONFIG.databases_config_file
             )

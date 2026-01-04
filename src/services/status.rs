@@ -79,11 +79,9 @@ impl StatusService {
         }
     }
 
-    /// Ping the agent and return typed `PingResult`
     pub async fn ping(&self, databases: &[DatabaseConfig]) -> Result<PingResult, Box<dyn Error>> {
         let edge_key = &self.ctx.edge_key;
 
-        // Build request payload
         let databases_payload: Vec<DatabasePayload> = databases
             .iter()
             .map(|db| DatabasePayload {

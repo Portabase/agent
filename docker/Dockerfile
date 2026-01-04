@@ -49,7 +49,9 @@ RUN echo "APP_VERSION=$(cargo pkgid | awk -F# '{print $2}')" > /app/version.env
 # =========================
 # Runtime (production)
 # =========================
-FROM debian:bookworm-slim AS prod
+#FROM debian:bookworm-slim AS prod
+FROM ubuntu:24.04 AS prod
+
 
 RUN apt-get update && apt-get install -y \
     redis-server \

@@ -18,14 +18,14 @@ impl Settings {
         dotenv().ok();
 
         Self {
-            app_version: env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".into()),
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
             app_env: env::var("APP_ENV").unwrap_or_else(|_| "development".into()),
             redis_url: env::var("CELERY_BROKER_URL")
                 .unwrap_or_else(|_| "redis://localhost:6379/".into()),
             edge_key: env::var("EDGE_KEY").unwrap_or_default(),
             databases_config_file: env::var("DATABASES_CONFIG_FILE")
                 .unwrap_or_else(|_| "config.toml".into()),
-            data_path: env::var("DATA_PATH").unwrap_or_else(|_| "/app/src/data".into()),
+            data_path: env::var("DATA_PATH").unwrap_or_else(|_| "/config".into()),
         }
     }
 }

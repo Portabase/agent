@@ -1,29 +1,29 @@
 [[databases]]
-name = "Test database 1"
+name = "Test database 1 - rust"
 database = "devdb"
 type = "postgresql"
 username = "devuser"
 password = "changeme"
 port = 5432
 host = "localhost"
-generated_id = "16678159-ff7e-4c97-8c83-0adeff214681"
+generated_id = "16678159-ff7e-4c97-8c83-0adeff214689"
 
 [[databases]]
-name = "Test database 2"
+name = "Test database 2 - rust"
 database = "devdb"
 type = "postgresql"
 username = "devuser"
 password = "changeme"
 port = 5432
 host = "localhost"
-generated_id = "16678156-ff7e-4c97-8c83-0adeff214681"
+generated_id = "16678156-ff7e-4c97-8c83-0adeff214654"
 
 [[databases]]
-name = "Test database 3"
+name = "Test database 3 - rust"
 database = "mariadb"
 type = "mysql"
 username = "mariadb"
 password = "changeme"
 port = 3306
 host = "localhost"
-generated_id = "16678124-ff7e-4c97-8c83-0adeff214681"
+generated_id = "16678124-ff7e-4c97-8c83-0adeff214667"
