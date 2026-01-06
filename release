@@ -29,30 +29,50 @@ CURRENT_DATE=$(date +%Y-%m-%d)
 echo "Preparing release $VERSION..."
 
 
-# Update package.json
+# package.json
 if [ -f package.json ]; then
-  echo "Updating package.json to version $CLEAN_VERSION..."
-  $SED_INPLACE "s/\"version\": \".*\"/\"version\": \"$CLEAN_VERSION\"/" package.json
+  echo "Updating package.json..."
+  if sed --version >/dev/null 2>&1; then
+    sed -i "s/\"version\": \".*\"/\"version\": \"$CLEAN_VERSION\"/" package.json
+  else
+    sed -i '' "s/\"version\": \".*\"/\"version\": \"$CLEAN_VERSION\"/" package.json
+  fi
 fi
 
-# Update pyproject.toml
+# pyproject.toml
 if [ -f pyproject.toml ]; then
-  echo "Updating pyproject.toml to version $CLEAN_VERSION..."
-  $SED_INPLACE "s/^version = \".*\"/version = \"$CLEAN_VERSION\"/" pyproject.toml
+  echo "Updating pyproject.toml..."
+  if sed --version >/dev/null 2>&1; then
+    sed -i "s/^version = \".*\"/version = \"$CLEAN_VERSION\"/" pyproject.toml
+  else
+    sed -i '' "s/^version = \".*\"/version = \"$CLEAN_VERSION\"/" pyproject.toml
+  fi
 fi
 
-# Update Cargo.toml
+# Cargo.toml
 if [ -f Cargo.toml ]; then
-  echo "Updating Cargo.toml to version $CLEAN_VERSION..."
-  $SED_INPLACE "s/^version = \".*\"/version = \"$CLEAN_VERSION\"/" Cargo.toml
+  echo "Updating Cargo.toml..."
+  if sed --version >/dev/null 2>&1; then
+    sed -i "s/^version = \".*\"/version = \"$CLEAN_VERSION\"/" Cargo.toml
+  else
+    sed -i '' "s/^version = \".*\"/version = \"$CLEAN_VERSION\"/" Cargo.toml
+  fi
 fi
 
-# Update CITATION.cff only if it exists
+# CITATION.cff
 if [ -f CITATION.cff ]; then
   echo "Updating CITATION.cff..."
-  $SED_INPLACE "s/^version: .*/version: $CLEAN_VERSION/" CITATION.cff
-  $SED_INPLACE "s/^date-released: .*/date-released: \"$CURRENT_DATE\"/" CITATION.cff
+  if sed --version >/dev/null 2>&1; then
+    sed -i "s/^version: .*/version: $CLEAN_VERSION/" CITATION.cff
+    sed -i "s/^date-released: .*/date-released: \"$CURRENT_DATE\"/" CITATION.cff
+  else
+    sed -i '' "s/^version: .*/version: $CLEAN_VERSION/" CITATION.cff
+    sed -i '' "s/^date-released: .*/date-released: \"$CURRENT_DATE\"/" CITATION.cff
+  fi
 fi
+
+
+
 
 
 git add .
