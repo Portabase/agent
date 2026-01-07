@@ -6,7 +6,7 @@ on:
       image_name:
         required: false
         type: string
-        default: 'solucetechnologies/agent-portabase'
+        default: 'portabase/agent'
       add_latest:
         required: false
         type: boolean
@@ -47,7 +47,7 @@ jobs:
         id: set-tags
         run: |
           REF_NAME=${GITHUB_REF#refs/tags/}
-          TAGS="${{ inputs.image_name }}:rust-$REF_NAME"
+          TAGS="${{ inputs.image_name }}:$REF_NAME"
           if [[ "${{ inputs.add_latest }}" == "true" ]]; then
             TAGS="$TAGS,${{ inputs.image_name }}:latest"
           fi
