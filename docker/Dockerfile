@@ -19,10 +19,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 
+ARG TARGETARCH
+
 # =========================
 # PostgreSQL client binaries (versions 12-18)
 # =========================
-ARG TARGETARCH
 
 RUN for v in 12 13 14 15 16 17 18; do \
         mkdir -p /usr/lib/postgresql/$v/bin; \
@@ -42,6 +43,9 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     fi && \
     rm -rf /tmp/pg-x64 /tmp/pg-arm && \
     chmod +x /usr/lib/postgresql/*/bin/*
+
+
+
 
 
 WORKDIR /app

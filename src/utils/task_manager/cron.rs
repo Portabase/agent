@@ -1,7 +1,7 @@
 use crate::utils::task_manager::models;
 use crate::utils::task_manager::tasks::{remove_task, upsert_task};
 use crate::utils::text::normalize_cron;
-use chrono::Utc;
+use chrono::{Local};
 use cron::Schedule;
 use tracing::debug;
 use redis::AsyncCommands;
@@ -11,7 +11,8 @@ use tracing::info;
 
 pub fn next_run_timestamp(expr: &str) -> i64 {
     let schedule = Schedule::from_str(expr).unwrap();
-    schedule.upcoming(Utc).next().unwrap().timestamp()
+    // schedule.upcoming(Utc).next().unwrap().timestamp()
+    schedule.upcoming(Local).next().unwrap().timestamp()
 }
 
 pub async fn check_and_update_cron(

@@ -13,7 +13,9 @@ use tracing::error;
 
 pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
     loop {
-        let now = chrono::Utc::now().timestamp();
+        // let now = chrono::Utc::now().timestamp();
+        let now = chrono::Local::now().timestamp();
+        // info!("Scheduling task {}", chrono::Local::now());
 
         let due: Vec<String> = conn
             .zrangebyscore(SCHEDULE_KEY, 0, now)
