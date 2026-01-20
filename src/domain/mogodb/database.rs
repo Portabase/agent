@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
@@ -16,10 +15,6 @@ impl MongoDatabase {
     pub fn new(cfg: DatabaseConfig) -> Self {
         Self { cfg }
     }
-
-    fn build_env(&self) -> HashMap<String, String> {
-        std::env::vars().collect()
-    }
 }
 
 #[async_trait]
@@ -29,7 +24,7 @@ impl Database for MongoDatabase {
     }
 
     async fn ping(&self) -> Result<bool> {
-        ping::run(self.cfg.clone(), self.build_env()).await
+        ping::run(self.cfg.clone()).await
     }
 
     async fn backup(&self, dir: &Path) -> Result<PathBuf> {
@@ -37,7 +32,6 @@ impl Database for MongoDatabase {
         let res = backup::run(
             self.cfg.clone(),
             dir.to_path_buf(),
-            self.build_env(),
             self.file_extension(),
         )
             .await;

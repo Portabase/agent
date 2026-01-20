@@ -1,53 +1,43 @@
 {
   "databases": [
     {
-      "name": "Test database 1 - rust",
+      "name": "Test database 1 - PostgreSQL",
       "database": "devdb",
       "type": "postgresql",
       "username": "devuser",
       "password": "changeme",
       "port": 5432,
-      "host": "db",
+      "host": "db-postgres",
       "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 2 - rust",
-      "database": "devdb",
-      "type": "postgresql",
-      "username": "devuser",
-      "password": "changeme",
-      "port": 5432,
-      "host": "db",
-      "generated_id": "16678156-ff7e-4c97-8c83-0adeff214681"
-    },
-    {
-      "name": "Test database 3 - rust",
+      "name": "Test database 2 - MariaDB",
       "database": "mariadb",
       "type": "mysql",
       "username": "mariadb",
       "password": "changeme",
       "port": 3306,
-      "host": "db2",
+      "host": "db-mariadb",
       "generated_id": "16678124-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 4 - rust",
+      "name": "Test database 4 - MongoDB Auth",
       "database": "testdbauth",
       "type": "mongodb",
       "username": "root",
       "password": "rootpassword",
       "port": 27017,
-      "host": "mongodb-auth",
+      "host": "db-mongodb-auth",
       "generated_id": "16678145-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 5 - rust",
+      "name": "Test database 5 - MongoDB",
       "database": "testdb",
       "type": "mongodb",
       "username": "",
       "password": "",
       "port": 27017,
-      "host": "mongodb",
+      "host": "db-mongodb",
       "generated_id": "16678147-ff7e-4c97-8c83-0adeff214681"
     }
   ]

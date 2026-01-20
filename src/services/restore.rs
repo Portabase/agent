@@ -101,6 +101,7 @@ impl RestoreService {
 
         let db_instance = DatabaseFactory::create_for_restore(cfg.clone(), &backup_file_path).await;
         let reachable = db_instance.ping().await.unwrap_or(false);
+        info!("Reachable: {}", reachable);
         if !reachable {
             return Ok(RestoreResult {
                 generated_id,

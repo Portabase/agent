@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::domain::mogodb::database::MongoDatabase;
 use crate::domain::mysql::database::MySQLDatabase;
 use crate::domain::postgres::database::PostgresDatabase;

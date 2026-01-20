@@ -19,36 +19,6 @@ services:
     networks:
       - portabase
 
-  db:
-    image: postgres:17-alpine
-    ports:
-      - "5413:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=devdb
-      - POSTGRES_USER=devuser
-      - POSTGRES_PASSWORD=changeme
-    networks:
-      - portabase
-
-  db2:
-    image: mariadb:latest
-    ports:
-      - "3313:3306"
-    environment:
-      - MYSQL_DATABASE=mariadb
-      - MYSQL_USER=mariadb
-      - MYSQL_PASSWORD=changeme
-      - MYSQL_RANDOM_ROOT_PASSWORD=yes
-    volumes:
-      - mariadb-data:/var/lib/mysql
-    networks:
-      - portabase
-
-volumes:
-  postgres-data:
-  mariadb-data:
 
 
 networks:
