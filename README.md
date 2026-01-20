@@ -12,7 +12,7 @@
   </p>
 
 [![License: Apache](https://img.shields.io/badge/License-apache-yellow.svg)](LICENSE)
-[![Docker Pulls](https://img.shields.io/docker/pulls/solucetechnologies/agent-portabase-rust?color=brightgreen)](https://hub.docker.com/r/solucetechnologies/agent-portabase)
+[![Docker Pulls](https://img.shields.io/docker/pulls/portabase/agent?color=brightgreen)](https://hub.docker.com/r/portabase/agent)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey)](https://github.com/Portabase/portabase)
 
 [![PostgreSQL](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/release/python-3120/)
