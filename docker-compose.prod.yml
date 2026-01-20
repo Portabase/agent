@@ -1,53 +1,24 @@
 services:
   rust-app:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: prod
+    #    build:
+    #      context: .
+    #      dockerfile: docker/Dockerfile
+    #      target: prod
+    image: portabase/agent:latest
     container_name: rust-prod
     volumes:
-      - ./databases.toml:/config/config.toml
+      - ./databases.json:/config/config.json
     environment:
-#      APP_ENV: production
+      #      APP_ENV: production
       LOG: info
       TZ: "Europe/Paris"
-      DATABASES_CONFIG_FILE: "config.toml"
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiOThlZmY1YjEtMDQyZC00MDkxLWJkYjctZTgzYmM0YjczNjAxIiwicHVibGljS2V5IjoiLS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0tXG5NSUlCQ2dLQ0FRRUFuYUVKdnVBSExlNGF5d0RmNGplelVobm45VXRkdksyZ3pEMEg2cERJYXczYkJKRkpwVnVDXG5uVFV3MXA3Q2RnOXBzdjZhRnpyOXZPd0J2MjMzckxpdVpCT2lCb2p2Q0QrSlZid3hyTzBRRW5hN2dmaHV1ZGYwXG5VVlJOMkxmK1g1aTkvZzJTNm5xcExoTm1DaGFJNk8ybktYZUNlRmtubEErRUJrNnFoV1FCVGozb05TYTFTOFY1XG40UFRTT2I4NUo3a2k5YllEbXRiNWxrU3dCNXdXOTdtQjg0ZzI2WHAvU3FFcmhKc0NGK3YrN09vTWYzTzJqTTNoXG5XMUQ0MzBPRitWaklwUGdoV09rZy96NXZQUWFHRzhqQ0h4VDlJR0Q0bjhyS05LQ3FTOGNyN2diTGU0cWpNdmhvXG5BQVVvaHpHR2FRNkhlWlJ4S0UvM3J1a2JldnY5dnJ2TTNRSURBUUFCXG4tLS0tLUVORCBSU0EgUFVCTElDIEtFWS0tLS0tXG4ifQ"
+      #      DATABASES_CONFIG_FILE: "config.toml"
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiY2VlZmNmNDQtOGE0YS00NjZlLTkwNDEtN2QzNDMzZjRjOTJkIiwicHVibGljS2V5IjoiLS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0tXG5NSUlCQ2dLQ0FRRUFuYUVKdnVBSExlNGF5d0RmNGplelVobm45VXRkdksyZ3pEMEg2cERJYXczYkJKRkpwVnVDXG5uVFV3MXA3Q2RnOXBzdjZhRnpyOXZPd0J2MjMzckxpdVpCT2lCb2p2Q0QrSlZid3hyTzBRRW5hN2dmaHV1ZGYwXG5VVlJOMkxmK1g1aTkvZzJTNm5xcExoTm1DaGFJNk8ybktYZUNlRmtubEErRUJrNnFoV1FCVGozb05TYTFTOFY1XG40UFRTT2I4NUo3a2k5YllEbXRiNWxrU3dCNXdXOTdtQjg0ZzI2WHAvU3FFcmhKc0NGK3YrN09vTWYzTzJqTTNoXG5XMUQ0MzBPRitWaklwUGdoV09rZy96NXZQUWFHRzhqQ0h4VDlJR0Q0bjhyS05LQ3FTOGNyN2diTGU0cWpNdmhvXG5BQVVvaHpHR2FRNkhlWlJ4S0UvM3J1a2JldnY5dnJ2TTNRSURBUUFCXG4tLS0tLUVORCBSU0EgUFVCTElDIEtFWS0tLS0tXG4ifQ"
     extra_hosts:
       - "localhost:host-gateway"
     networks:
       - portabase
 
-  db:
-    image: postgres:17-alpine
-    ports:
-      - "5413:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=devdb
-      - POSTGRES_USER=devuser
-      - POSTGRES_PASSWORD=changeme
-    networks:
-      - portabase
-
-  db2:
-    image: mariadb:latest
-    ports:
-      - "3313:3306"
-    environment:
-      - MYSQL_DATABASE=mariadb
-      - MYSQL_USER=mariadb
-      - MYSQL_PASSWORD=changeme
-      - MYSQL_RANDOM_ROOT_PASSWORD=yes
-    volumes:
-      - mariadb-data:/var/lib/mysql
-    networks:
-      - portabase
-
-volumes:
-  postgres-data:
-  mariadb-data:
 
 
 networks:

@@ -1,6 +1,6 @@
 [package]
 name = "portabase-agent"
-version = "1.0.0"
+version = "1.0.1-rc.1"
 edition = "2024"
 
 [dependencies]
@@ -31,6 +31,7 @@ futures = "0.3.31"
 tracing-log = "0.2.0"
 tracing-appender = "0.2.4"
 time = { version = "0.3.44", features = ["macros"] }
+mongodb = "3.5.0"
 
 [[bin]]
 name = "app"

@@ -16,6 +16,7 @@ pub enum DbType {
     Mysql,
     Mariadb,
     Postgresql,
+    MongoDB
     // Sqlite,
     // Add other DB types if needed
 }
@@ -26,6 +27,7 @@ impl DbType {
             DbType::Mysql => "mysql",
             DbType::Mariadb => "mysql",
             DbType::Postgresql => "postgresql",
+            DbType::MongoDB => "mongodb",
             // DbType::Sqlite => "sqlite",
         }
     }

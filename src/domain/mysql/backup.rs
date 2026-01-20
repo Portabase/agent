@@ -1,10 +1,10 @@
+use crate::domain::mysql::connection::server_version;
+use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
-use tracing::debug;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
-
-use crate::services::config::DatabaseConfig;
+use tracing::{debug, error, info};
 
 pub async fn run(
     cfg: DatabaseConfig,
@@ -14,6 +14,19 @@ pub async fn run(
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
         debug!("Starting backup for database {}", cfg.name);
+
+        let version = match futures::executor::block_on(server_version(&cfg)) {
+            Ok(v) => {
+                debug!("Mysql version detected: {}", v);
+                v
+            }
+            Err(e) => {
+                error!("Failed to get server version for {}: {:?}", cfg.name, e);
+                return Err(e.into());
+            }
+        };
+
+        info!("Mysql version found: {}", version);
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
 

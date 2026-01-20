@@ -1,5 +1,4 @@
-#![allow(dead_code)]
-
+use crate::domain::mogodb::database::MongoDatabase;
 use crate::domain::mysql::database::MySQLDatabase;
 use crate::domain::postgres::database::PostgresDatabase;
 use crate::domain::postgres::{detect_format_from_file, detect_format_from_size};
@@ -11,7 +10,6 @@ use std::sync::Arc;
 #[async_trait::async_trait]
 pub trait Database: Send + Sync {
     fn file_extension(&self) -> &'static str;
-
     async fn ping(&self) -> Result<bool>;
     async fn backup(&self, backup_dir: &Path) -> Result<PathBuf>;
     async fn restore(&self, restore_file: &Path) -> Result<()>;
@@ -28,6 +26,7 @@ impl DatabaseFactory {
             }
             DbType::Mysql => Arc::new(MySQLDatabase::new(cfg)),
             DbType::Mariadb => Arc::new(MySQLDatabase::new(cfg)),
+            DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
         }
     }
 
@@ -39,6 +38,7 @@ impl DatabaseFactory {
             }
             DbType::Mysql => Arc::new(MySQLDatabase::new(cfg)),
             DbType::Mariadb => Arc::new(MySQLDatabase::new(cfg)),
+            DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
         }
     }
 }

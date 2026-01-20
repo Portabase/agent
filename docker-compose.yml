@@ -14,16 +14,17 @@ services:
     environment:
       APP_ENV: development
       LOG: debug
-#      POOLING: 1
       TZ: "Europe/Paris"
-      #      DATABASES_CONFIG_FILE: "config.toml"
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiOThlZmY1YjEtMDQyZC00MDkxLWJkYjctZTgzYmM0YjczNjAxIiwicHVibGljS2V5IjoiLS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0tXG5NSUlCQ2dLQ0FRRUFuYUVKdnVBSExlNGF5d0RmNGplelVobm45VXRkdksyZ3pEMEg2cERJYXczYkJKRkpwVnVDXG5uVFV3MXA3Q2RnOXBzdjZhRnpyOXZPd0J2MjMzckxpdVpCT2lCb2p2Q0QrSlZid3hyTzBRRW5hN2dmaHV1ZGYwXG5VVlJOMkxmK1g1aTkvZzJTNm5xcExoTm1DaGFJNk8ybktYZUNlRmtubEErRUJrNnFoV1FCVGozb05TYTFTOFY1XG40UFRTT2I4NUo3a2k5YllEbXRiNWxrU3dCNXdXOTdtQjg0ZzI2WHAvU3FFcmhKc0NGK3YrN09vTWYzTzJqTTNoXG5XMUQ0MzBPRitWaklwUGdoV09rZy96NXZQUWFHRzhqQ0h4VDlJR0Q0bjhyS05LQ3FTOGNyN2diTGU0cWpNdmhvXG5BQVVvaHpHR2FRNkhlWlJ4S0UvM3J1a2JldnY5dnJ2TTNRSURBUUFCXG4tLS0tLUVORCBSU0EgUFVCTElDIEtFWS0tLS0tXG4ifQ"
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiM2Y4ZDBiMmMtYThjYi00MWIzLTk0NjAtZGMxMGE0N2E2NzlmIiwicHVibGljS2V5IjoiLS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0tXG5NSUlCQ2dLQ0FRRUE5TWV4M2pmdnVLdFB5YU1ERnh2Ulp2dmd3YkRJQ2JzQi81Wll5NDNSVVRBaXZRYjJiSDdYXG5qRHBQd1lJeCs4UFBrbHlRbDVMQzV1UWZEaCs4SVd4OG1LZ3FvMXpWMkdiZXdGbEdEWFYxVEdyU1ZEU25aSWR4XG52bWdYc29EeXhVMlJvWUFUMS9YMWxuc2YxenZKdkFMTkhXdEhRdk42SjVDZTFSMmFsendVRGFEVXlJNzRmSldQXG5tNTh0SDMrYklXL0VVTXdjaWNxM0oySWw3Vm9KNkZNUHJQL1ZSOWEvdFF1SU1qa200MXpFY2NscExPa2luRkxuXG54NmVUWkFSZUpya2UrbnRvZ2t4TGEyRWV5a1lUNzB4V3hKNWp5ZExBVnRvNkkyQlVLVVJoTkowTUFaU29NYUtvXG5iMGJRcnY1UzExZWllMnMrT2I3aTYzSFpkVUx0UmV1MVJ3SURBUUFCXG4tLS0tLUVORCBSU0EgUFVCTElDIEtFWS0tLS0tXG4ifQ"
+      #POOLING: 1
+      #DATABASES_CONFIG_FILE: "config.toml"
     extra_hosts:
       - "localhost:host-gateway"
     networks:
       - portabase
 
-  db:
+  db-postgres:
+    container_name: db-postgres
     image: postgres:17-alpine
     ports:
       - "5436:5432"
@@ -36,7 +37,8 @@ services:
     networks:
       - portabase
 
-  db2:
+  db-mariadb:
+    container_name: db-mariadb
     image: mariadb:latest
     ports:
       - "3311:3306"
@@ -50,15 +52,56 @@ services:
     networks:
       - portabase
 
+
+  db-mongodb-auth:
+    container_name: db-mongodb-auth
+    image: mongo:latest
+    ports:
+      - "27082:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+      MONGO_INITDB_DATABASE: testdbauth
+    command: mongod --auth
+    networks:
+      - portabase
+    volumes:
+      - mongodb-data-auth:/data/db
+    healthcheck:
+      test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-mongodb:
+    container_name: db-mongodb
+    image: mongo:latest
+    ports:
+      - "27083:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      MONGO_INITDB_DATABASE: testdb
+    networks:
+      - portabase
+
 volumes:
   cargo-registry:
   cargo-git:
 
   postgres-data:
   mariadb-data:
-
+  mongodb-data:
+  mongodb-data-auth:
 
 networks:
   portabase:
     name: portabase_network
     external: true
+
+# docker network create portabase_network

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::Utc;
+use chrono::{Local};
 use tracing::{info, warn, error};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -90,7 +90,8 @@ impl FileLock {
 
         f.write_all(format!("Service: {}\n", service_name).as_bytes()).await?;
         f.write_all(format!("PID: {}\n", std::process::id()).as_bytes()).await?;
-        f.write_all(format!("Timestamp: {}\n", Utc::now()).as_bytes()).await?;
+        // f.write_all(format!("Timestamp: {}\n", Utc::now()).as_bytes()).await?;
+        f.write_all(format!("Timestamp: {}\n", Local::now()).as_bytes()).await?;
 
         info!("Successfully acquired lock for {}", id);
         Ok(())

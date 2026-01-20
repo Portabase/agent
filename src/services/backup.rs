@@ -7,7 +7,6 @@ use crate::utils::common::BackupMethod;
 use crate::utils::file::full_extension;
 use anyhow::Result;
 use hex;
-use tracing::{error, info};
 use openssl::encrypt::Encrypter;
 use openssl::hash::MessageDigest;
 use openssl::pkey::PKey;
@@ -19,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::fs;
+use tracing::{error, info};
 
 #[derive(Debug)]
 pub struct BackupResult {

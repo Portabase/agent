@@ -1,5 +1,5 @@
-pub mod backup;
-pub mod database;
+mod backup;
 mod restore;
+pub mod database;
 mod ping;
 mod connection;
