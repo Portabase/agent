@@ -14,6 +14,7 @@
 [![License: Apache](https://img.shields.io/badge/License-apache-yellow.svg)](LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/portabase/agent?color=brightgreen)](https://hub.docker.com/r/portabase/agent)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey)](https://github.com/Portabase/portabase)
+[![Support Portabase](https://img.shields.io/badge/Support-Portabase-orange)](https://www.buymeacoffee.com/portabase)
 
 [![PostgreSQL](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
@@ -54,9 +55,9 @@ You have 4 ways to install Portabase Agent:
 
 ## Contributors
 
-<a href="https://github.com/Portabase/agent-portabase/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Portabase/agent-portabase" alt="contrib.rocks image" />
-</a>
+[![Contributors](https://contrib.rocks/image?repo=Portabase/agent-rust)](https://github.com/Portabase/agent-rust/graphs/contributors)
+
+[!["Support Portabase"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/portabase)
 
 ## License
 
