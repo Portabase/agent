@@ -1,4 +1,4 @@
-use crate::domain::mogodb::connection::{get_mongo_uri, select_mongo_path};
+use crate::domain::mongodb::connection::{get_mongo_uri, select_mongo_path};
 use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
 use std::path::PathBuf;

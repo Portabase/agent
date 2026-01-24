@@ -1,4 +1,4 @@
-use crate::domain::mogodb::database::MongoDatabase;
+use crate::domain::mongodb::database::MongoDatabase;
 use crate::domain::mysql::database::MySQLDatabase;
 use crate::domain::postgres::database::PostgresDatabase;
 use crate::domain::postgres::{detect_format_from_file, detect_format_from_size};

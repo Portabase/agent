@@ -4,7 +4,7 @@ use crate::services::config::DatabaseConfig;
 use anyhow::Result;
 use mongodb::bson::doc;
 use tracing::{error};
-use crate::domain::mogodb::connection::connect;
+use crate::domain::mongodb::connection::connect;
 
 pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
     let client = connect(cfg.clone()).await?;
