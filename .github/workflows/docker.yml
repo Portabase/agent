@@ -137,7 +137,7 @@ jobs:
 
   build-and-push-arm64:
     name: Build and Push ARM64
-    runs-on: ubuntu-22.04-arm64   # ARM64 runner (self-hosted or cloud)
+    runs-on: ubuntu-24.04-arm
     permissions:
       packages: write
       contents: read
