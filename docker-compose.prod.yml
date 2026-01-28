@@ -1,10 +1,11 @@
 services:
   rust-app:
-    #    build:
-    #      context: .
-    #      dockerfile: docker/Dockerfile
-    #      target: prod
-    image: portabase/agent:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: prod
+#    image: portabase/agent:latest
+    platform: linux/arm64
     container_name: rust-prod
     volumes:
       - ./databases.json:/config/config.json
