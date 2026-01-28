@@ -193,6 +193,14 @@ RUN rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
 
 COPY . .
 
+
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        apt-get update && apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
         cargo build --release --target x86_64-unknown-linux-gnu && \
         mv /app/target/x86_64-unknown-linux-gnu/release /app/target/release-app; \
