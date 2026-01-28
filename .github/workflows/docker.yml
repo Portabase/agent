@@ -132,7 +132,6 @@ jobs:
   build-arm64:
     name: Build ARM64 Image
     runs-on: ubuntu-24.04-arm
-    needs: build-amd64
     outputs:
       image: ${{ steps.set-tags.outputs.arm64_image }}
     steps:
