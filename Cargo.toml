@@ -1,6 +1,6 @@
 [package]
 name = "portabase-agent"
-version = "1.0.3-rc.14"
+version = "1.0.3-rc.15"
 edition = "2024"
 
 [dependencies]

@@ -105,13 +105,12 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-# MongoDB Database Tools
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
         wget -q https://fastdl.mongodb.org/tools/db/mongodb-database-tools-debian12-x86_64-100.10.0.deb -O /tmp/mongodb-tools.deb; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
         wget -q https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-arm64-100.10.0.deb -O /tmp/mongodb-tools.deb; \
     fi && \
-    apt-get update && apt-get install -y /tmp/mongodb-tools.deb --fix-missing && \
+    dpkg -i /tmp/mongodb-tools.deb || apt-get install -y -f && \
     rm -f /tmp/mongodb-tools.deb && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
