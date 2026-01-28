@@ -129,14 +129,9 @@ jobs:
           tags: ${{ steps.set-tags.outputs.amd64_image }}
           target: ${{ inputs.target }}
 
-      - name: Set job output for manifest
-        id: set-job-output
-        run: |
-          echo "image=${{ steps.set-tags.outputs.amd64_image }}" >> $GITHUB_OUTPUT
-
   build-arm64:
     name: Build ARM64 Image
-    runs-on: ubuntu-24.04-arm   # native ARM64 runner
+    runs-on: ubuntu-24.04-arm
     outputs:
       image: ${{ steps.set-job-output.outputs.image }}
     steps:
@@ -166,10 +161,6 @@ jobs:
           tags: ${{ steps.set-tags.outputs.arm64_image }}
           target: ${{ inputs.target }}
 
-      - name: Set job output for manifest
-        id: set-job-output
-        run: |
-          echo "image=${{ steps.set-tags.outputs.arm64_image }}" >> $GITHUB_OUTPUT
 
   create-manifest:
     name: Create Multi-Arch Manifest
@@ -186,9 +177,10 @@ jobs:
       - name: Create Docker manifest
         run: |
           REF_NAME=${GITHUB_REF#refs/tags/}
+          
           IMAGE="${{ inputs.image_name }}:$REF_NAME"
-          AMD64_IMAGE="${{ needs.build-amd64.outputs.image }}"
-          ARM64_IMAGE="${{ needs.build-arm64.outputs.image }}"
+          AMD64_IMAGE="$IMAGE-amd64"
+          ARM64_IMAGE="$IMAGE-arm64"
 
           echo "AMD64_IMAGE=$AMD64_IMAGE"
           echo "ARM64_IMAGE=$ARM64_IMAGE"
