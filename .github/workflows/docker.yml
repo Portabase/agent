@@ -26,26 +26,25 @@ on:
         required: true
 
 jobs:
-  build-and-push:
+  build-amd64:
     runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      contents: read
+    env:
+      ARCH: amd64
     steps:
-      - name: Check out the repo
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up QEMU (enables multi-arch emulation)
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
+      - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
         with:
           install: true
 
-      - name: Log in to Docker Hub
+      - name: Docker login
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -55,20 +54,94 @@ jobs:
         id: set-tags
         run: |
           REF_NAME=${GITHUB_REF#refs/tags/}
-          TAGS="${{ inputs.image_name }}:$REF_NAME"
-          if [[ "${{ inputs.add_latest }}" == "true" ]]; then
-            TAGS="$TAGS,${{ inputs.image_name }}:latest"
+          ARCH_TAG="${IMAGE_NAME}:$REF_NAME-${ARCH}"
+          TAGS="$ARCH_TAG"
+          if [ "${ADD_LATEST}" = "true" ]; then
+            TAGS="$TAGS,${IMAGE_NAME}:latest-${ARCH}"
           fi
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
-      - name: Build and push Docker image (multi-arch)
+      - name: Build and push amd64
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ inputs.dockerfile }}
-          platforms: linux/amd64,linux/arm64
+          file: ${{ env.DOCKERFILE }}
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.set-tags.outputs.tags }}
-          target: ${{ inputs.target }}
-          cache-from: type=registry,ref=${{ inputs.image_name }}:buildcache
-          cache-to: type=registry,ref=${{ inputs.image_name }}:buildcache,mode=max
+          target: ${{ env.TARGET }}
+          cache-from: type=registry,ref=${IMAGE_NAME}:buildcache
+          cache-to: type=registry,ref=${IMAGE_NAME}:buildcache,mode=max
+
+  build-arm64:
+    runs-on: ubuntu-latest
+    env:
+      ARCH: arm64
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+
+      - name: Docker login
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set tags
+        id: set-tags
+        run: |
+          REF_NAME=${GITHUB_REF#refs/tags/}
+          ARCH_TAG="${IMAGE_NAME}:$REF_NAME-${ARCH}"
+          TAGS="$ARCH_TAG"
+          if [ "${ADD_LATEST}" = "true" ]; then
+            TAGS="$TAGS,${IMAGE_NAME}:latest-${ARCH}"
+          fi
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build and push arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ env.DOCKERFILE }}
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.set-tags.outputs.tags }}
+          target: ${{ env.TARGET }}
+          cache-from: type=registry,ref=${IMAGE_NAME}:buildcache
+          cache-to: type=registry,ref=${IMAGE_NAME}:buildcache,mode=max
+
+  manifest:
+    needs: [ build-amd64, build-arm64 ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Docker login
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          REF_NAME=${GITHUB_REF#refs/tags/}
+          docker manifest create ${IMAGE_NAME}:$REF_NAME \
+            ${IMAGE_NAME}:$REF_NAME-amd64 \
+            ${IMAGE_NAME}:$REF_NAME-arm64
+
+          if [ "${ADD_LATEST}" = "true" ]; then
+            docker manifest create ${IMAGE_NAME}:latest \
+              ${IMAGE_NAME}:latest-amd64 \
+              ${IMAGE_NAME}:latest-arm64
+            docker manifest push ${IMAGE_NAME}:latest
+          fi
+
+          docker manifest push ${IMAGE_NAME}:$REF_NAME
