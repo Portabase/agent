@@ -18,7 +18,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-
 ARG TARGETARCH
 
 # =========================
@@ -29,8 +28,8 @@ RUN for v in 12 13 14 15 16 17 18; do \
         mkdir -p /usr/lib/postgresql/$v/bin; \
     done
 
-COPY assets/tools/x64/postgresql/ /tmp/pg-x64/
-COPY assets/tools/arm/postgresql/ /tmp/pg-arm/
+COPY assets/tools/amd64/postgresql/ /tmp/pg-x64/
+COPY assets/tools/arm64/postgresql/ /tmp/pg-arm/
 
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
         for v in 12 13 14 15 16 17 18; do \
@@ -44,29 +43,11 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     rm -rf /tmp/pg-x64 /tmp/pg-arm && \
     chmod +x /usr/lib/postgresql/*/bin/*
 
-
 # =========================
 # MongoDB client binaries
 # =========================
-RUN apt-get update && \
-    if [ "$TARGETARCH" = "amd64" ]; then \
-        wget -q https://fastdl.mongodb.org/tools/db/mongodb-database-tools-debian12-x86_64-100.10.0.deb \
-            -O /tmp/mongodb-database-tools.deb; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-        wget -q https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-arm64-100.10.0.deb \
-            -O /tmp/mongodb-database-tools.deb; \
-    fi && \
-    dpkg -i /tmp/mongodb-database-tools.deb || \
-        apt-get install -f -y --no-install-recommends && \
-    rm -f /tmp/mongodb-database-tools.deb && \
-    rm -rf /var/lib/apt/lists/* && \
-    mkdir -p /usr/local/mongodb/bin && \
-    if [ -f /usr/bin/mongodump ]; then \
-        ln -sf /usr/bin/mongodump /usr/local/mongodb/bin/mongodump; \
-    fi && \
-    if [ -f /usr/bin/mongorestore ]; then \
-        ln -sf /usr/bin/mongorestore /usr/local/mongodb/bin/mongorestore; \
-    fi
+COPY assets/tools/${TARGETARCH}/mongodb/ /usr/local/mongodb/
+RUN chmod +x /usr/local/mongodb/bin/*
 
 WORKDIR /app
 
@@ -123,7 +104,8 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 COPY --from=base /usr/lib/postgresql/ /usr/lib/postgresql/
-COPY --from=base /usr/local/mongodb/bin /usr/local/mongodb/bin
+COPY --from=base /usr/local/mongodb/bin/ /usr/local/mongodb/bin/
+
 
 ENV APP_ENV=production
 
