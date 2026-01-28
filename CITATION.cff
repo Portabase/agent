@@ -22,5 +22,5 @@ keywords:
   - self-hosted
   - portabase
 license: Apache-2.0
-version: 1.0.2
-date-released: "2026-01-22"
+version: 1.0.3-rc.1
+date-released: "2026-01-28"

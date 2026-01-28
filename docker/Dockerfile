@@ -123,6 +123,7 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 COPY --from=base /usr/lib/postgresql/ /usr/lib/postgresql/
+COPY --from=base /usr/local/mongodb/bin /usr/local/mongodb/bin
 
 ENV APP_ENV=production
 

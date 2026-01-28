@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       target: dev
+    platform: linux/arm64
     container_name: rust-dev
     volumes:
       - .:/app
@@ -11,11 +12,12 @@ services:
       #      - ./databases.toml:/config/config.toml
       - cargo-registry:/usr/local/cargo/registry
       - cargo-git:/usr/local/cargo/git
+      - cargo-target:/app/target
     environment:
       APP_ENV: development
       LOG: debug
       TZ: "Europe/Paris"
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiM2Y4ZDBiMmMtYThjYi00MWIzLTk0NjAtZGMxMGE0N2E2NzlmIiwicHVibGljS2V5IjoiLS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0tXG5NSUlCQ2dLQ0FRRUE5TWV4M2pmdnVLdFB5YU1ERnh2Ulp2dmd3YkRJQ2JzQi81Wll5NDNSVVRBaXZRYjJiSDdYXG5qRHBQd1lJeCs4UFBrbHlRbDVMQzV1UWZEaCs4SVd4OG1LZ3FvMXpWMkdiZXdGbEdEWFYxVEdyU1ZEU25aSWR4XG52bWdYc29EeXhVMlJvWUFUMS9YMWxuc2YxenZKdkFMTkhXdEhRdk42SjVDZTFSMmFsendVRGFEVXlJNzRmSldQXG5tNTh0SDMrYklXL0VVTXdjaWNxM0oySWw3Vm9KNkZNUHJQL1ZSOWEvdFF1SU1qa200MXpFY2NscExPa2luRkxuXG54NmVUWkFSZUpya2UrbnRvZ2t4TGEyRWV5a1lUNzB4V3hKNWp5ZExBVnRvNkkyQlVLVVJoTkowTUFaU29NYUtvXG5iMGJRcnY1UzExZWllMnMrT2I3aTYzSFpkVUx0UmV1MVJ3SURBUUFCXG4tLS0tLUVORCBSU0EgUFVCTElDIEtFWS0tLS0tXG4ifQ"
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiNmExMzc0M2ItYjMwZS00Zjg4LWJjY2EtMmMwZjE2NWVjYjQxIiwicHVibGljS2V5IjoiLS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0tXG5NSUlCQ2dLQ0FRRUE5TWV4M2pmdnVLdFB5YU1ERnh2Ulp2dmd3YkRJQ2JzQi81Wll5NDNSVVRBaXZRYjJiSDdYXG5qRHBQd1lJeCs4UFBrbHlRbDVMQzV1UWZEaCs4SVd4OG1LZ3FvMXpWMkdiZXdGbEdEWFYxVEdyU1ZEU25aSWR4XG52bWdYc29EeXhVMlJvWUFUMS9YMWxuc2YxenZKdkFMTkhXdEhRdk42SjVDZTFSMmFsendVRGFEVXlJNzRmSldQXG5tNTh0SDMrYklXL0VVTXdjaWNxM0oySWw3Vm9KNkZNUHJQL1ZSOWEvdFF1SU1qa200MXpFY2NscExPa2luRkxuXG54NmVUWkFSZUpya2UrbnRvZ2t4TGEyRWV5a1lUNzB4V3hKNWp5ZExBVnRvNkkyQlVLVVJoTkowTUFaU29NYUtvXG5iMGJRcnY1UzExZWllMnMrT2I3aTYzSFpkVUx0UmV1MVJ3SURBUUFCXG4tLS0tLUVORCBSU0EgUFVCTElDIEtFWS0tLS0tXG4ifQ"
       #POOLING: 1
       #DATABASES_CONFIG_FILE: "config.toml"
     extra_hosts:
@@ -23,34 +25,34 @@ services:
     networks:
       - portabase
 
-  db-postgres:
-    container_name: db-postgres
-    image: postgres:17-alpine
-    ports:
-      - "5436:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=devdb
-      - POSTGRES_USER=devuser
-      - POSTGRES_PASSWORD=changeme
-    networks:
-      - portabase
-
-  db-mariadb:
-    container_name: db-mariadb
-    image: mariadb:latest
-    ports:
-      - "3311:3306"
-    environment:
-      - MYSQL_DATABASE=mariadb
-      - MYSQL_USER=mariadb
-      - MYSQL_PASSWORD=changeme
-      - MYSQL_RANDOM_ROOT_PASSWORD=yes
-    volumes:
-      - mariadb-data:/var/lib/mysql
-    networks:
-      - portabase
+#  db-postgres:
+#    container_name: db-postgres
+#    image: postgres:17-alpine
+#    ports:
+#      - "5436:5432"
+#    volumes:
+#      - postgres-data:/var/lib/postgresql/data
+#    environment:
+#      - POSTGRES_DB=devdb
+#      - POSTGRES_USER=devuser
+#      - POSTGRES_PASSWORD=changeme
+#    networks:
+#      - portabase
+#
+#  db-mariadb:
+#    container_name: db-mariadb
+#    image: mariadb:latest
+#    ports:
+#      - "3311:3306"
+#    environment:
+#      - MYSQL_DATABASE=mariadb
+#      - MYSQL_USER=mariadb
+#      - MYSQL_PASSWORD=changeme
+#      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+#    volumes:
+#      - mariadb-data:/var/lib/mysql
+#    networks:
+#      - portabase
 
 
   db-mongodb-auth:
@@ -93,9 +95,11 @@ services:
 volumes:
   cargo-registry:
   cargo-git:
+  cargo-target:
 
-  postgres-data:
-  mariadb-data:
+
+#  postgres-data:
+#  mariadb-data:
   mongodb-data:
   mongodb-data-auth:
 
