@@ -4,7 +4,6 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       target: dev
-#    platform: linux/arm64
     container_name: rust-dev
     volumes:
       - .:/app
