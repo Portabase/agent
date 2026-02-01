@@ -4,21 +4,16 @@ use crate::core::context::Context;
 use crate::domain::factory::DatabaseFactory;
 use crate::services::config::{DatabaseConfig, DatabasesConfig, DbType};
 use crate::utils::common::BackupMethod;
-use crate::utils::file::full_extension;
+use crate::utils::file::{encrypt_file_stream, full_extension};
 use anyhow::Result;
 use hex;
-use openssl::encrypt::Encrypter;
-use openssl::hash::MessageDigest;
-use openssl::pkey::PKey;
-use openssl::rand::rand_bytes;
-use openssl::rsa::Padding;
-use openssl::symm::{Cipher, Crypter, Mode};
-use reqwest::multipart::{Form, Part};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use rand::RngCore;
 use tempfile::TempDir;
-use tokio::fs;
 use tracing::{error, info};
+use reqwest::Body;
+use futures::StreamExt;
 
 #[derive(Debug)]
 pub struct BackupResult {
@@ -119,100 +114,81 @@ impl BackupService {
 
     pub async fn send_result(&self, result: BackupResult, method: BackupMethod) {
         if result.code.as_deref() == Some("backup_already_in_progress") {
-            info!(
-                "[BackupService] Skipping send for DB {}: backup already in progress",
-                result.generated_id
-            );
+            info!("Skipping send: backup already in progress");
             return;
         }
 
-        info!(
-            "[BackupService] DB: {} Type: {} Status: {} File: {:?}",
-            result.generated_id,
-            result.db_type.as_str(),
-            result.status,
-            result.backup_file
+        let Some(file_path) = result.backup_file else {
+            return;
+        };
+
+        let mut aes_key = [0u8; 32];
+        rand::rng().fill_bytes(&mut aes_key);
+
+        let mut iv = [0u8; 16];
+        rand::rng().fill_bytes(&mut iv);
+
+        let public_key_pem = self.ctx.edge_key.public_key.as_bytes().to_vec();
+
+
+        let (encrypted_stream, encrypted_key_hex) =
+            match encrypt_file_stream(
+                file_path.clone(),
+                aes_key,
+                iv,
+                public_key_pem,
+            )
+                .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("Encryption failed: {}", e);
+                    return;
+                }
+            };
+
+        let file_size = std::fs::metadata(&file_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        let body = Body::wrap_stream(
+            encrypted_stream.map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)))
+        );
+
+        let url = format!(
+            "{}/services/v1/upload/{}",
+            self.ctx.edge_key.server_url,
+            self.ctx.edge_key.agent_id
         );
 
         let client = reqwest::Client::new();
-        let url = format!(
-            "{}/api/agent/{}/backup",
-            self.ctx.edge_key.server_url, self.ctx.edge_key.agent_id
-        );
 
-        let mut form = Form::new()
-            .text("generatedId", result.generated_id.clone())
-            .text("status", result.status.clone())
-            .text("method", method.to_string());
 
-        if let Some(file_path) = result.backup_file {
-            match fs::read(&file_path).await {
-                Ok(raw_data) => {
-                    // AES key + IV
-                    let mut aes_key = [0u8; 32];
-                    rand_bytes(&mut aes_key).unwrap();
+        info!("file Size to {}", file_size);
 
-                    let mut iv = [0u8; 16];
-                    rand_bytes(&mut iv).unwrap();
+        let resp = client
+            .post(&url)
+            .header("X-Generated-Id", &result.generated_id)
+            .header("X-Status", &result.status)
+            .header("X-Method", method.to_string())
+            .header("X-AES-Key", encrypted_key_hex)
+            .header("X-IV", hex::encode(iv))
+            .header("X-Extension", full_extension(&file_path))
+            .header("Transfer-Encoding", "chunked")
+            .header("X-File-Size", file_size)
+            .body(body)
+            .send()
+            .await;
 
-                    // AES CBC PKCS7 encryption
-                    let cipher = Cipher::aes_256_cbc();
-                    let mut encrypter =
-                        Crypter::new(cipher, Mode::Encrypt, &aes_key, Some(&iv)).unwrap();
-                    encrypter.pad(true);
-                    let mut encrypted = vec![0u8; raw_data.len() + cipher.block_size()];
-                    let count = encrypter.update(&raw_data, &mut encrypted).unwrap();
-                    let rest = encrypter.finalize(&mut encrypted[count..]).unwrap();
-                    encrypted.truncate(count + rest);
-
-                    // Encrypt AES key with RSA public key
-                    let pub_key_pem = self.ctx.edge_key.public_key.as_bytes();
-                    let pkey = PKey::public_key_from_pem(pub_key_pem).unwrap();
-
-                    let mut encrypter = Encrypter::new(&pkey).unwrap();
-                    // Set OAEP padding (default OAEP uses SHA1, so override)
-                    encrypter.set_rsa_padding(Padding::PKCS1_OAEP).unwrap();
-                    // Set OAEP hash to SHA‑256
-                    encrypter.set_rsa_oaep_md(MessageDigest::sha256()).unwrap();
-                    encrypter.set_rsa_mgf1_md(MessageDigest::sha256()).unwrap();
-
-                    let mut encrypted_key = vec![0u8; encrypter.encrypt_len(&aes_key).unwrap()];
-                    let encrypted_len = encrypter.encrypt(&aes_key, &mut encrypted_key).unwrap();
-                    encrypted_key.truncate(encrypted_len);
-
-                    let extension = full_extension(&file_path);
-
-                    // Attach file and AES info to multipart form
-                    form = form
-                        .part(
-                            "file",
-                            Part::bytes(encrypted)
-                                .file_name(format!("{}.enc", result.generated_id)),
-                        )
-                        .text("aes_key", hex::encode(encrypted_key))
-                        .text("iv", hex::encode(iv))
-                        .text("extension", extension);
-                }
-                Err(e) => {
-                    error!("Failed to read backup file: {}", e);
-                }
+        match resp {
+            Ok(r) if r.status().is_success() => {
+                info!("Backup uploaded successfully");
             }
-        } else {
-            form = form.text("file", "");
-        }
-
-        match client.post(&url).multipart(form).send().await {
-            Ok(resp) => {
-                let status = resp.status();
-                if status.is_success() {
-                    info!("Backup result sent successfully");
-                } else {
-                    let text = resp.text().await.unwrap_or_default(); // consumes resp
-                    error!("Backup result failed, status: {}, body: {}", status, text);
-                }
+            Ok(r) => {
+                error!("Upload failed: {}", r.status());
             }
             Err(e) => {
-                error!("Failed to send backup result: {}", e);
+                error!("Upload error: {}", e);
             }
         }
     }
