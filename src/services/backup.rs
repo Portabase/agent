@@ -156,7 +156,8 @@ impl BackupService {
         );
 
         let url = format!(
-            "{}/services/v1/upload/{}",
+            "{}/api/agent/{}/backup",
+            // "{}/services/v1/upload/{}",
             self.ctx.edge_key.server_url,
             self.ctx.edge_key.agent_id
         );
