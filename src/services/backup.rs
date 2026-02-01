@@ -6,14 +6,14 @@ use crate::services::config::{DatabaseConfig, DatabasesConfig, DbType};
 use crate::utils::common::BackupMethod;
 use crate::utils::file::{encrypt_file_stream, full_extension};
 use anyhow::Result;
+use futures::StreamExt;
 use hex;
+use rand::RngCore;
+use reqwest::Body;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use rand::RngCore;
 use tempfile::TempDir;
 use tracing::{error, info};
-use reqwest::Body;
-use futures::StreamExt;
 
 #[derive(Debug)]
 pub struct BackupResult {
@@ -130,16 +130,8 @@ impl BackupService {
 
         let public_key_pem = self.ctx.edge_key.public_key.as_bytes().to_vec();
 
-
         let (encrypted_stream, encrypted_key_hex) =
-            match encrypt_file_stream(
-                file_path.clone(),
-                aes_key,
-                iv,
-                public_key_pem,
-            )
-                .await
-            {
+            match encrypt_file_stream(file_path.clone(), aes_key, iv, public_key_pem).await {
                 Ok(v) => v,
                 Err(e) => {
                     error!("Encryption failed: {}", e);
@@ -147,23 +139,19 @@ impl BackupService {
                 }
             };
 
-        let file_size = std::fs::metadata(&file_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let file_size = std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
 
         let body = Body::wrap_stream(
-            encrypted_stream.map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)))
+            encrypted_stream
+                .map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
         );
 
         let url = format!(
-            "{}/api/agent/{}/backup",
-            // "{}/services/v1/upload/{}",
-            self.ctx.edge_key.server_url,
-            self.ctx.edge_key.agent_id
+            "{}/services/v1/upload/{}",
+            self.ctx.edge_key.server_url, self.ctx.edge_key.agent_id
         );
 
         let client = reqwest::Client::new();
-
 
         info!("file Size to {}", file_size);
 
