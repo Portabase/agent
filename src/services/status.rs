@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::utils::deserializer::deserialize_snake_case;
 use crate::core::context::Context;
 use crate::services::config::DatabaseConfig;
 use crate::settings::CONFIG;
@@ -7,6 +8,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::sync::Arc;
+use toml::Value;
 use tracing::{error, info};
 
 /// Payload for sending database info in the request
@@ -39,11 +41,21 @@ pub struct AgentInfo {
     pub last_contact: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct DatabaseStorage {
+    pub id: String,
+    #[serde(deserialize_with = "deserialize_snake_case")]
+    pub config: Value,
+    pub provider: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct DatabaseStatus {
     pub dbms: String,
     #[serde(rename = "generatedId")]
     pub generated_id: String,
+    pub storages: Vec<DatabaseStorage>,
     pub data: DatabaseData,
 }
 
@@ -112,6 +124,8 @@ impl StatusService {
         }
 
         let result: PingResult = resp.json().await?;
+
+        // info!("Status response | {:#?}", result);
 
         Ok(result)
     }

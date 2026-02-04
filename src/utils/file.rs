@@ -10,7 +10,6 @@ use openssl::encrypt::Encrypter;
 use openssl::rsa::Padding;
 use openssl::hash::MessageDigest;
 use async_stream::try_stream;
-
 use hex;
 
 pub fn full_extension(path: &Path) -> String {

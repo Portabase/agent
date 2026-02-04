@@ -6,3 +6,5 @@ pub mod text;
 pub mod file;
 pub mod locks;
 pub mod logging;
+pub mod tus;
+pub mod deserializer;

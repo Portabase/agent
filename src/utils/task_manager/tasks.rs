@@ -3,6 +3,7 @@
 use crate::utils::task_manager::cron::next_run_timestamp;
 use crate::utils::task_manager::models::PeriodicTask;
 use redis::aio::MultiplexedConnection;
+use serde_json::Value;
 
 pub const SCHEDULE_KEY: &str = "redbeat:schedule";
 
@@ -12,6 +13,7 @@ pub async fn upsert_task(
     task: &str,
     cron: &str,
     args: Vec<String>,
+    metadata: Option<Value>,
 ) -> redis::RedisResult<()> {
     let key = format!("redbeat:{}", name);
     let next_ts = next_run_timestamp(cron);
@@ -21,6 +23,7 @@ pub async fn upsert_task(
         cron: cron.to_string(),
         args,
         enabled: true,
+        metadata
     };
 
     let payload = serde_json::to_string(&entry).unwrap();
