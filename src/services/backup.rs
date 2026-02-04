@@ -17,14 +17,24 @@ use tempfile::TempDir;
 use tracing::{error, info};
 use crate::utils::tus::upload_to_tus_stream_with_headers;
 use bytes::Bytes;
+use futures::future::join_all;
+use crate::services::providers;
+use crate::services::status::DatabaseStorage;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BackupResult {
     pub generated_id: String,
     pub db_type: DbType,
     pub status: String,
     pub backup_file: Option<PathBuf>,
     pub code: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct UploadResult {
+    pub storage_id: String,
+    pub success: bool,
+    pub error: Option<String>,
 }
 
 pub struct BackupService {
@@ -41,6 +51,7 @@ impl BackupService {
         generated_id: &String,
         config: &DatabasesConfig,
         method: BackupMethod,
+        storages: &Vec<DatabaseStorage>
     ) {
         if let Some(cfg) = config
             .databases
@@ -49,17 +60,19 @@ impl BackupService {
         {
             let db_cfg = cfg.clone();
             let ctx_clone = self.ctx.clone();
+            let storages_clone = storages.clone();
 
             tokio::spawn(async move {
                 match TempDir::new() {
                     Ok(temp_dir) => {
+
                         let tmp_path = temp_dir.path().to_path_buf();
                         info!("Created temp directory {}", tmp_path.display());
 
                         match BackupService::run(db_cfg, &tmp_path).await {
                             Ok(result) => {
                                 let service = BackupService { ctx: ctx_clone };
-                                service.send_result(result, method).await;
+                                service.send_result(result, method, storages_clone).await;
                             }
                             Err(e) => error!("Backup error {}", e),
                         }
@@ -256,57 +269,81 @@ impl BackupService {
     //     }
     // }
 
-    pub async fn send_result(&self, result: BackupResult, method: BackupMethod) {
+    pub async fn send_result(&self, result: BackupResult, method: BackupMethod, storages: Vec<DatabaseStorage>) {
+
         if result.code.as_deref() == Some("backup_already_in_progress") {
             info!("Skipping send: backup already in progress");
             return;
         }
 
-        let Some(file_path) = result.backup_file else { return; };
 
-        let mut aes_key = [0u8; 32];
-        rand::rng().fill_bytes(&mut aes_key);
-        let mut iv = [0u8; 16];
-        rand::rng().fill_bytes(&mut iv);
-
-        let public_key_pem = self.ctx.edge_key.public_key.as_bytes().to_vec();
-
-        let (encrypted_stream, encrypted_key_hex) =
-            match encrypt_file_stream(file_path.clone(), aes_key, iv, public_key_pem).await {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("Encryption failed: {}", e);
-                    return;
-                }
-            };
-
-        // let tus_endpoint = format!("{}/files", self.ctx.edge_key.server_url);
+        let upload_futures = storages.into_iter().map(|storage| {
+            let provider = providers::get_provider(&storage);
+            let result_clone = result.clone();
+            let ctx_clone = self.ctx.clone();
+            async move {
+                provider.upload(ctx_clone, result_clone, method, &storage).await
+            }
+        });
 
 
-        let tus_endpoint = format!(
-                // "{}/services/v1/upload/{}",
-                "{}/tus/files",
-                self.ctx.edge_key.server_url,
-                // self.ctx.edge_key.agent_id
-            );
 
-        // let tus_endpoint = String::from("http://localhost:1080/files");
-        // let tus_endpoint = String::from("http://localhost:1080/files");
-        let stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>> =
-            Box::pin(encrypted_stream.map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))));
+        // join_all(upload_futures).await;
 
-        let mut extra_headers = HeaderMap::new();
-        extra_headers.insert("X-AES-Key", HeaderValue::from_str(&encrypted_key_hex).unwrap());
-        extra_headers.insert("X-IV", HeaderValue::from_str(&hex::encode(iv)).unwrap());
-        extra_headers.insert("X-Generated-Id", HeaderValue::from_str(&result.generated_id).unwrap());
-        extra_headers.insert("X-Status", HeaderValue::from_str(&result.status).unwrap());
-        extra_headers.insert("X-Method", HeaderValue::from_str(&method.to_string()).unwrap());
-        extra_headers.insert("X-Extension", HeaderValue::from_str(&full_extension(&file_path)).unwrap());
+        let results: Vec<UploadResult> = join_all(upload_futures).await;
 
+        info!("Upload results: {:?}", results);
 
-        match upload_to_tus_stream_with_headers(stream, &tus_endpoint, extra_headers).await {
-            Ok(_) => info!("Backup uploaded successfully via TUS"),
-            Err(e) => error!("TUS upload failed: {}", e),
-        }
+        return;
+
+        //
+        //
+        // let Some(file_path) = result.backup_file else { return; };
+        //
+        // let mut aes_key = [0u8; 32];
+        // rand::rng().fill_bytes(&mut aes_key);
+        // let mut iv = [0u8; 16];
+        // rand::rng().fill_bytes(&mut iv);
+        //
+        // let public_key_pem = self.ctx.edge_key.public_key.as_bytes().to_vec();
+        //
+        // let (encrypted_stream, encrypted_key_hex) =
+        //     match encrypt_file_stream(file_path.clone(), aes_key, iv, public_key_pem).await {
+        //         Ok(v) => v,
+        //         Err(e) => {
+        //             error!("Encryption failed: {}", e);
+        //             return;
+        //         }
+        //     };
+        //
+        // // let tus_endpoint = format!("{}/files", self.ctx.edge_key.server_url);
+        //
+        // // Loop over all storages (local : tus, s3, etc.)
+        //
+        // let tus_endpoint = format!(
+        //         // "{}/services/v1/upload/{}",
+        //         "{}/tus/files",
+        //         self.ctx.edge_key.server_url,
+        //         // self.ctx.edge_key.agent_id
+        //     );
+        //
+        // // let tus_endpoint = String::from("http://localhost:1080/files");
+        // // let tus_endpoint = String::from("http://localhost:1080/files");
+        // let stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>> =
+        //     Box::pin(encrypted_stream.map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))));
+        //
+        // let mut extra_headers = HeaderMap::new();
+        // extra_headers.insert("X-AES-Key", HeaderValue::from_str(&encrypted_key_hex).unwrap());
+        // extra_headers.insert("X-IV", HeaderValue::from_str(&hex::encode(iv)).unwrap());
+        // extra_headers.insert("X-Generated-Id", HeaderValue::from_str(&result.generated_id).unwrap());
+        // extra_headers.insert("X-Status", HeaderValue::from_str(&result.status).unwrap());
+        // extra_headers.insert("X-Method", HeaderValue::from_str(&method.to_string()).unwrap());
+        // extra_headers.insert("X-Extension", HeaderValue::from_str(&full_extension(&file_path)).unwrap());
+        //
+        //
+        // match upload_to_tus_stream_with_headers(stream, &tus_endpoint, extra_headers).await {
+        //     Ok(_) => info!("Backup uploaded successfully via TUS"),
+        //     Err(e) => error!("TUS upload failed: {}", e),
+        // }
     }
 }

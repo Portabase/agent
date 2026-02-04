@@ -1,12 +1,14 @@
 use crate::core::context::Context;
 use crate::services::backup::BackupService;
 use crate::services::config::ConfigService;
+use crate::services::status::DatabaseStorage;
 use crate::utils::common::BackupMethod;
 use crate::utils::task_manager::cron::next_run_timestamp;
 use crate::utils::task_manager::models::PeriodicTask;
 use crate::utils::task_manager::tasks::SCHEDULE_KEY;
 use redis::AsyncCommands;
 use redis::aio::MultiplexedConnection;
+use serde_json::Value;
 use std::sync::Arc;
 use tracing::error;
 use tracing::info;
@@ -34,7 +36,13 @@ pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
                     "Executing task={} args={:?} metadata={:?}",
                     task_clone.task, task_clone.args, task_clone.metadata
                 );
-                if let Err(e) = execute_task(task_clone.task.as_str(), task_clone.args).await {
+                if let Err(e) = execute_task(
+                    task_clone.task.as_str(),
+                    task_clone.args,
+                    task_clone.metadata,
+                )
+                .await
+                {
                     error!(
                         "An error occurred while executing task={} : {:?}",
                         task_clone.task, e
@@ -48,7 +56,11 @@ pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
     }
 }
 
-pub async fn execute_task(task: &str, args: Vec<String>) -> Result<(), anyhow::Error> {
+pub async fn execute_task(
+    task: &str,
+    args: Vec<String>,
+    metadata: Option<Value>,
+) -> Result<(), anyhow::Error> {
     match task {
         "tasks.database.periodic_backup" => {
             let generated_id = &args[0];
@@ -60,8 +72,19 @@ pub async fn execute_task(task: &str, args: Vec<String>) -> Result<(), anyhow::E
             let backup_service = BackupService::new(ctx.clone());
             let config = config_service.load(None).unwrap();
 
+            let metadata_obj = metadata
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("Metadata missing"))?;
+
+            let storages_value: &Value = metadata_obj
+                .get("storages")
+                .ok_or_else(|| anyhow::anyhow!("storages key missing"))?;
+
+            let storages: Vec<DatabaseStorage> = serde_json::from_value(storages_value.clone())?;
+
             backup_service
-                .dispatch(generated_id, &config, BackupMethod::Automatic)
+                .dispatch(generated_id, &config, BackupMethod::Automatic, &storages)
                 .await;
 
             Ok(())
