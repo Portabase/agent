@@ -27,6 +27,7 @@ impl StorageProvider for TusProvider {
         method: BackupMethod,
         storage: &DatabaseStorage,
     ) -> UploadResult {
+
         let Some(file_path) = result.backup_file else {
             return UploadResult { storage_id: storage.id.clone(), success: false, error: Some("File path error".to_string()) } ;
         };
@@ -37,6 +38,8 @@ impl StorageProvider for TusProvider {
         rand::rng().fill_bytes(&mut iv);
 
         let public_key_pem = ctx.edge_key.public_key.as_bytes().to_vec();
+
+        info!("public_key_pem {:?}", public_key_pem);
 
         let (encrypted_stream, encrypted_key_hex) =
             match encrypt_file_stream(file_path.clone(), aes_key, iv, public_key_pem).await {

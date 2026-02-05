@@ -276,24 +276,39 @@ impl BackupService {
             return;
         }
 
+        info!("Sending result: {:#?}", storages);
+
 
         let upload_futures = storages.into_iter().map(|storage| {
+            info!("Uploading storage");
+
             let provider = providers::get_provider(&storage);
             let result_clone = result.clone();
             let ctx_clone = self.ctx.clone();
+
             async move {
-                provider.upload(ctx_clone, result_clone, method, &storage).await
+                match provider {
+                    Some(provider) => {
+                        provider
+                            .upload(ctx_clone, result_clone, method, &storage)
+                            .await
+                    }
+                    None => {
+                        error!("Skipping storage due to missing provider");
+
+                        UploadResult {
+                            storage_id: storage.id.clone(),
+                            success: false,
+                            error: Some("Skipping storage due to missing provider".to_string()),
+                        }
+                    }
+                }
             }
         });
 
 
-
-        // join_all(upload_futures).await;
-
         let results: Vec<UploadResult> = join_all(upload_futures).await;
-
-        info!("Upload results: {:?}", results);
-
+        info!("Upload results: {:#?}", results);
         return;
 
         //
