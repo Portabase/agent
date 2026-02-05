@@ -3,23 +3,23 @@
 use crate::core::context::Context;
 use crate::domain::factory::DatabaseFactory;
 use crate::services::config::{DatabaseConfig, DatabasesConfig, DbType};
+use crate::services::status::DatabaseStorage;
+use crate::services::storage;
 use crate::utils::common::BackupMethod;
 use crate::utils::file::{encrypt_file_stream, full_extension};
+use crate::utils::tus::upload_to_tus_stream_with_headers;
 use anyhow::Result;
+use bytes::Bytes;
+use futures::future::join_all;
 use futures::{Stream, StreamExt};
 use hex;
 use rand::RngCore;
+use reqwest::header::{HeaderMap, HeaderValue};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
-use reqwest::header::{HeaderMap, HeaderValue};
 use tempfile::TempDir;
 use tracing::{error, info};
-use crate::utils::tus::upload_to_tus_stream_with_headers;
-use bytes::Bytes;
-use futures::future::join_all;
-use crate::services::providers;
-use crate::services::status::DatabaseStorage;
 
 #[derive(Debug, Clone)]
 pub struct BackupResult {
@@ -51,7 +51,7 @@ impl BackupService {
         generated_id: &String,
         config: &DatabasesConfig,
         method: BackupMethod,
-        storages: &Vec<DatabaseStorage>
+        storages: &Vec<DatabaseStorage>,
     ) {
         if let Some(cfg) = config
             .databases
@@ -65,7 +65,6 @@ impl BackupService {
             tokio::spawn(async move {
                 match TempDir::new() {
                     Ok(temp_dir) => {
-
                         let tmp_path = temp_dir.path().to_path_buf();
                         info!("Created temp directory {}", tmp_path.display());
 
@@ -269,8 +268,12 @@ impl BackupService {
     //     }
     // }
 
-    pub async fn send_result(&self, result: BackupResult, method: BackupMethod, storages: Vec<DatabaseStorage>) {
-
+    pub async fn send_result(
+        &self,
+        result: BackupResult,
+        method: BackupMethod,
+        storages: Vec<DatabaseStorage>,
+    ) {
         if result.code.as_deref() == Some("backup_already_in_progress") {
             info!("Skipping send: backup already in progress");
             return;
@@ -278,11 +281,12 @@ impl BackupService {
 
         info!("Sending result: {:#?}", storages);
 
-
         let upload_futures = storages.into_iter().map(|storage| {
-            info!("Uploading storage");
-
-            let provider = providers::get_provider(&storage);
+            info!(
+                "Uploading storage -> {:?} for {:?}",
+                storage.provider, storage.id
+            );
+            let provider = storage::get_provider(&storage);
             let result_clone = result.clone();
             let ctx_clone = self.ctx.clone();
 
@@ -295,7 +299,6 @@ impl BackupService {
                     }
                     None => {
                         error!("Skipping storage due to missing provider");
-
                         UploadResult {
                             storage_id: storage.id.clone(),
                             success: false,
@@ -305,7 +308,6 @@ impl BackupService {
                 }
             }
         });
-
 
         let results: Vec<UploadResult> = join_all(upload_futures).await;
         info!("Upload results: {:#?}", results);

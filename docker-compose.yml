@@ -11,7 +11,7 @@ services:
       #      - ./databases.toml:/config/config.toml
       - cargo-registry:/usr/local/cargo/registry
       - cargo-git:/usr/local/cargo/git
-#      - cargo-target:/app/target
+      - cargo-target:/app/target
     environment:
       APP_ENV: development
       LOG: debug
@@ -94,7 +94,7 @@ services:
 volumes:
   cargo-registry:
   cargo-git:
-#  cargo-target:
+  cargo-target:
 
 
   postgres-data:
