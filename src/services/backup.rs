@@ -2,21 +2,14 @@
 
 use crate::core::context::Context;
 use crate::domain::factory::DatabaseFactory;
+use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::config::{DatabaseConfig, DatabasesConfig, DbType};
-use crate::services::status::DatabaseStorage;
 use crate::services::storage;
 use crate::utils::common::BackupMethod;
-use crate::utils::file::{encrypt_file_stream, full_extension};
-use crate::utils::tus::upload_to_tus_stream_with_headers;
+use crate::utils::compress::compress_to_tar_gz_large;
 use anyhow::Result;
-use bytes::Bytes;
 use futures::future::join_all;
-use futures::{Stream, StreamExt};
-use hex;
-use rand::RngCore;
-use reqwest::header::{HeaderMap, HeaderValue};
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tracing::{error, info};
@@ -52,6 +45,7 @@ impl BackupService {
         config: &DatabasesConfig,
         method: BackupMethod,
         storages: &Vec<DatabaseStorage>,
+        encrypt: bool,
     ) {
         if let Some(cfg) = config
             .databases
@@ -65,15 +59,57 @@ impl BackupService {
             tokio::spawn(async move {
                 match TempDir::new() {
                     Ok(temp_dir) => {
+                        // trigger backup POST
+
                         let tmp_path = temp_dir.path().to_path_buf();
                         info!("Created temp directory {}", tmp_path.display());
-
                         match BackupService::run(db_cfg, &tmp_path).await {
-                            Ok(result) => {
-                                let service = BackupService { ctx: ctx_clone };
-                                service.send_result(result, method, storages_clone).await;
+                            Ok(mut result) => {
+                                if let Some(backup_file) = result.backup_file.take() {
+                                    match compress_to_tar_gz_large(&backup_file).await {
+                                        Ok(compression_result) => {
+                                            result.backup_file =
+                                                Some(compression_result.compressed_path);
+                                            let service = BackupService { ctx: ctx_clone };
+                                            match service
+                                                .upload(
+                                                    result.clone(),
+                                                    method,
+                                                    storages_clone.clone(),
+                                                    encrypt,
+                                                )
+                                                .await
+                                            {
+                                                Ok(upload_result) => {
+                                                    match service
+                                                        .send_result(result, method, upload_result)
+                                                        .await
+                                                    {
+                                                        Ok(_) => {
+                                                            return;
+                                                        }
+                                                        Err(e) => {
+                                                            error!(
+                                                                "Failed to send backup result: {}",
+                                                                e
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    error!("Failed to upload backup files: {}", e);
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to compress backup file : {}", e);
+                                        }
+                                    }
+                                } else {
+                                    error!("No backup file generated");
+                                }
                             }
-                            Err(e) => error!("Backup error {}", e),
+                            Err(e) => error!("BackupService run failed: {}", e),
                         }
                         // TempDir is automatically deleted when dropped here
                     }
@@ -127,159 +163,19 @@ impl BackupService {
         }
     }
 
-    // pub async fn send_result(&self, result: BackupResult, method: BackupMethod) {
-    //     if result.code.as_deref() == Some("backup_already_in_progress") {
-    //         info!("Skipping send: backup already in progress");
-    //         return;
-    //     }
-    //
-    //     let Some(file_path) = result.backup_file else {
-    //         return;
-    //     };
-    //
-    //     let mut aes_key = [0u8; 32];
-    //     rand::rng().fill_bytes(&mut aes_key);
-    //
-    //     let mut iv = [0u8; 16];
-    //     rand::rng().fill_bytes(&mut iv);
-    //
-    //     let public_key_pem = self.ctx.edge_key.public_key.as_bytes().to_vec();
-    //
-    //     let (encrypted_stream, encrypted_key_hex) =
-    //         match encrypt_file_stream(file_path.clone(), aes_key, iv, public_key_pem).await {
-    //             Ok(v) => v,
-    //             Err(e) => {
-    //                 error!("Encryption failed: {}", e);
-    //                 return;
-    //             }
-    //         };
-    //
-    //     let file_size = std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
-    //
-    //     let body = Body::wrap_stream(
-    //         encrypted_stream
-    //             .map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
-    //     );
-    //
-    //     let url = format!(
-    //         "{}/services/v1/upload/{}",
-    //         self.ctx.edge_key.server_url, self.ctx.edge_key.agent_id
-    //     );
-    //
-    //     let client = reqwest::Client::new();
-    //
-    //     info!("file Size to {}", file_size);
-    //
-    //     let resp = client
-    //         .post(&url)
-    //         .header("X-Generated-Id", &result.generated_id)
-    //         .header("X-Status", &result.status)
-    //         .header("X-Method", method.to_string())
-    //         .header("X-AES-Key", encrypted_key_hex)
-    //         .header("X-IV", hex::encode(iv))
-    //         .header("X-Extension", full_extension(&file_path))
-    //         .header("Transfer-Encoding", "chunked")
-    //         .header("X-File-Size", file_size)
-    //         .body(body)
-    //         .send()
-    //         .await;
-    //
-    //     match resp {
-    //         Ok(r) if r.status().is_success() => {
-    //             info!("Backup uploaded successfully");
-    //         }
-    //         Ok(r) => {
-    //             error!("Upload failed: {}", r.status());
-    //         }
-    //         Err(e) => {
-    //             error!("Upload error: {}", e);
-    //         }
-    //     }
-    // }
-
-    //
-    // pub async fn send_result(&self, result: BackupResult, method: BackupMethod) {
-    //     // Skip if backup already in progress
-    //     if result.code.as_deref() == Some("backup_already_in_progress") {
-    //         info!("Skipping send: backup already in progress");
-    //         return;
-    //     }
-    //
-    //     let Some(file_path) = result.backup_file else { return; };
-    //
-    //     // Generate AES key and IV
-    //     let mut aes_key = [0u8; 32];
-    //     rand::rng().fill_bytes(&mut aes_key);
-    //     let mut iv = [0u8; 16];
-    //     rand::rng().fill_bytes(&mut iv);
-    //
-    //     let public_key_pem = self.ctx.edge_key.public_key.as_bytes().to_vec();
-    //
-    //     // Encrypt the file as a streaming source
-    //     let (encrypted_stream, encrypted_key_hex) =
-    //         match encrypt_file_stream(file_path.clone(), aes_key, iv, public_key_pem).await {
-    //             Ok(v) => v,
-    //             Err(e) => {
-    //                 error!("Encryption failed: {}", e);
-    //                 return;
-    //             }
-    //         };
-    //
-    //     // Get file size
-    //     let file_size = match std::fs::metadata(&file_path) {
-    //         Ok(m) => m.len(),
-    //         Err(e) => {
-    //             error!("Cannot get file metadata: {}", e);
-    //             return;
-    //         }
-    //     };
-    //
-    //     // TUS endpoint
-    //     // let tus_endpoint = format!(
-    //     //     // "{}/services/v1/upload/{}",
-    //     //     // "{}/tus/files",
-    //     //     "http://localhost:1080/files",
-    //     //     // self.ctx.edge_key.server_url,
-    //     //     // self.ctx.edge_key.agent_id
-    //     // );
-    //
-    //     let tus_endpoint = String::from("http://localhost:1080/files");
-    //
-    //     // Wrap the stream to handle errors
-    //     let stream: Pin<Box<dyn futures::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send>> =
-    //         Box::pin(encrypted_stream.map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))));
-    //
-    //     // Build additional headers for TUS PATCH requests
-    //     let extra_headers = {
-    //         let mut h = HeaderMap::new();
-    //         h.insert("X-AES-Key", HeaderValue::from_str(&encrypted_key_hex).unwrap());
-    //         h.insert("X-IV", HeaderValue::from_str(&hex::encode(iv)).unwrap());
-    //         h.insert("X-Generated-Id", HeaderValue::from_str(&result.generated_id).unwrap());
-    //         h.insert("X-Status", HeaderValue::from_str(&result.status).unwrap());
-    //         h.insert("X-Method", HeaderValue::from_str(&method.to_string()).unwrap());
-    //         h.insert("X-Extension", HeaderValue::from_str(&full_extension(&file_path)).unwrap());
-    //         // h.insert("X-File-Size", HeaderValue::from_str(&file_size.to_string()).unwrap());
-    //         h
-    //     };
-    //
-    //     match upload_to_tus_stream_with_headers(stream, file_size, &tus_endpoint, extra_headers).await {
-    //         Ok(_) => info!("Backup uploaded successfully via TUS"),
-    //         Err(e) => error!("TUS upload failed: {}", e),
-    //     }
-    // }
-
-    pub async fn send_result(
+    pub async fn upload(
         &self,
         result: BackupResult,
         method: BackupMethod,
         storages: Vec<DatabaseStorage>,
-    ) {
+        encrypt: bool,
+    ) -> Result<Vec<UploadResult>> {
         if result.code.as_deref() == Some("backup_already_in_progress") {
             info!("Skipping send: backup already in progress");
-            return;
+            anyhow::bail!("backup_already_in_progres");
         }
 
-        info!("Sending result: {:#?}", storages);
+        info!("Storages : {:#?}", storages);
 
         let upload_futures = storages.into_iter().map(|storage| {
             info!(
@@ -289,20 +185,42 @@ impl BackupService {
             let provider = storage::get_provider(&storage);
             let result_clone = result.clone();
             let ctx_clone = self.ctx.clone();
+            let storages_clone = storage.clone();
+            let storage_id = storages_clone.id;
 
             async move {
-                match provider {
-                    Some(provider) => {
-                        provider
-                            .upload(ctx_clone, result_clone, method, &storage)
-                            .await
-                    }
-                    None => {
-                        error!("Skipping storage due to missing provider");
+                match self
+                    .ctx
+                    .api
+                    .backup_upload_init(self.ctx.edge_key.agent_id.clone(), "", "", storage_id.clone())
+                    .await
+                {
+                    Ok(_) => match provider {
+                        Some(provider) => {
+                            provider
+                                .upload(ctx_clone, result_clone, method, &storage, Some(encrypt))
+                                .await
+                        }
+                        None => {
+                            error!("Skipping storage due to missing provider");
+                            UploadResult {
+                                storage_id: storage_id.clone(),
+                                success: false,
+                                error: Some("Skipping storage due to missing provider".to_string()),
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        error!(
+                            "Unable to create the storage backup on remote server : {}",
+                            e
+                        );
                         UploadResult {
-                            storage_id: storage.id.clone(),
+                            storage_id: storage_id.clone(),
                             success: false,
-                            error: Some("Skipping storage due to missing provider".to_string()),
+                            error: Some(
+                                "Unable to create the storage backup on remote server".to_string(),
+                            ),
                         }
                     }
                 }
@@ -311,56 +229,16 @@ impl BackupService {
 
         let results: Vec<UploadResult> = join_all(upload_futures).await;
         info!("Upload results: {:#?}", results);
-        return;
 
-        //
-        //
-        // let Some(file_path) = result.backup_file else { return; };
-        //
-        // let mut aes_key = [0u8; 32];
-        // rand::rng().fill_bytes(&mut aes_key);
-        // let mut iv = [0u8; 16];
-        // rand::rng().fill_bytes(&mut iv);
-        //
-        // let public_key_pem = self.ctx.edge_key.public_key.as_bytes().to_vec();
-        //
-        // let (encrypted_stream, encrypted_key_hex) =
-        //     match encrypt_file_stream(file_path.clone(), aes_key, iv, public_key_pem).await {
-        //         Ok(v) => v,
-        //         Err(e) => {
-        //             error!("Encryption failed: {}", e);
-        //             return;
-        //         }
-        //     };
-        //
-        // // let tus_endpoint = format!("{}/files", self.ctx.edge_key.server_url);
-        //
-        // // Loop over all storages (local : tus, s3, etc.)
-        //
-        // let tus_endpoint = format!(
-        //         // "{}/services/v1/upload/{}",
-        //         "{}/tus/files",
-        //         self.ctx.edge_key.server_url,
-        //         // self.ctx.edge_key.agent_id
-        //     );
-        //
-        // // let tus_endpoint = String::from("http://localhost:1080/files");
-        // // let tus_endpoint = String::from("http://localhost:1080/files");
-        // let stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>> =
-        //     Box::pin(encrypted_stream.map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))));
-        //
-        // let mut extra_headers = HeaderMap::new();
-        // extra_headers.insert("X-AES-Key", HeaderValue::from_str(&encrypted_key_hex).unwrap());
-        // extra_headers.insert("X-IV", HeaderValue::from_str(&hex::encode(iv)).unwrap());
-        // extra_headers.insert("X-Generated-Id", HeaderValue::from_str(&result.generated_id).unwrap());
-        // extra_headers.insert("X-Status", HeaderValue::from_str(&result.status).unwrap());
-        // extra_headers.insert("X-Method", HeaderValue::from_str(&method.to_string()).unwrap());
-        // extra_headers.insert("X-Extension", HeaderValue::from_str(&full_extension(&file_path)).unwrap());
-        //
-        //
-        // match upload_to_tus_stream_with_headers(stream, &tus_endpoint, extra_headers).await {
-        //     Ok(_) => info!("Backup uploaded successfully via TUS"),
-        //     Err(e) => error!("TUS upload failed: {}", e),
-        // }
+        Ok(results)
+    }
+
+    pub async fn send_result(
+        &self,
+        result: BackupResult,
+        method: BackupMethod,
+        upload_results: Vec<UploadResult>,
+    ) -> Result<()> {
+        Ok(())
     }
 }

@@ -1,11 +1,14 @@
+use crate::services::api::ApiClient;
 use crate::settings::CONFIG;
 use crate::utils::edge_key::{EdgeKey, EdgeKeyError, decode_edge_key};
+use std::fmt::format;
 use tracing::{debug, error, info};
 
 #[derive(Debug)]
 pub struct Context {
     #[allow(dead_code)]
     pub edge_key: EdgeKey,
+    pub api: ApiClient,
 }
 
 impl Context {
@@ -34,6 +37,12 @@ impl Context {
             }
         };
 
-        Context { edge_key }
+        let server_url = format!("{}/api", edge_key.server_url);
+        let api_client = ApiClient::new(server_url);
+
+        Context {
+            edge_key: edge_key,
+            api: api_client,
+        }
     }
 }

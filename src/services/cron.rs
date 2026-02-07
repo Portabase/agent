@@ -1,13 +1,13 @@
 #![allow(dead_code)]
 
 use crate::core::context::Context;
-use crate::services::status::DatabaseStatus;
 use crate::utils::common::vec_to_option_json;
 use crate::utils::redis_client;
 use crate::utils::task_manager::cron::check_and_update_cron;
 use redis::aio::MultiplexedConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
+use crate::services::api::models::agent::status::DatabaseStatus;
 
 pub struct CronService {
     ctx: Arc<Context>,
@@ -26,8 +26,10 @@ impl CronService {
         let task_name = format!("periodic.backup_{}", generated_id);
         let args = vec![generated_id.to_string(), dbms.to_string()];
         let storages: Option<Value> = vec_to_option_json(database.storages.clone());
+        let encrypt: bool = database.encrypt;
         let metadata = json!({
-            "storages": storages
+            "storages": storages,
+            "encrypt": encrypt
         });
 
         check_and_update_cron(

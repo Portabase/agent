@@ -1,7 +1,6 @@
 use crate::core::context::Context;
 use crate::services::backup::BackupService;
 use crate::services::config::ConfigService;
-use crate::services::status::DatabaseStorage;
 use crate::utils::common::BackupMethod;
 use crate::utils::task_manager::cron::next_run_timestamp;
 use crate::utils::task_manager::models::PeriodicTask;
@@ -12,6 +11,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use tracing::error;
 use tracing::info;
+use crate::services::api::models::agent::status::DatabaseStorage;
 
 pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
     loop {
@@ -80,11 +80,16 @@ pub async fn execute_task(
             let storages_value: &Value = metadata_obj
                 .get("storages")
                 .ok_or_else(|| anyhow::anyhow!("storages key missing"))?;
-
+            
+            let encrypt_value: &Value = metadata_obj
+                .get("encrypt")
+                .ok_or_else(|| anyhow::anyhow!("encrypt key missing"))?;
+            
             let storages: Vec<DatabaseStorage> = serde_json::from_value(storages_value.clone())?;
+            let encrypt : bool = serde_json::from_value(encrypt_value.clone())?;
 
             backup_service
-                .dispatch(generated_id, &config, BackupMethod::Automatic, &storages)
+                .dispatch(generated_id, &config, BackupMethod::Automatic, &storages, encrypt)
                 .await;
 
             Ok(())

@@ -36,10 +36,10 @@ bytes = "1.11.0"
 async-stream = "0.3.6"
 uuid = { version = "1.20.0", features = ["v4"] }
 tokio-util = "0.7.18"
-#aws-sdk-s3 = "1.122.0"
 aws-config = "1.8.13"
-
 aws-sdk-s3 = { version = "1.122.0", features = ["behavior-version-latest"] }
+async-compression = { version = "0.4.37", features = ["tokio", "gzip"] }
+tokio-tar = "0.3.1"
 
 
 [[bin]]

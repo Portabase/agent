@@ -70,7 +70,7 @@ where
         }
     }
 
-    let mut finalize_headers = HeaderMap::new();
+    let mut finalize_headers = extra_headers.clone();
     finalize_headers.insert("Tus-Resumable", HeaderValue::from_static("1.0.0"));
     finalize_headers.insert("Upload-Offset", HeaderValue::from_str(&offset.to_string())?);
     finalize_headers.insert("Upload-Length", HeaderValue::from_str(&offset.to_string())?);

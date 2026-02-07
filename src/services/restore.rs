@@ -3,13 +3,13 @@
 use crate::core::context::Context;
 use crate::domain::factory::DatabaseFactory;
 use crate::services::config::{DatabaseConfig, DatabasesConfig};
-use crate::services::status::DatabaseStatus;
 use anyhow::Result;
-use tracing::{error, info};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Arc;
 use tempfile::TempDir;
+use tracing::{error, info};
+use crate::services::api::models::agent::status::DatabaseStatus;
 
 #[derive(Debug, Serialize)]
 pub struct RestoreResult {
@@ -36,14 +36,16 @@ impl RestoreService {
             let db_cfg = cfg.clone();
             let ctx_clone = self.ctx.clone();
             let file_to_restore = db.data.restore.file.clone();
-
+            if file_to_restore.is_none() {
+                error!("restore file not found");
+                return;
+            }
             tokio::spawn(async move {
                 match TempDir::new() {
                     Ok(temp_dir) => {
                         let tmp_path = temp_dir.path().to_path_buf();
                         info!("Created temp directory {}", tmp_path.display());
-
-                        match RestoreService::run(db_cfg, &tmp_path, &file_to_restore).await {
+                        match RestoreService::run(db_cfg, &tmp_path, &file_to_restore.unwrap()).await {
                             Ok(result) => {
                                 let service = RestoreService { ctx: ctx_clone };
                                 service.send_result(result).await;

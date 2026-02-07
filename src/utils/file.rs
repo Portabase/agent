@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, BufReader};
 use futures::{Stream};
@@ -10,7 +10,17 @@ use openssl::encrypt::Encrypter;
 use openssl::rsa::Padding;
 use openssl::hash::MessageDigest;
 use async_stream::try_stream;
-use hex;
+use serde::{Deserialize, Serialize};
+
+
+#[derive(Serialize, Deserialize)]
+pub struct EncryptionMetadataFile {
+    pub version: u8,
+    pub cipher: String,
+    pub encrypted_aes_key_b64: String,
+    pub iv_b64: String,
+}
+
 
 pub fn full_extension(path: &Path) -> String {
     path.file_name()
@@ -20,12 +30,26 @@ pub fn full_extension(path: &Path) -> String {
         .to_string()
 }
 
+pub fn full_file_name(path: &Path, encrypt: bool) -> String {
+        let base_name = path
+            .file_name()
+            .and_then(|e| e.to_str())
+            .ok_or_else(|| anyhow!("Missing or invalid file name")).unwrap();
+        if encrypt {
+            format!("{}.enc", base_name)
+        } else {
+            base_name.to_string()
+        }
+}
+
+
+
 pub async fn encrypt_file_stream(
     file_path: PathBuf,
     aes_key: [u8; 32],
     iv: [u8; 16],
     pub_key_pem: Vec<u8>,
-) -> Result<(impl Stream<Item = Result<Bytes>> + Send + 'static, String)> {
+) -> Result<(impl Stream<Item = Result<Bytes>> + Send + 'static, Vec<u8>)> {
     // ---------- Encrypt AES key with RSA ----------
     let pkey = PKey::public_key_from_pem(&pub_key_pem)?;
     let mut rsa = Encrypter::new(&pkey)?;
@@ -37,8 +61,6 @@ pub async fn encrypt_file_stream(
     let len = rsa.encrypt(&aes_key, &mut encrypted_key)?;
     encrypted_key.truncate(len);
 
-    let encrypted_key_hex = hex::encode(encrypted_key);
-
     // ---------- Streaming AES encryption ----------
     let stream = try_stream! {
         let file = File::open(&file_path).await?;
@@ -48,7 +70,7 @@ pub async fn encrypt_file_stream(
         let mut crypter = Crypter::new(cipher, Mode::Encrypt, &aes_key, Some(&iv))?;
         crypter.pad(true);
 
-        let mut buffer = vec![0u8; 1024 * 1024]; // 1 MB chunks
+        let mut buffer = vec![0u8; 1024 * 1024];
 
         loop {
             let n = reader.read(&mut buffer).await?;
@@ -72,5 +94,6 @@ pub async fn encrypt_file_stream(
         }
     };
 
-    Ok((stream, encrypted_key_hex))
+    Ok((stream, encrypted_key))
 }
+

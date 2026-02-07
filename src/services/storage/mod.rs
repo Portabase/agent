@@ -2,13 +2,13 @@ pub mod providers;
 
 use crate::core::context::Context;
 use crate::services::backup::{BackupResult, UploadResult};
-use crate::services::status::DatabaseStorage;
 use crate::utils::common::BackupMethod;
 use async_trait::async_trait;
 use providers::local;
 use providers::s3;
 use std::sync::Arc;
 use tracing::{error, info};
+use crate::services::api::models::agent::status::DatabaseStorage;
 
 #[async_trait]
 pub trait StorageProvider: Send + Sync {
@@ -18,6 +18,7 @@ pub trait StorageProvider: Send + Sync {
         result: BackupResult,
         method: BackupMethod,
         config: &DatabaseStorage,
+        encrypt: Option<bool>,
     ) -> UploadResult;
 }
 

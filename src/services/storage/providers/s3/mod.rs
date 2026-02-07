@@ -2,32 +2,25 @@ mod models;
 
 use crate::core::context::Context;
 use crate::services::backup::{BackupResult, UploadResult};
-use crate::services::status::DatabaseStorage;
 use crate::services::storage::StorageProvider;
 use crate::utils::common::BackupMethod;
-use crate::utils::file::{encrypt_file_stream, full_extension};
-
-use anyhow::Result;
+use crate::utils::file::{EncryptionMetadataFile, full_extension, full_file_name};
+use base64::{engine::general_purpose, Engine as _};
+use crate::services::storage::providers::s3::models::S3ProviderConfig;
+use crate::utils::stream::build_stream;
+use anyhow::anyhow;
 use async_trait::async_trait;
 use aws_sdk_s3 as s3;
+use aws_sdk_s3::config::BehaviorVersion;
 use aws_sdk_s3::config::Region;
-use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use aws_sdk_s3::primitives::ByteStream;
-use aws_config::{meta::region::RegionProviderChain};
-use bytes::Bytes;
+use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use chrono::Utc;
-use futures::{Stream, StreamExt};
-use hex;
-use rand::RngCore;
+use futures::StreamExt;
 use std::pin::Pin;
 use std::sync::Arc;
-use aws_sdk_s3::config::endpoint::Endpoint;
 use tracing::{error, info};
-use uuid::{Uuid};
-use crate::services::storage::providers::s3::models::S3ProviderConfig;
-use aws_sdk_s3::config::BehaviorVersion;
-
-
+use crate::services::api::models::agent::status::DatabaseStorage;
 
 pub struct S3Provider {}
 
@@ -39,9 +32,8 @@ impl StorageProvider for S3Provider {
         result: BackupResult,
         _method: BackupMethod,
         storage: &DatabaseStorage,
+        encrypt: Option<bool>,
     ) -> UploadResult {
-
-
         let Some(file_path) = result.backup_file else {
             return UploadResult {
                 storage_id: storage.id.clone(),
@@ -49,43 +41,20 @@ impl StorageProvider for S3Provider {
                 error: Some("Missing backup file path".to_string()),
             };
         };
+        info!("{:?}", file_path);
+        info!("{:?}", file_path.extension());
+        info!("{:?}", file_path.file_name());
 
-        // Generate encryption materials
-        let mut aes_key = [0u8; 32];
-        rand::rng().fill_bytes(&mut aes_key);
-        let mut iv = [0u8; 16];
-        rand::rng().fill_bytes(&mut iv);
+        let encrypt = encrypt.unwrap_or(false);
 
-
-        let public_key_pem = ctx.edge_key.public_key.as_bytes().to_vec();
-
-        let (encrypted_stream, encrypted_key_hex) = match encrypt_file_stream(
-            file_path.clone(),
-            aes_key,
-            iv,
-            public_key_pem,
+        let upload = build_stream(
+            &file_path,
+            encrypt,
+            encrypt.then(|| ctx.edge_key.public_key.as_bytes().to_vec()),
         )
             .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Encryption failed: {}", e);
-                return UploadResult {
-                    storage_id: storage.id.clone(),
-                    success: false,
-                    error: Some(format!("Encryption failed: {}", e)),
-                };
-            }
-        };
+            .unwrap();
 
-        let stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>> = Box::pin(
-            encrypted_stream.map(|r| {
-                r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-            }),
-        );
-
-
-        // --- Configuration S3 ---
         let config: S3ProviderConfig = match storage.clone().config.try_into() {
             Ok(c) => c,
             Err(e) => {
@@ -97,16 +66,6 @@ impl StorageProvider for S3Provider {
             }
         };
 
-
-
-        // Build region provider chain
-        let region_provider = if let Some(r) = config.region.as_ref() {
-            RegionProviderChain::default_provider().or_else(Region::new(r.clone()))
-        } else {
-            RegionProviderChain::default_provider()
-        };
-
-        // Static credentials (suitable for MinIO, custom S3, etc.)
         let credentials = s3::config::Credentials::new(
             config.access_key.clone(),
             config.secret_key.clone(),
@@ -119,8 +78,7 @@ impl StorageProvider for S3Provider {
 
         info!("Credential {:#?}", credentials);
 
-
-        let sdk_config =s3::config::Builder::new()
+        let sdk_config = s3::config::Builder::new()
             .credentials_provider(credentials)
             .region(region)
             .force_path_style(true)
@@ -134,31 +92,27 @@ impl StorageProvider for S3Provider {
 
         let client = s3::Client::from_conf(sdk_config);
 
-
-
-
-        // ────────────────────────────────────────────────────────────────
-        //                     MULTIPART UPLOAD LOGIC
-        // ────────────────────────────────────────────────────────────────
-
         const PART_SIZE: usize = 100 * 1024 * 1024; // 100 MiB
+
+
+        let file_name = full_file_name(&file_path, encrypt);
+
+        info!("Uploading file {}", file_name);
 
         let bucket = &config.bucket_name;
         let key = format!(
-            "backups/{}/{}.enc",
+            "backups/{}/{}",
             Utc::now().format("%Y-%m-%d"),
-            Uuid::new_v4().to_string()
+            file_name
         );
 
+        info!("S3 key {:}", key);
         info!("Starting multipart upload to s3://{}/{}", bucket, key);
 
-        let create_resp = match
-        client
+        let create_resp = match client
             .create_multipart_upload()
             .bucket(bucket)
             .key(&key)
-            .metadata("x-encrypted-key", encrypted_key_hex)
-            .metadata("x-encryption-iv", hex::encode(iv))
             .send()
             .await
         {
@@ -188,8 +142,7 @@ impl StorageProvider for S3Provider {
         let mut part_number: i32 = 1;
         let mut buffer: Vec<u8> = Vec::with_capacity(PART_SIZE);
 
-        // Make the stream peekable **once**
-        let mut peekable = stream.peekable();
+        let mut peekable = upload.stream.peekable();
 
         while let Some(item) = peekable.next().await {
             let bytes = match item {
@@ -261,7 +214,6 @@ impl StorageProvider for S3Provider {
                         };
                     }
                 }
-
                 buffer.clear();
                 part_number += 1;
             }
@@ -297,6 +249,34 @@ impl StorageProvider for S3Provider {
         {
             Ok(_) => {
                 info!("Successfully completed multipart upload: {}", key);
+
+                if let Some(enc) = upload.encryption {
+                    let meta = EncryptionMetadataFile {
+                        version: 1,
+                        cipher: "AES-256-CBC+RSA-OAEP-SHA256".to_string(),
+                        encrypted_aes_key_b64: general_purpose::STANDARD.encode(enc.encrypted_aes_key),
+                        iv_b64: general_purpose::STANDARD.encode(enc.iv),
+                    };
+
+                    let meta_toml = toml::to_string(&meta).expect("Serialization error");
+
+                    let meta_key = format!("{}.meta", key);
+
+                    client
+                        .put_object()
+                        .bucket(bucket)
+                        .key(&meta_key)
+                        .body(ByteStream::from(meta_toml.into_bytes()))
+                        .content_type("application/toml")
+                        .send()
+                        .await
+                        .map_err(|e| {
+                            error!("Metadata upload failed: {}", e);
+                            e
+                        })
+                        .unwrap();
+                }
+
                 UploadResult {
                     storage_id: storage.id.clone(),
                     success: true,
