@@ -83,14 +83,15 @@ impl BackupService {
                                                 Ok(compression_result) => {
                                                     result.backup_file =
                                                         Some(compression_result.compressed_path);
-                                                    let service =
-                                                        BackupService { ctx: ctx.clone() };
+                                                    let service = BackupService { ctx: ctx.clone() };
+                                                    let backup_id = backup_created_result.unwrap().backup.id;
                                                     match service
                                                         .upload(
                                                             result.clone(),
                                                             method,
                                                             storages_clone.clone(),
                                                             encrypt,
+                                                            &backup_id,
                                                         )
                                                         .await
                                                     {
@@ -99,10 +100,7 @@ impl BackupService {
                                                                 .send_result(
                                                                     result,
                                                                     upload_result,
-                                                                    backup_created_result
-                                                                        .unwrap()
-                                                                        .backup
-                                                                        .id,
+                                                                    &backup_id
                                                                 )
                                                                 .await
                                                             {
@@ -199,6 +197,7 @@ impl BackupService {
         method: BackupMethod,
         storages: Vec<DatabaseStorage>,
         encrypt: bool,
+        backup_id: &String,
     ) -> Result<Vec<UploadResult>> {
         if result.code.as_deref() == Some("backup_already_in_progress") {
             info!("Skipping send: backup already in progress");
@@ -225,6 +224,7 @@ impl BackupService {
                         self.ctx.edge_key.agent_id.clone(),
                         generated_id.clone(),
                         storage_id.clone(),
+                        backup_id,
                     )
                     .await
                 {
@@ -251,21 +251,32 @@ impl BackupService {
                                 info!("Storage {} uploaded to remote path {:?}", storage_id, upload_result.remote_file_path);
 
 
-                                if let Err(err) = self.ctx.api.backup_upload_status(
+                                match self.ctx.api.backup_upload_status(
                                     self.ctx.edge_key.agent_id.clone(),
                                     generated_id.clone(),
                                     backup_storage_id,
                                     status,
                                     upload_result.remote_file_path.clone().unwrap(),
                                     upload_result.total_size.clone().unwrap(),
+                                    backup_id
                                 ).await {
-                                    error!(
+                                    Ok(_) => {
+                                        upload_result
+                                    },
+                                    Err(err)=> {
+                                        error!(
                                         "backup_upload_status failed (generated_id={}, storage_id={}): {}",
                                         generated_id, storage_id, err
                                     );
-                                };
-
-                                upload_result
+                                        UploadResult {
+                                            storage_id: storage_id.clone(),
+                                            success: false,
+                                            error: Some(err.to_string()),
+                                            remote_file_path: None,
+                                            total_size: None,
+                                        }
+                                    }
+                                }
                             }
                             None => {
                                 error!("Skipping storage due to missing provider");
@@ -310,7 +321,7 @@ impl BackupService {
         &self,
         result: BackupResult,
         upload_results: Vec<UploadResult>,
-        backup_id: String,
+        backup_id: &String,
     ) -> Result<()> {
         let status = if upload_results.iter().any(|r| r.success) {
             "success"
@@ -321,18 +332,19 @@ impl BackupService {
         let file_size = upload_results
             .iter()
             .map(|r| r.total_size)
-            .fold((0u64, 0u64), |(sum, count), v| (sum + v.unwrap(), count + 1));
-
-        let file_size = if file_size.1 == 0 {
-            0
-        } else {
-            file_size.0 / file_size.1
-        };
+            .try_fold((0u64, 0u64), |(sum, count), v| {
+                match v {
+                    Some(size) => Ok((sum + size, count + 1)),
+                    None => Err(()), // stop and return None
+                }
+            })
+            .ok()
+            .map(|(sum, count)| sum / count);
 
         match self
             .ctx
             .api
-            .backup_update(self.ctx.edge_key.agent_id.clone(), &backup_id, status, file_size)
+            .backup_update(self.ctx.edge_key.agent_id.clone(), backup_id, status, file_size, &result.generated_id)
             .await
         {
             Ok(result) => Ok(()),

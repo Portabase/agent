@@ -1,8 +1,8 @@
 use anyhow::Result;
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
+use log::info;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
-use tracing::info;
 
 const PATCH_CHUNK_SIZE: usize = 1 * 1024 * 1024;
 
@@ -16,6 +16,8 @@ where
     S: Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
 {
     let client = reqwest::Client::new();
+
+    info!("File size: {}", total_size);
 
     let mut headers = HeaderMap::new();
     headers.insert("Tus-Resumable", HeaderValue::from_static("1.0.0"));
@@ -69,9 +71,7 @@ where
                 );
             }
             offset += sub_chunk.len() as u64;
-
             // info!("Progress: {}/{}", offset, total_size);
-
         }
     }
 

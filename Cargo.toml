@@ -17,7 +17,7 @@ base64 = "0.22.1"
 thiserror = "2.0.17"
 log = "0.4.29"
 toml = "0.9.10"
-reqwest = { version = "0.13.1", features = ["json", "blocking", "multipart", "stream"] }
+reqwest = { version = "0.13.1", features = ["json", "blocking", "multipart", "stream", "query"] }
 anyhow = "1.0.100"
 tokio = { version = "1.49.0", features = ["rt", "rt-multi-thread", "macros", "fs"] }
 async-trait = "0.1.89"
@@ -40,6 +40,9 @@ aws-config = "1.8.13"
 aws-sdk-s3 = { version = "1.122.0", features = ["behavior-version-latest"] }
 async-compression = { version = "0.4.37", features = ["tokio", "gzip"] }
 tokio-tar = "0.3.1"
+oauth2 = "5.0.0"
+hyper = "1.8.1"
+async-http-client = "0.2.0"
 
 
 [[bin]]

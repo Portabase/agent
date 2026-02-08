@@ -1,4 +1,4 @@
-use crate::services::api::models::agent::backup::{BackupUploadResponse};
+use crate::services::api::models::agent::backup::BackupUploadResponse;
 use crate::services::api::{ApiClient, ApiError};
 use anyhow::Result;
 use reqwest::Method;
@@ -13,6 +13,8 @@ pub struct StatusUploadRequest {
     pub status: String,
     pub path: String,
     pub size: u64,
+    #[serde(rename = "backupId")]
+    pub backup_id: String,
 }
 
 impl ApiClient {
@@ -24,13 +26,15 @@ impl ApiClient {
         status: impl Into<String>,
         remote_path: impl Into<String>,
         total_size: impl Into<u64>,
+        backup_id: impl Into<String>,
     ) -> Result<Option<BackupUploadResponse>, ApiError> {
         let body = StatusUploadRequest {
             generated_id: generated_id.into(),
             backup_storage_id: backup_storage_id.into(),
             status: status.into(),
             path: remote_path.into(),
-            size: total_size.into()
+            size: total_size.into(),
+            backup_id: backup_id.into(),
         };
 
         let agent_id = agent_id.into();

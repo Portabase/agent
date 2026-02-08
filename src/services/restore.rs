@@ -82,25 +82,7 @@ impl RestoreService {
 
         let bytes = response.bytes().await?;
 
-        // let ext = if bytes.starts_with(b"PGDMP") {
-        //     // Postgres custom format
-        //     "dump"
-        // } else if bytes.starts_with(&[0x1F, 0x8B]) {
-        //     // gzip compressed -> could be Postgres directory dump or MySQL gzipped SQL
-        //     "tar.gz"
-        // } else if bytes.starts_with(b"--") || bytes.starts_with(b"/*") {
-        //     // Plain MySQL SQL dump
-        //     "sql"
-        // } else {
-        //     // Fallback generic
-        //     "dump"
-        // };
-
-        // info!("Backup dump from {} to {}", tmp_path.display(), ext);
-
-        // let backup_file_path = tmp_path.join(format!("backup_file_tmp.{}", ext));
         let compressed_archive = tmp_path.join("compressed_archive_tmp.tar.gz");
-        // let backup_file_path = tmp_path.join("backup_file_tmp");
         tokio::fs::write(&compressed_archive, &bytes).await?;
         info!("Backup downloaded to {}", compressed_archive.display());
 

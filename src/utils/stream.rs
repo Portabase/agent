@@ -1,11 +1,10 @@
+use crate::utils::file::encrypt_file_stream;
 use anyhow::Result;
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use rand::RngCore;
 use std::pin::Pin;
 use tokio_util::io::ReaderStream;
-use crate::utils::file::encrypt_file_stream;
-
 
 pub struct EncryptionMetadata {
     pub encrypted_aes_key: Vec<u8>,
@@ -23,8 +22,8 @@ pub async fn build_stream(
     public_key_pem: Option<Vec<u8>>,
 ) -> Result<UploadStream> {
     if encrypt {
-        let public_key = public_key_pem
-            .ok_or_else(|| anyhow::anyhow!("Missing public key for encryption"))?;
+        let public_key =
+            public_key_pem.ok_or_else(|| anyhow::anyhow!("Missing public key for encryption"))?;
 
         let mut aes_key = [0u8; 32];
         rand::rng().fill_bytes(&mut aes_key);
@@ -36,9 +35,8 @@ pub async fn build_stream(
             encrypt_file_stream(file_path.to_path_buf(), aes_key, iv, public_key).await?;
 
         let stream = Box::pin(
-            encrypted_stream.map(|r| {
-                r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-            }),
+            encrypted_stream
+                .map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
         );
 
         Ok(UploadStream {
@@ -52,9 +50,9 @@ pub async fn build_stream(
         let file = tokio::fs::File::open(file_path).await?;
         let reader = ReaderStream::new(file);
 
-        let stream = Box::pin(reader.map(|r| {
-            r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-        }));
+        let stream = Box::pin(
+            reader.map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
+        );
 
         Ok(UploadStream {
             stream,

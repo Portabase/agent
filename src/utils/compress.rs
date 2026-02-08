@@ -4,7 +4,7 @@ use async_compression::tokio::write::GzipEncoder as AsyncGzipEncoder;
 use futures::StreamExt;
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
-use tokio::fs::{create_dir_all, remove_file};
+use tokio::fs::{create_dir_all};
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufReader;
 use tokio_tar::Archive;
