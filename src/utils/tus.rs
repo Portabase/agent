@@ -2,6 +2,7 @@ use anyhow::Result;
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
+use tracing::info;
 
 const PATCH_CHUNK_SIZE: usize = 1 * 1024 * 1024;
 
@@ -9,6 +10,7 @@ pub async fn upload_to_tus_stream_with_headers<S>(
     encrypted_stream: S,
     tus_endpoint: &str,
     extra_headers: HeaderMap,
+    total_size: u64,
 ) -> Result<()>
 where
     S: Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
@@ -67,6 +69,9 @@ where
                 );
             }
             offset += sub_chunk.len() as u64;
+
+            // info!("Progress: {}/{}", offset, total_size);
+
         }
     }
 

@@ -1,17 +1,18 @@
+use anyhow::Result;
+use async_stream::try_stream;
+use bytes::Bytes;
+use chrono::Utc;
+use futures::Stream;
+use openssl::encrypt::Encrypter;
+use openssl::hash::MessageDigest;
+use openssl::pkey::PKey;
+use openssl::rsa::Padding;
+use openssl::symm::{Cipher, Crypter, Mode};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use anyhow::{anyhow, Result};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, BufReader};
-use futures::{Stream};
-use bytes::Bytes;
-use openssl::symm::{Cipher, Crypter, Mode};
-use openssl::pkey::PKey;
-use openssl::encrypt::Encrypter;
-use openssl::rsa::Padding;
-use openssl::hash::MessageDigest;
-use async_stream::try_stream;
-use serde::{Deserialize, Serialize};
-
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]
 pub struct EncryptionMetadataFile {
@@ -21,7 +22,6 @@ pub struct EncryptionMetadataFile {
     pub iv_b64: String,
 }
 
-
 pub fn full_extension(path: &Path) -> String {
     path.file_name()
         .and_then(|n| n.to_str())
@@ -30,19 +30,19 @@ pub fn full_extension(path: &Path) -> String {
         .to_string()
 }
 
-pub fn full_file_name(path: &Path, encrypt: bool) -> String {
-        let base_name = path
-            .file_name()
-            .and_then(|e| e.to_str())
-            .ok_or_else(|| anyhow!("Missing or invalid file name")).unwrap();
-        if encrypt {
-            format!("{}.enc", base_name)
-        } else {
-            base_name.to_string()
-        }
+pub fn full_file_name( encrypt: bool) -> String {
+    let uuid = Uuid::new_v4();
+    let base_name = format!("{}.{}", uuid, "tar.gz");
+    if encrypt {
+        format!("{}.enc", base_name)
+    } else {
+        base_name.to_string()
+    }
 }
 
-
+pub fn full_file_path(file_name: &String) -> String {
+    format!("backups/{}/{}", Utc::now().format("%Y-%m-%d"), file_name)
+}
 
 pub async fn encrypt_file_stream(
     file_path: PathBuf,
@@ -96,4 +96,3 @@ pub async fn encrypt_file_stream(
 
     Ok((stream, encrypted_key))
 }
-

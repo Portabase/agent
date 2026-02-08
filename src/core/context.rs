@@ -1,7 +1,6 @@
 use crate::services::api::ApiClient;
 use crate::settings::CONFIG;
 use crate::utils::edge_key::{EdgeKey, EdgeKeyError, decode_edge_key};
-use std::fmt::format;
 use tracing::{debug, error, info};
 
 #[derive(Debug)]

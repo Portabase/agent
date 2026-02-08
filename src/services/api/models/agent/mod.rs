@@ -1,2 +1,2 @@
 pub mod status;
-mod backup;
+pub mod backup;

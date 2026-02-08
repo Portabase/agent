@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use toml::Value;
 use crate::utils::deserializer::deserialize_snake_case;

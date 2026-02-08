@@ -86,8 +86,12 @@ pub async fn run(
                     }
                 };
 
+                info!("tar_gz {:?}", tar_gz);
+
                 let dec = flate2::read::GzDecoder::new(tar_gz);
                 let mut archive = tar::Archive::new(dec);
+
+
 
                 let tmp_dir = match tempfile::TempDir::new() {
                     Ok(d) => d,
@@ -100,12 +104,16 @@ pub async fn run(
                     }
                 };
 
+
+
                 if let Err(e) = archive.unpack(tmp_dir.path()) {
                     error!("Failed to unpack FD archive for {}: {:?}", cfg.name, e);
                     return Err(e.into());
                 }
 
                 debug!("Listing contents of temp dir: {}", tmp_dir.path().display());
+
+
                 for entry in std::fs::read_dir(tmp_dir.path())? {
                     if let Ok(entry) = entry {
                         let path = entry.path();

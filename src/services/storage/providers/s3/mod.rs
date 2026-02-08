@@ -1,26 +1,25 @@
 mod models;
 
 use crate::core::context::Context;
+use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::backup::{BackupResult, UploadResult};
 use crate::services::storage::StorageProvider;
-use crate::utils::common::BackupMethod;
-use crate::utils::file::{EncryptionMetadataFile, full_extension, full_file_name};
-use base64::{engine::general_purpose, Engine as _};
 use crate::services::storage::providers::s3::models::S3ProviderConfig;
+use crate::utils::common::BackupMethod;
+use crate::utils::file::{EncryptionMetadataFile, full_file_name, full_file_path};
 use crate::utils::stream::build_stream;
-use anyhow::anyhow;
 use async_trait::async_trait;
 use aws_sdk_s3 as s3;
 use aws_sdk_s3::config::BehaviorVersion;
 use aws_sdk_s3::config::Region;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
-use chrono::Utc;
+use base64::{Engine as _, engine::general_purpose};
 use futures::StreamExt;
 use std::pin::Pin;
 use std::sync::Arc;
+use tokio::fs;
 use tracing::{error, info};
-use crate::services::api::models::agent::status::DatabaseStorage;
 
 pub struct S3Provider {}
 
@@ -39,21 +38,46 @@ impl StorageProvider for S3Provider {
                 storage_id: storage.id.clone(),
                 success: false,
                 error: Some("Missing backup file path".to_string()),
+                remote_file_path: None,
+                total_size: None,
             };
         };
-        info!("{:?}", file_path);
-        info!("{:?}", file_path.extension());
-        info!("{:?}", file_path.file_name());
+
+        let total_size = match fs::metadata(&file_path).await {
+            Ok(meta) => meta.len(),
+            Err(e) => {
+                error!("Failed to get file size: {}", e);
+                return UploadResult {
+                    storage_id: storage.id.clone(),
+                    success: false,
+                    error: Some(e.to_string()),
+                    remote_file_path: None,
+                    total_size: None,
+                };
+            }
+        };
 
         let encrypt = encrypt.unwrap_or(false);
 
-        let upload = build_stream(
+        let upload = match build_stream(
             &file_path,
             encrypt,
             encrypt.then(|| ctx.edge_key.public_key.as_bytes().to_vec()),
         )
-            .await
-            .unwrap();
+        .await
+        {
+            Ok(u) => u,
+            Err(e) => {
+                error!("Stream build failed: {}", e);
+                return UploadResult {
+                    storage_id: storage.id.clone(),
+                    success: false,
+                    error: Some(e.to_string()),
+                    remote_file_path: None,
+                    total_size: None,
+                };
+            }
+        };
 
         let config: S3ProviderConfig = match storage.clone().config.try_into() {
             Ok(c) => c,
@@ -62,6 +86,8 @@ impl StorageProvider for S3Provider {
                     storage_id: storage.id.clone(),
                     success: false,
                     error: Some(e.to_string()),
+                    remote_file_path: None,
+                    total_size: None,
                 };
             }
         };
@@ -75,8 +101,6 @@ impl StorageProvider for S3Provider {
         );
 
         let region = Region::new(config.region.clone().unwrap_or("eu-central-3".to_string()));
-
-        info!("Credential {:#?}", credentials);
 
         let sdk_config = s3::config::Builder::new()
             .credentials_provider(credentials)
@@ -94,25 +118,22 @@ impl StorageProvider for S3Provider {
 
         const PART_SIZE: usize = 100 * 1024 * 1024; // 100 MiB
 
-
-        let file_name = full_file_name(&file_path, encrypt);
+        let file_name = full_file_name(encrypt);
 
         info!("Uploading file {}", file_name);
 
         let bucket = &config.bucket_name;
-        let key = format!(
-            "backups/{}/{}",
-            Utc::now().format("%Y-%m-%d"),
-            file_name
+        let remote_file_path = full_file_path(&file_name);
+        info!("S3 key {:}", remote_file_path);
+        info!(
+            "Starting multipart upload to s3://{}/{}",
+            bucket, remote_file_path
         );
-
-        info!("S3 key {:}", key);
-        info!("Starting multipart upload to s3://{}/{}", bucket, key);
 
         let create_resp = match client
             .create_multipart_upload()
             .bucket(bucket)
-            .key(&key)
+            .key(&remote_file_path)
             .send()
             .await
         {
@@ -123,6 +144,8 @@ impl StorageProvider for S3Provider {
                     storage_id: storage.id.clone(),
                     success: false,
                     error: Some(e.to_string()),
+                    remote_file_path: None,
+                    total_size: None,
                 };
             }
         };
@@ -134,6 +157,8 @@ impl StorageProvider for S3Provider {
                     storage_id: storage.id.clone(),
                     success: false,
                     error: Some("No upload ID returned".to_string()),
+                    remote_file_path: None,
+                    total_size: None,
                 };
             }
         };
@@ -152,7 +177,7 @@ impl StorageProvider for S3Provider {
                     let _ = client
                         .abort_multipart_upload()
                         .bucket(bucket)
-                        .key(&key)
+                        .key(&remote_file_path)
                         .upload_id(&upload_id)
                         .send()
                         .await;
@@ -160,6 +185,8 @@ impl StorageProvider for S3Provider {
                         storage_id: storage.id.clone(),
                         success: false,
                         error: Some(format!("Stream error: {}", e)),
+                        remote_file_path: None,
+                        total_size: None,
                     };
                 }
             };
@@ -180,7 +207,7 @@ impl StorageProvider for S3Provider {
                 match client
                     .upload_part()
                     .bucket(bucket)
-                    .key(&key)
+                    .key(&remote_file_path)
                     .upload_id(&upload_id)
                     .part_number(part_number)
                     .body(body)
@@ -203,7 +230,7 @@ impl StorageProvider for S3Provider {
                         let _ = client
                             .abort_multipart_upload()
                             .bucket(bucket)
-                            .key(&key)
+                            .key(&remote_file_path)
                             .upload_id(&upload_id)
                             .send()
                             .await;
@@ -211,6 +238,8 @@ impl StorageProvider for S3Provider {
                             storage_id: storage.id.clone(),
                             success: false,
                             error: Some(e.to_string()),
+                            remote_file_path: None,
+                            total_size: None,
                         };
                     }
                 }
@@ -223,7 +252,7 @@ impl StorageProvider for S3Provider {
             let _ = client
                 .abort_multipart_upload()
                 .bucket(bucket)
-                .key(&key)
+                .key(&remote_file_path)
                 .upload_id(&upload_id)
                 .send()
                 .await;
@@ -231,6 +260,8 @@ impl StorageProvider for S3Provider {
                 storage_id: storage.id.clone(),
                 success: false,
                 error: Some("No parts were uploaded".to_string()),
+                remote_file_path: None,
+                total_size: None,
             };
         }
 
@@ -241,26 +272,30 @@ impl StorageProvider for S3Provider {
         match client
             .complete_multipart_upload()
             .bucket(bucket)
-            .key(&key)
+            .key(&remote_file_path)
             .upload_id(&upload_id)
             .multipart_upload(completed)
             .send()
             .await
         {
             Ok(_) => {
-                info!("Successfully completed multipart upload: {}", key);
+                info!(
+                    "Successfully completed multipart upload: {}",
+                    remote_file_path
+                );
 
                 if let Some(enc) = upload.encryption {
                     let meta = EncryptionMetadataFile {
                         version: 1,
                         cipher: "AES-256-CBC+RSA-OAEP-SHA256".to_string(),
-                        encrypted_aes_key_b64: general_purpose::STANDARD.encode(enc.encrypted_aes_key),
+                        encrypted_aes_key_b64: general_purpose::STANDARD
+                            .encode(enc.encrypted_aes_key),
                         iv_b64: general_purpose::STANDARD.encode(enc.iv),
                     };
 
                     let meta_toml = toml::to_string(&meta).expect("Serialization error");
 
-                    let meta_key = format!("{}.meta", key);
+                    let meta_key = format!("{}.meta", remote_file_path);
 
                     client
                         .put_object()
@@ -281,6 +316,8 @@ impl StorageProvider for S3Provider {
                     storage_id: storage.id.clone(),
                     success: true,
                     error: None,
+                    remote_file_path: Some(remote_file_path),
+                    total_size: Some(total_size),
                 }
             }
             Err(e) => {
@@ -288,7 +325,7 @@ impl StorageProvider for S3Provider {
                 let _ = client
                     .abort_multipart_upload()
                     .bucket(bucket)
-                    .key(&key)
+                    .key(&remote_file_path)
                     .upload_id(&upload_id)
                     .send()
                     .await;
@@ -296,6 +333,8 @@ impl StorageProvider for S3Provider {
                     storage_id: storage.id.clone(),
                     success: false,
                     error: Some(e.to_string()),
+                    remote_file_path: None,
+                    total_size: None,
                 }
             }
         }

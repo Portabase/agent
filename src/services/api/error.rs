@@ -2,6 +2,7 @@ use reqwest::StatusCode;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[allow(dead_code)]
 pub enum ApiError {
     #[error("http client error: {0}")]
     Http(#[from] reqwest::Error),

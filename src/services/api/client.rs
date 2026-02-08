@@ -1,67 +1,6 @@
-// use reqwest::{Client, Method};
-// use serde::de::DeserializeOwned;
-// use std::time::Duration;
-// use crate::services::api::ApiError;
-//
-// #[derive(Clone, Debug)]
-// pub struct ApiClient {
-//     base_url: String,
-//     http: Client,
-// }
-//
-// impl ApiClient {
-//     pub fn new(base_url: impl Into<String>) -> Self {
-//         let http = Client::builder()
-//             .timeout(Duration::from_secs(30))
-//             .build()
-//             .expect("failed to build http client");
-//
-//         Self {
-//             base_url: base_url.into(),
-//             http,
-//         }
-//     }
-//
-//     pub async fn request<T: DeserializeOwned>(
-//         &self,
-//         method: Method,
-//         path: &str,
-//     ) -> Result<T, ApiError> {
-//         let url = format!("{}{}", self.base_url, path);
-//
-//         let res = self.http
-//             .request(method, url)
-//             .send()
-//             .await?
-//             .error_for_status()?;
-//
-//
-//         Ok(res.json::<T>().await?)
-//     }
-//
-//     pub async fn request_with_body<T, B>(
-//         &self,
-//         method: Method,
-//         path: &str,
-//         body: &B,
-//     ) -> Result<T, ApiError>
-//     where
-//         T: DeserializeOwned,
-//         B: serde::Serialize,
-//     {
-//         let url = format!("{}{}", self.base_url, path);
-//
-//         let res = self.http
-//             .request(method, url)
-//             .json(body)
-//             .send()
-//             .await?
-//             .error_for_status()?;
-//
-//         Ok(res.json::<T>().await?)
-//     }
-// }
-use reqwest::{Client, Method, StatusCode};
+#![allow(dead_code)]
+
+use reqwest::{Client, Method};
 use serde::de::DeserializeOwned;
 use std::time::Duration;
 use crate::services::api::ApiError;
@@ -85,7 +24,6 @@ impl ApiClient {
         }
     }
 
-    /// Generic request without body
     pub async fn request<T: DeserializeOwned>(
         &self,
         method: Method,
@@ -107,8 +45,6 @@ impl ApiClient {
             Ok(Some(serde_json::from_str::<T>(&body)?))
         }
     }
-
-    /// Generic request with JSON body
     pub async fn request_with_body<T, B>(
         &self,
         method: Method,

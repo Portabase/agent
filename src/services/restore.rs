@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use tracing::{error, info};
 use crate::services::api::models::agent::status::DatabaseStatus;
+use crate::utils::compress::decompress_large_tar_gz;
 
 #[derive(Debug, Serialize)]
 pub struct RestoreResult {
@@ -81,25 +82,48 @@ impl RestoreService {
 
         let bytes = response.bytes().await?;
 
-        let ext = if bytes.starts_with(b"PGDMP") {
-            // Postgres custom format
-            "dump"
-        } else if bytes.starts_with(&[0x1F, 0x8B]) {
-            // gzip compressed -> could be Postgres directory dump or MySQL gzipped SQL
-            "tar.gz"
-        } else if bytes.starts_with(b"--") || bytes.starts_with(b"/*") {
-            // Plain MySQL SQL dump
-            "sql"
-        } else {
-            // Fallback generic
-            "dump"
+        // let ext = if bytes.starts_with(b"PGDMP") {
+        //     // Postgres custom format
+        //     "dump"
+        // } else if bytes.starts_with(&[0x1F, 0x8B]) {
+        //     // gzip compressed -> could be Postgres directory dump or MySQL gzipped SQL
+        //     "tar.gz"
+        // } else if bytes.starts_with(b"--") || bytes.starts_with(b"/*") {
+        //     // Plain MySQL SQL dump
+        //     "sql"
+        // } else {
+        //     // Fallback generic
+        //     "dump"
+        // };
+
+        // info!("Backup dump from {} to {}", tmp_path.display(), ext);
+
+        // let backup_file_path = tmp_path.join(format!("backup_file_tmp.{}", ext));
+        let compressed_archive = tmp_path.join("compressed_archive_tmp.tar.gz");
+        // let backup_file_path = tmp_path.join("backup_file_tmp");
+        tokio::fs::write(&compressed_archive, &bytes).await?;
+        info!("Backup downloaded to {}", compressed_archive.display());
+
+
+        let decompressed_files = decompress_large_tar_gz(compressed_archive.as_path(), tmp_path).await?;
+
+        info!("decompressed_files {:#?}", decompressed_files);
+
+        if decompressed_files.is_empty() {
+            return Ok(RestoreResult {
+                generated_id,
+                status: "failed".into(),
+            });
+        }
+
+        let backup_file_path = if decompressed_files.len() == 1 {
+            decompressed_files.get(0).unwrap()
+        }else {
+            compressed_archive.as_path()
         };
 
-        info!("Backup dump from {} to {}", tmp_path.display(), ext);
 
-        let backup_file_path = tmp_path.join(format!("backup_file_tmp.{}", ext));
-        tokio::fs::write(&backup_file_path, &bytes).await?;
-        info!("Backup downloaded to {}", backup_file_path.display());
+        info!("Decompressed file {}", backup_file_path.display());
 
         let db_instance = DatabaseFactory::create_for_restore(cfg.clone(), &backup_file_path).await;
         let reachable = db_instance.ping().await.unwrap_or(false);
@@ -126,6 +150,7 @@ impl RestoreService {
         }
     }
 
+    // TODO : update with ctx api manager
     pub async fn send_result(&self, result: RestoreResult) {
         info!(
             "[RestoreService] DB: {} | Status: {}",
@@ -149,7 +174,7 @@ impl RestoreService {
                 if status.is_success() {
                     info!("Restoration result sent successfully");
                 } else {
-                    let text = resp.text().await.unwrap_or_default(); // consumes resp
+                    let text = resp.text().await.unwrap_or_default();
                     error!(
                         "Restoration result failed, status: {}, body: {}",
                         status, text
