@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
-use chrono::{Local};
-use tracing::{info, warn, error};
+use chrono::Local;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
-use tokio::fs::{OpenOptions, metadata, remove_file, create_dir_all, read_dir};
+use tokio::fs::{OpenOptions, create_dir_all, metadata, read_dir, remove_file};
 use tokio::io::AsyncWriteExt;
+use tracing::{error, info, warn};
 
 /// Lock type for logging purposes
 #[derive(Debug, Copy, Clone)]
@@ -59,6 +59,24 @@ impl FileLock {
         Ok(())
     }
 
+    pub async fn is_locked(id: &str) -> Result<bool> {
+        let path = Self::lock_file_path(id);
+
+        if !path.exists() {
+            return Ok(false);
+        }
+
+        let meta = metadata(&path).await?;
+
+        if let Ok(modified) = meta.modified() {
+            let age = SystemTime::now().duration_since(modified)?;
+
+            if age > Duration::from_secs(24 * 60 * 60) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
 
     /// Acquire a file-based lock
     pub async fn acquire(id: &str, service_name: &str) -> Result<()> {
@@ -88,10 +106,13 @@ impl FileLock {
             .await
             .with_context(|| format!("Failed to create lock file for {}", id))?;
 
-        f.write_all(format!("Service: {}\n", service_name).as_bytes()).await?;
-        f.write_all(format!("PID: {}\n", std::process::id()).as_bytes()).await?;
+        f.write_all(format!("Service: {}\n", service_name).as_bytes())
+            .await?;
+        f.write_all(format!("PID: {}\n", std::process::id()).as_bytes())
+            .await?;
         // f.write_all(format!("Timestamp: {}\n", Utc::now()).as_bytes()).await?;
-        f.write_all(format!("Timestamp: {}\n", Local::now()).as_bytes()).await?;
+        f.write_all(format!("Timestamp: {}\n", Local::now()).as_bytes())
+            .await?;
 
         info!("Successfully acquired lock for {}", id);
         Ok(())
@@ -106,7 +127,10 @@ impl FileLock {
             remove_file(&path).await?;
             info!("Released file lock for {}", id);
         } else {
-            warn!("Attempted to release lock for {}, but file does not exist", id);
+            warn!(
+                "Attempted to release lock for {}, but file does not exist",
+                id
+            );
         }
         Ok(())
     }

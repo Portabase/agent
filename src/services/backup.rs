@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::TempDir;
 use tracing::{error, info};
+use crate::utils::locks::{DbOpLock, FileLock};
 
 #[derive(Debug, Clone)]
 pub struct BackupResult {
@@ -62,83 +63,92 @@ impl BackupService {
             tokio::spawn(async move {
                 match TempDir::new() {
                     Ok(temp_dir) => {
-                        match ctx
-                            .api
-                            .backup_create(
-                                method.clone().to_string(),
-                                ctx.edge_key.agent_id.clone(),
-                                &generated_id_clone,
-                            )
-                            .await
-                        {
-                            Ok(backup_created_result) => {
-                                info!("Backup created successfully");
+                        match FileLock::is_locked(&generated_id_clone).await {
+                            Ok(true) => {
+                                error!("Backup already running for {}", &generated_id_clone);
+                                return;
+                            }
+                            Ok(false) => {
 
-                                let tmp_path = temp_dir.path().to_path_buf();
-                                info!("Created temp directory {}", tmp_path.display());
-                                match BackupService::run(db_cfg, &tmp_path).await {
-                                    Ok(mut result) => {
-                                        if let Some(backup_file) = result.backup_file.take() {
-                                            match compress_to_tar_gz_large(&backup_file).await {
-                                                Ok(compression_result) => {
-                                                    result.backup_file =
-                                                        Some(compression_result.compressed_path);
-                                                    let service = BackupService { ctx: ctx.clone() };
-                                                    let backup_id = backup_created_result.unwrap().backup.id;
-                                                    match service
-                                                        .upload(
-                                                            result.clone(),
-                                                            method,
-                                                            storages_clone.clone(),
-                                                            encrypt,
-                                                            &backup_id,
-                                                        )
-                                                        .await
-                                                    {
-                                                        Ok(upload_result) => {
+                                match ctx
+                                    .api
+                                    .backup_create(
+                                        method.clone().to_string(),
+                                        ctx.edge_key.agent_id.clone(),
+                                        &generated_id_clone,
+                                    )
+                                    .await
+                                {
+                                    Ok(backup_created_result) => {
+                                        info!("Backup created successfully");
+                                        let tmp_path = temp_dir.path().to_path_buf();
+                                        info!("Created temp directory {}", tmp_path.display());
+                                        match BackupService::run(db_cfg, &tmp_path).await {
+                                            Ok(mut result) => {
+                                                if let Some(backup_file) = result.backup_file.take() {
+                                                    match compress_to_tar_gz_large(&backup_file).await {
+                                                        Ok(compression_result) => {
+                                                            result.backup_file =
+                                                                Some(compression_result.compressed_path);
+                                                            let service = BackupService { ctx: ctx.clone() };
+                                                            let backup_id = backup_created_result.unwrap().backup.id;
                                                             match service
-                                                                .send_result(
-                                                                    result,
-                                                                    upload_result,
-                                                                    &backup_id
+                                                                .upload(
+                                                                    result.clone(),
+                                                                    method,
+                                                                    storages_clone.clone(),
+                                                                    encrypt,
+                                                                    &backup_id,
                                                                 )
                                                                 .await
                                                             {
-                                                                Ok(_) => {
-                                                                    return;
-                                                                }
-                                                                Err(e) => {
-                                                                    error!(
+                                                                Ok(upload_result) => {
+                                                                    match service
+                                                                        .send_result(
+                                                                            result,
+                                                                            upload_result,
+                                                                            &backup_id
+                                                                        )
+                                                                        .await
+                                                                    {
+                                                                        Ok(_) => {
+                                                                            return;
+                                                                        }
+                                                                        Err(e) => {
+                                                                            error!(
                                                                         "Failed to send backup result: {}",
                                                                         e
                                                                     );
+                                                                        }
+                                                                    }
+                                                                }
+                                                                Err(e) => {
+                                                                    error!(
+                                                                "Failed to upload backup files: {}",
+                                                                e
+                                                            );
                                                                 }
                                                             }
                                                         }
                                                         Err(e) => {
                                                             error!(
-                                                                "Failed to upload backup files: {}",
-                                                                e
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    error!(
                                                         "Failed to compress backup file : {}",
                                                         e
                                                     );
+                                                        }
+                                                    }
+                                                } else {
+                                                    error!("No backup file generated");
                                                 }
                                             }
-                                        } else {
-                                            error!("No backup file generated");
+                                            Err(e) => error!("BackupService run failed: {}", e),
                                         }
+                                        // TempDir is automatically deleted when dropped here
                                     }
-                                    Err(e) => error!("BackupService run failed: {}", e),
+                                    Err(e) => error!("Backup creation failed: {}", e),
                                 }
-                                // TempDir is automatically deleted when dropped here
-                            }
-                            Err(e) => error!("Backup creation failed: {}", e),
+                            },
+                            Err(e) => error!("An error occurred while checking lock : {}", e),
                         }
                     }
                     Err(e) => error!("Failed to create temp dir: {}", e),
@@ -251,13 +261,31 @@ impl BackupService {
                                 info!("Storage {} uploaded to remote path {:?}", storage_id, upload_result.remote_file_path);
 
 
+                                let (remote_path, total_size) = match (
+                                    &upload_result.remote_file_path,
+                                    upload_result.total_size,
+                                ) {
+                                    (Some(path), Some(size)) => (path.clone(), size),
+                                    _ => {
+                                        return UploadResult {
+                                            storage_id: storage_id.clone(),
+                                            success: false,
+                                            error: Some("remote_file_path or total_size missing".to_string()),
+                                            remote_file_path: None,
+                                            total_size: None,
+                                        }
+                                    }
+                                };
+
+
+
                                 match self.ctx.api.backup_upload_status(
                                     self.ctx.edge_key.agent_id.clone(),
                                     generated_id.clone(),
                                     backup_storage_id,
                                     status,
-                                    upload_result.remote_file_path.clone().unwrap(),
-                                    upload_result.total_size.clone().unwrap(),
+                                    remote_path,
+                                    total_size,
                                     backup_id
                                 ).await {
                                     Ok(_) => {

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::Result;
 use async_stream::try_stream;
 use bytes::Bytes;
