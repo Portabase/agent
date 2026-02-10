@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::TempDir;
 use tracing::{error, info};
-use crate::utils::locks::{DbOpLock, FileLock};
+use crate::utils::locks::FileLock;
 
 #[derive(Debug, Clone)]
 pub struct BackupResult {
@@ -375,7 +375,7 @@ impl BackupService {
             .backup_update(self.ctx.edge_key.agent_id.clone(), backup_id, status, file_size, &result.generated_id)
             .await
         {
-            Ok(result) => Ok(()),
+            Ok(_result) => Ok(()),
             Err(e) => {
                 error!(
                     "backup_update failed (generated_id={}, backup_id={}): {}",

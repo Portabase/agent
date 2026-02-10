@@ -53,7 +53,7 @@ impl RestoreService {
                             }
                             Err(e) => error!("Restoration error {}", e),
                         }
-                        // TempDir is automatically deleted when dropped here
+                        // TempDir is automatically deleted when dropped
                     }
                     Err(e) => error!("Failed to create temp dir: {}", e),
                 }
@@ -86,10 +86,9 @@ impl RestoreService {
         tokio::fs::write(&compressed_archive, &bytes).await?;
         info!("Backup downloaded to {}", compressed_archive.display());
 
-
         let decompressed_files = decompress_large_tar_gz(compressed_archive.as_path(), tmp_path).await?;
 
-        info!("decompressed_files {:#?}", decompressed_files);
+        info!("Decompressed_files {:#?}", decompressed_files);
 
         if decompressed_files.is_empty() {
             return Ok(RestoreResult {
@@ -103,7 +102,6 @@ impl RestoreService {
         }else {
             compressed_archive.as_path()
         };
-
 
         info!("Decompressed file {}", backup_file_path.display());
 

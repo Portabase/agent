@@ -100,7 +100,7 @@ impl StorageProvider for GoogleDriveProvider {
             total_size,
             Some("application/octet-stream"),
         ).await {
-            Ok(file_id) => {
+            Ok(_file_id) => {
                 
                 info!("Google Drive upload successful");
 
