@@ -35,9 +35,7 @@ impl Context {
                 panic!("Cannot initialize AgentContext due to invalid EDGE_KEY");
             }
         };
-
-        info!("EDGE_KEY : {:#?}", edge_key);
-
+        
         let server_url = format!("{}/api", edge_key.server_url);
         let api_client = ApiClient::new(server_url);
 

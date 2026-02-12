@@ -7,8 +7,6 @@ use crate::utils::file::{full_file_name, full_file_path};
 use crate::utils::stream::build_stream;
 use crate::utils::tus::upload_to_tus_stream_with_headers;
 use async_trait::async_trait;
-use base64::Engine;
-use base64::engine::general_purpose;
 use reqwest::header::{HeaderMap, HeaderValue};
 use std::sync::Arc;
 use tokio::fs;
@@ -59,7 +57,6 @@ impl StorageProvider for LocalProvider {
             &file_path,
             encrypt,
             &ctx.edge_key.master_key_b64
-            // encrypt.then(|| ctx.edge_key.public_key.as_bytes().to_vec()),
         )
         .await
         {
@@ -93,30 +90,7 @@ impl StorageProvider for LocalProvider {
             "X-Method",
             HeaderValue::from_str(&method.to_string()).unwrap(),
         );
-
-        // if let Some(enc) = upload.encryption {
-        //     let mut meta_pairs = Vec::new();
-        //
-        //     meta_pairs.push(format!("version {}", "1"));
-        //     meta_pairs.push(format!("cipher {}", "AES-256-CBC+RSA-OAEP-SHA256"));
-        //     meta_pairs.push(format!(
-        //         "encrypted_aes_key_b64 {}",
-        //         general_purpose::STANDARD.encode(&enc.encrypted_aes_key)
-        //     ));
-        //     meta_pairs.push(format!(
-        //         "iv_b64 {}",
-        //         general_purpose::STANDARD.encode(&enc.iv)
-        //     ));
-        //
-        //     let metadata_header_value = meta_pairs.join(",");
-        //
-        //     extra_headers.insert(
-        //         "Upload-Metadata",
-        //         HeaderValue::from_str(&*general_purpose::STANDARD.encode(metadata_header_value))
-        //             .unwrap(),
-        //     );
-        // }
-
+        
         let tus_endpoint = format!("{}/tus/files", ctx.edge_key.server_url);
 
         match upload_to_tus_stream_with_headers(upload.stream, &tus_endpoint, extra_headers, total_size).await {

@@ -11,8 +11,6 @@ pub struct EdgeKey {
     pub server_url: String,
     #[serde(rename = "agentId")]
     pub agent_id: String,
-    // #[serde(rename = "publicKey")]
-    // pub public_key: String,
     #[serde(rename = "masterKeyB64")]
     pub master_key_b64: String,
 }
@@ -37,9 +35,7 @@ pub fn decode_edge_key(edge_key: &str) -> Result<EdgeKey, EdgeKeyError> {
     let decoded_str = String::from_utf8_lossy(&decoded_bytes);
 
     let parsed: Value = serde_json::from_str(&decoded_str)?;
-
-    info!("decoded JSON object: {:?}", parsed);
-
+    
     if parsed.get("serverUrl").is_some()
         && parsed.get("agentId").is_some()
         && parsed.get("masterKeyB64").is_some()

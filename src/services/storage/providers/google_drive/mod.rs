@@ -57,7 +57,6 @@ impl StorageProvider for GoogleDriveProvider {
             &file_path,
             encrypt,
             &ctx.edge_key.master_key_b64
-            // encrypt.then(|| ctx.edge_key.public_key.as_bytes().to_vec()),
         )
             .await
         {

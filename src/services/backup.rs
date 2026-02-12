@@ -276,9 +276,7 @@ impl BackupService {
                                         }
                                     }
                                 };
-
-
-
+                                
                                 match self.ctx.api.backup_upload_status(
                                     self.ctx.edge_key.agent_id.clone(),
                                     generated_id.clone(),
