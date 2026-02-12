@@ -56,7 +56,8 @@ impl StorageProvider for GoogleDriveProvider {
         let upload = match build_stream(
             &file_path,
             encrypt,
-            encrypt.then(|| ctx.edge_key.public_key.as_bytes().to_vec()),
+            &ctx.edge_key.master_key_b64
+            // encrypt.then(|| ctx.edge_key.public_key.as_bytes().to_vec()),
         )
             .await
         {

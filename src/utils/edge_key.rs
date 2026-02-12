@@ -1,8 +1,8 @@
 use base64::{Engine as _, engine::general_purpose};
+use tracing::info;
 use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
-use tracing::error;
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -11,8 +11,10 @@ pub struct EdgeKey {
     pub server_url: String,
     #[serde(rename = "agentId")]
     pub agent_id: String,
-    #[serde(rename = "publicKey")]
-    pub public_key: String,
+    // #[serde(rename = "publicKey")]
+    // pub public_key: String,
+    #[serde(rename = "masterKeyB64")]
+    pub master_key_b64: String,
 }
 
 #[derive(Debug, Error)]
@@ -35,14 +37,16 @@ pub fn decode_edge_key(edge_key: &str) -> Result<EdgeKey, EdgeKeyError> {
     let decoded_str = String::from_utf8_lossy(&decoded_bytes);
 
     let parsed: Value = serde_json::from_str(&decoded_str)?;
+
+    info!("decoded JSON object: {:?}", parsed);
+
     if parsed.get("serverUrl").is_some()
         && parsed.get("agentId").is_some()
-        && parsed.get("publicKey").is_some()
+        && parsed.get("masterKeyB64").is_some()
     {
         let edge_key: EdgeKey = serde_json::from_value(parsed)?;
         Ok(edge_key)
     } else {
-        error!("EDGE_KEY INVALID");
         Err(EdgeKeyError::InvalidKey)
     }
 }

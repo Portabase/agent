@@ -36,6 +36,8 @@ impl Context {
             }
         };
 
+        info!("EDGE_KEY : {:#?}", edge_key);
+
         let server_url = format!("{}/api", edge_key.server_url);
         let api_client = ApiClient::new(server_url);
 

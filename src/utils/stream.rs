@@ -1,4 +1,4 @@
-use crate::utils::file::encrypt_file_stream;
+use crate::utils::file::{encrypt_file_stream_gcm};
 use anyhow::Result;
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
@@ -13,26 +13,29 @@ pub struct EncryptionMetadata {
 
 pub struct UploadStream {
     pub stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>,
-    pub encryption: Option<EncryptionMetadata>,
+    // pub encryption: Option<EncryptionMetadata>,
 }
 
 pub async fn build_stream(
     file_path: &std::path::Path,
     encrypt: bool,
-    public_key_pem: Option<Vec<u8>>,
+    // public_key_pem: Option<Vec<u8>>,
+    master_key_b64: &String,
 ) -> Result<UploadStream> {
     if encrypt {
-        let public_key =
-            public_key_pem.ok_or_else(|| anyhow::anyhow!("Missing public key for encryption"))?;
+        // let public_key =
+        //     public_key_pem.ok_or_else(|| anyhow::anyhow!("Missing public key for encryption"))?;
+        // 
+        // let mut aes_key = [0u8; 32];
+        // rand::rng().fill_bytes(&mut aes_key);
+        // 
+        // let mut iv = [0u8; 16];
+        // rand::rng().fill_bytes(&mut iv);
 
-        let mut aes_key = [0u8; 32];
-        rand::rng().fill_bytes(&mut aes_key);
-
-        let mut iv = [0u8; 16];
-        rand::rng().fill_bytes(&mut iv);
-
-        let (encrypted_stream, encrypted_aes_key) =
-            encrypt_file_stream(file_path.to_path_buf(), aes_key, iv, public_key).await?;
+        // let (encrypted_stream, encrypted_aes_key) =
+        //     encrypt_file_stream(file_path.to_path_buf(), aes_key, iv, public_key).await?;        
+        
+        let encrypted_stream= encrypt_file_stream_gcm(file_path.to_path_buf(), master_key_b64.to_string()).await?;
 
         let stream = Box::pin(
             encrypted_stream
@@ -41,10 +44,10 @@ pub async fn build_stream(
 
         Ok(UploadStream {
             stream,
-            encryption: Some(EncryptionMetadata {
-                encrypted_aes_key,
-                iv,
-            }),
+            // encryption: Some(EncryptionMetadata {
+            //     encrypted_aes_key: None,
+            //     iv,
+            // }),
         })
     } else {
         let file = tokio::fs::File::open(file_path).await?;
@@ -56,7 +59,7 @@ pub async fn build_stream(
 
         Ok(UploadStream {
             stream,
-            encryption: None,
+            // encryption: None,
         })
     }
 }

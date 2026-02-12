@@ -9,5 +9,3 @@ pub struct S3ProviderConfig {
     pub ssl: bool,
     pub region: Option<String>,
 }
-
-

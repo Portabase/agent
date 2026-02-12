@@ -2,15 +2,17 @@
 
 use crate::core::context::Context;
 use crate::domain::factory::DatabaseFactory;
+use crate::services::api::models::agent::status::DatabaseStatus;
 use crate::services::config::{DatabaseConfig, DatabasesConfig};
+use crate::utils::compress::decompress_large_tar_gz;
+use crate::utils::file::decrypt_file_stream_gcm;
 use anyhow::Result;
+use reqwest::{Client, Url};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tracing::{error, info};
-use crate::services::api::models::agent::status::DatabaseStatus;
-use crate::utils::compress::decompress_large_tar_gz;
 
 #[derive(Debug, Serialize)]
 pub struct RestoreResult {
@@ -46,7 +48,14 @@ impl RestoreService {
                     Ok(temp_dir) => {
                         let tmp_path = temp_dir.path().to_path_buf();
                         info!("Created temp directory {}", tmp_path.display());
-                        match RestoreService::run(db_cfg, &tmp_path, &file_to_restore.unwrap()).await {
+                        match RestoreService::run(
+                            &ctx_clone,
+                            db_cfg,
+                            &tmp_path,
+                            &file_to_restore.unwrap(),
+                        )
+                        .await
+                        {
                             Ok(result) => {
                                 let service = RestoreService { ctx: ctx_clone };
                                 service.send_result(result).await;
@@ -62,6 +71,7 @@ impl RestoreService {
     }
 
     pub async fn run(
+        ctx: &Arc<Context>,
         cfg: DatabaseConfig,
         tmp_path: &Path,
         file_url: &str,
@@ -70,8 +80,9 @@ impl RestoreService {
 
         info!("File url: {}", file_url);
 
-        let client = reqwest::Client::new();
+        let client = Client::new();
         let response = client.get(file_url).send().await?;
+
         if !response.status().is_success() {
             error!("Backup download failed with status {}", response.status());
             return Ok(RestoreResult {
@@ -80,13 +91,76 @@ impl RestoreService {
             });
         }
 
+        let filename_from_header = response
+            .headers()
+            .get(reqwest::header::CONTENT_DISPOSITION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.split("filename=").nth(1))
+            .map(|f| f.trim_matches('"').to_string());
+
+        let filename_from_url = Url::parse(file_url).ok().and_then(|u| {
+            u.path_segments()?
+                .last()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+        });
+
+        let filename = filename_from_header
+            .or(filename_from_url)
+            .unwrap_or_else(|| "downloaded_file".to_string());
+
+        info!("File name: {}", filename);
+
         let bytes = response.bytes().await?;
 
-        let compressed_archive = tmp_path.join("compressed_archive_tmp.tar.gz");
-        tokio::fs::write(&compressed_archive, &bytes).await?;
-        info!("Backup downloaded to {}", compressed_archive.display());
+        let encrypted = if filename.ends_with(".tar.gz") {
+            false
+        } else if filename.ends_with(".tar.gz.enc") {
+            true
+        } else {
+            return Ok(RestoreResult {
+                generated_id,
+                status: "failed".into(),
+            });
+        };
 
-        let decompressed_files = decompress_large_tar_gz(compressed_archive.as_path(), tmp_path).await?;
+        info!("Encrypted: {}", encrypted);
+
+        let downloaded_file = tmp_path.join(filename);
+
+        tokio::fs::write(&downloaded_file, &bytes).await?;
+        info!("Backup downloaded to {}", downloaded_file.display());
+
+        let mut compressed_archive = downloaded_file.clone();
+
+        if encrypted {
+            let new_name = downloaded_file
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.strip_suffix(".enc").unwrap_or(n));
+
+            let new_compressed_archive = tmp_path.join(new_name.unwrap_or(""));
+
+            match decrypt_file_stream_gcm(
+                downloaded_file,
+                new_compressed_archive.clone(),
+                ctx.edge_key.master_key_b64.clone(),
+            )
+            .await
+            {
+                Ok(_) => compressed_archive = new_compressed_archive,
+                Err(e) => {
+                    error!("Failed to decrypt file: {}", e);
+                    return Ok(RestoreResult {
+                        generated_id,
+                        status: "failed".into(),
+                    });
+                }
+            }
+        }
+
+        let decompressed_files =
+            decompress_large_tar_gz(compressed_archive.as_path(), tmp_path).await?;
 
         info!("Decompressed_files {:#?}", decompressed_files);
 
@@ -99,7 +173,7 @@ impl RestoreService {
 
         let backup_file_path = if decompressed_files.len() == 1 {
             decompressed_files.get(0).unwrap()
-        }else {
+        } else {
             compressed_archive.as_path()
         };
 
@@ -121,7 +195,7 @@ impl RestoreService {
                 status: "success".into(),
             }),
             Err(e) => {
-                log::error!("Restore failed: {:?}", e);
+                error!("Restore failed: {:?}", e);
                 Ok(RestoreResult {
                     generated_id,
                     status: "failed".into(),
