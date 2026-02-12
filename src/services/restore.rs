@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-
+#![warn(unused_assignments)]
 use crate::core::context::Context;
 use crate::domain::factory::DatabaseFactory;
 use crate::services::api::models::agent::status::DatabaseStatus;
@@ -9,7 +9,7 @@ use crate::utils::file::decrypt_file_stream_gcm;
 use anyhow::Result;
 use reqwest::{Client, Url};
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::TempDir;
 use tracing::{error, info};
@@ -113,71 +113,74 @@ impl RestoreService {
 
         let bytes = response.bytes().await?;
 
-        let encrypted = if filename.ends_with(".tar.gz") {
-            false
-        } else if filename.ends_with(".tar.gz.enc") {
+        let is_legacy_file = if filename.ends_with(".sql") {
+            true
+        } else if filename.ends_with(".dump") {
             true
         } else {
-            return Ok(RestoreResult {
-                generated_id,
-                status: "failed".into(),
-            });
+            false
         };
-
-        info!("Encrypted: {}", encrypted);
-
-        let downloaded_file = tmp_path.join(filename);
-
+        let downloaded_file = tmp_path.join(&filename);
         tokio::fs::write(&downloaded_file, &bytes).await?;
         info!("Backup downloaded to {}", downloaded_file.display());
 
-        let mut compressed_archive = downloaded_file.clone();
+        let backup_file_path: PathBuf = if !is_legacy_file {
+            let encrypted = if filename.ends_with(".tar.gz") {
+                false
+            } else if filename.ends_with(".tar.gz.enc") {
+                true
+            } else {
+                return Ok(RestoreResult {
+                    generated_id,
+                    status: "failed".into(),
+                });
+            };
 
-        if encrypted {
-            let new_name = downloaded_file
-                .file_name()
-                .and_then(|n| n.to_str())
-                .map(|n| n.strip_suffix(".enc").unwrap_or(n));
+            info!("Encrypted: {}", encrypted);
 
-            let new_compressed_archive = tmp_path.join(new_name.unwrap_or(""));
+            let mut compressed_archive = downloaded_file.clone();
 
-            match decrypt_file_stream_gcm(
-                downloaded_file,
-                new_compressed_archive.clone(),
-                ctx.edge_key.master_key_b64.clone(),
-            )
-            .await
-            {
-                Ok(_) => compressed_archive = new_compressed_archive,
-                Err(e) => {
+            if encrypted {
+                let new_name = downloaded_file
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .and_then(|n| n.strip_suffix(".enc"))
+                    .ok_or_else(|| anyhow::anyhow!("Invalid encrypted filename"))?;
+
+                let new_compressed_archive = tmp_path.join(new_name);
+
+                decrypt_file_stream_gcm(
+                    downloaded_file,
+                    new_compressed_archive.clone(),
+                    ctx.edge_key.master_key_b64.clone(),
+                )
+                .await
+                .map_err(|e| {
                     error!("Failed to decrypt file: {}", e);
-                    return Ok(RestoreResult {
-                        generated_id,
-                        status: "failed".into(),
-                    });
-                }
+                    e
+                })?;
+
+                compressed_archive = new_compressed_archive;
             }
-        }
 
-        let decompressed_files =
-            decompress_large_tar_gz(compressed_archive.as_path(), tmp_path).await?;
+            let decompressed_files =
+                decompress_large_tar_gz(compressed_archive.as_path(), tmp_path).await?;
 
-        info!("Decompressed_files {:#?}", decompressed_files);
+            if decompressed_files.is_empty() {
+                return Ok(RestoreResult {
+                    generated_id,
+                    status: "failed".into(),
+                });
+            }
 
-        if decompressed_files.is_empty() {
-            return Ok(RestoreResult {
-                generated_id,
-                status: "failed".into(),
-            });
-        }
-
-        let backup_file_path = if decompressed_files.len() == 1 {
-            decompressed_files.get(0).unwrap()
+            if decompressed_files.len() == 1 {
+                decompressed_files[0].clone()
+            } else {
+                compressed_archive
+            }
         } else {
-            compressed_archive.as_path()
+            downloaded_file.clone()
         };
-
-        info!("Decompressed file {}", backup_file_path.display());
 
         let db_instance = DatabaseFactory::create_for_restore(cfg.clone(), &backup_file_path).await;
         let reachable = db_instance.ping().await.unwrap_or(false);
