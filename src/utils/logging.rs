@@ -28,14 +28,14 @@ pub fn init_logger() {
         .with_ansi(false)
         .with_target(false);
 
-    // let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let env_filter = EnvFilter::new(CONFIG.log.clone());
-
+    let env_filter = EnvFilter::new(format!(
+        "{},aws_sdk_s3=warn,aws_smithy_http=warn,aws_smithy_runtime=warn,aws_smithy_client=warn,aws_smithy_types=warn,reqwest=warn,hyper=warn,tokio=warn,h2=warn",
+        CONFIG.log
+    ));
 
     let term_layer = fmt::layer()
         .with_writer(std::io::stdout)
         .with_timer(timer.clone())
-        // .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339())
         .with_ansi(true)
         .with_target(false)
         .with_filter(env_filter);

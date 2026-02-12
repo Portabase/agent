@@ -52,7 +52,7 @@ impl Agent {
             if db.data.backup.action {
                 let _ = self
                     .backup_service
-                    .dispatch(&db.generated_id, &config, method.clone())
+                    .dispatch(&db.generated_id, &config, method.clone(), &db.storages, db.encrypt)
                     .await;
             } else if db.data.restore.action {
                 let _ = self

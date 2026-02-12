@@ -1,3 +1,4 @@
+use crate::services::api::ApiClient;
 use crate::settings::CONFIG;
 use crate::utils::edge_key::{EdgeKey, EdgeKeyError, decode_edge_key};
 use tracing::{debug, error, info};
@@ -6,6 +7,7 @@ use tracing::{debug, error, info};
 pub struct Context {
     #[allow(dead_code)]
     pub edge_key: EdgeKey,
+    pub api: ApiClient,
 }
 
 impl Context {
@@ -33,7 +35,13 @@ impl Context {
                 panic!("Cannot initialize AgentContext due to invalid EDGE_KEY");
             }
         };
+        
+        let server_url = format!("{}/api", edge_key.server_url);
+        let api_client = ApiClient::new(server_url);
 
-        Context { edge_key }
+        Context {
+            edge_key: edge_key,
+            api: api_client,
+        }
     }
 }

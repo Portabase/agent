@@ -58,7 +58,6 @@ FROM base AS dev
 
 RUN cargo install cargo-watch
 
-# Pre-cache dependencies
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build

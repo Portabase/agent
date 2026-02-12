@@ -1,15 +1,18 @@
 #![allow(dead_code)]
-
+#![warn(unused_assignments)]
 use crate::core::context::Context;
 use crate::domain::factory::DatabaseFactory;
+use crate::services::api::models::agent::status::DatabaseStatus;
 use crate::services::config::{DatabaseConfig, DatabasesConfig};
-use crate::services::status::DatabaseStatus;
+use crate::utils::compress::decompress_large_tar_gz;
+use crate::utils::file::decrypt_file_stream_gcm;
 use anyhow::Result;
-use tracing::{error, info};
+use reqwest::{Client, Url};
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::TempDir;
+use tracing::{error, info};
 
 #[derive(Debug, Serialize)]
 pub struct RestoreResult {
@@ -36,21 +39,30 @@ impl RestoreService {
             let db_cfg = cfg.clone();
             let ctx_clone = self.ctx.clone();
             let file_to_restore = db.data.restore.file.clone();
-
+            if file_to_restore.is_none() {
+                error!("restore file not found");
+                return;
+            }
             tokio::spawn(async move {
                 match TempDir::new() {
                     Ok(temp_dir) => {
                         let tmp_path = temp_dir.path().to_path_buf();
                         info!("Created temp directory {}", tmp_path.display());
-
-                        match RestoreService::run(db_cfg, &tmp_path, &file_to_restore).await {
+                        match RestoreService::run(
+                            &ctx_clone,
+                            db_cfg,
+                            &tmp_path,
+                            &file_to_restore.unwrap(),
+                        )
+                        .await
+                        {
                             Ok(result) => {
                                 let service = RestoreService { ctx: ctx_clone };
                                 service.send_result(result).await;
                             }
                             Err(e) => error!("Restoration error {}", e),
                         }
-                        // TempDir is automatically deleted when dropped here
+                        // TempDir is automatically deleted when dropped
                     }
                     Err(e) => error!("Failed to create temp dir: {}", e),
                 }
@@ -59,6 +71,7 @@ impl RestoreService {
     }
 
     pub async fn run(
+        ctx: &Arc<Context>,
         cfg: DatabaseConfig,
         tmp_path: &Path,
         file_url: &str,
@@ -67,8 +80,9 @@ impl RestoreService {
 
         info!("File url: {}", file_url);
 
-        let client = reqwest::Client::new();
+        let client = Client::new();
         let response = client.get(file_url).send().await?;
+
         if !response.status().is_success() {
             error!("Backup download failed with status {}", response.status());
             return Ok(RestoreResult {
@@ -77,27 +91,96 @@ impl RestoreService {
             });
         }
 
+        let filename_from_header = response
+            .headers()
+            .get(reqwest::header::CONTENT_DISPOSITION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.split("filename=").nth(1))
+            .map(|f| f.trim_matches('"').to_string());
+
+        let filename_from_url = Url::parse(file_url).ok().and_then(|u| {
+            u.path_segments()?
+                .last()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+        });
+
+        let filename = filename_from_header
+            .or(filename_from_url)
+            .unwrap_or_else(|| "downloaded_file".to_string());
+
+        info!("File name: {}", filename);
+
         let bytes = response.bytes().await?;
 
-        let ext = if bytes.starts_with(b"PGDMP") {
-            // Postgres custom format
-            "dump"
-        } else if bytes.starts_with(&[0x1F, 0x8B]) {
-            // gzip compressed -> could be Postgres directory dump or MySQL gzipped SQL
-            "tar.gz"
-        } else if bytes.starts_with(b"--") || bytes.starts_with(b"/*") {
-            // Plain MySQL SQL dump
-            "sql"
+        let is_legacy_file = if filename.ends_with(".sql") {
+            true
+        } else if filename.ends_with(".dump") {
+            true
         } else {
-            // Fallback generic
-            "dump"
+            false
         };
+        let downloaded_file = tmp_path.join(&filename);
+        tokio::fs::write(&downloaded_file, &bytes).await?;
+        info!("Backup downloaded to {}", downloaded_file.display());
 
-        info!("Backup dump from {} to {}", tmp_path.display(), ext);
+        let backup_file_path: PathBuf = if !is_legacy_file {
+            let encrypted = if filename.ends_with(".tar.gz") {
+                false
+            } else if filename.ends_with(".tar.gz.enc") {
+                true
+            } else {
+                return Ok(RestoreResult {
+                    generated_id,
+                    status: "failed".into(),
+                });
+            };
 
-        let backup_file_path = tmp_path.join(format!("backup_file_tmp.{}", ext));
-        tokio::fs::write(&backup_file_path, &bytes).await?;
-        info!("Backup downloaded to {}", backup_file_path.display());
+            info!("Encrypted: {}", encrypted);
+
+            let mut compressed_archive = downloaded_file.clone();
+
+            if encrypted {
+                let new_name = downloaded_file
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .and_then(|n| n.strip_suffix(".enc"))
+                    .ok_or_else(|| anyhow::anyhow!("Invalid encrypted filename"))?;
+
+                let new_compressed_archive = tmp_path.join(new_name);
+
+                decrypt_file_stream_gcm(
+                    downloaded_file,
+                    new_compressed_archive.clone(),
+                    ctx.edge_key.master_key_b64.clone(),
+                )
+                .await
+                .map_err(|e| {
+                    error!("Failed to decrypt file: {}", e);
+                    e
+                })?;
+
+                compressed_archive = new_compressed_archive;
+            }
+
+            let decompressed_files =
+                decompress_large_tar_gz(compressed_archive.as_path(), tmp_path).await?;
+
+            if decompressed_files.is_empty() {
+                return Ok(RestoreResult {
+                    generated_id,
+                    status: "failed".into(),
+                });
+            }
+
+            if decompressed_files.len() == 1 {
+                decompressed_files[0].clone()
+            } else {
+                compressed_archive
+            }
+        } else {
+            downloaded_file.clone()
+        };
 
         let db_instance = DatabaseFactory::create_for_restore(cfg.clone(), &backup_file_path).await;
         let reachable = db_instance.ping().await.unwrap_or(false);
@@ -115,7 +198,7 @@ impl RestoreService {
                 status: "success".into(),
             }),
             Err(e) => {
-                log::error!("Restore failed: {:?}", e);
+                error!("Restore failed: {:?}", e);
                 Ok(RestoreResult {
                     generated_id,
                     status: "failed".into(),
@@ -124,6 +207,7 @@ impl RestoreService {
         }
     }
 
+    // TODO : update with ctx api manager
     pub async fn send_result(&self, result: RestoreResult) {
         info!(
             "[RestoreService] DB: {} | Status: {}",
@@ -147,7 +231,7 @@ impl RestoreService {
                 if status.is_success() {
                     info!("Restoration result sent successfully");
                 } else {
-                    let text = resp.text().await.unwrap_or_default(); // consumes resp
+                    let text = resp.text().await.unwrap_or_default();
                     error!(
                         "Restoration result failed, status: {}, body: {}",
                         status, text

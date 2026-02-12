@@ -28,7 +28,6 @@ impl Database for PostgresDatabase {
         match self.format {
             PostgresDumpFormat::Fc => ".dump",
             PostgresDumpFormat::Fd => ".gz",
-            // PostgresDumpFormat::Fd => ".tar.gz",
         }
     }
 

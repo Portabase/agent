@@ -15,6 +15,10 @@ seed-mysql:
 	@echo "Seeding MySQL..."
 	mysql -h 127.0.0.1 -P "$$MYSQL_PORT" -u "$$MYSQL_USER" -p"$$MYSQL_PASSWORD" "$$MYSQL_DB" < ./scripts/mysql/seed-mysql.sql
 
+seed-mysql-1gb:
+	@echo "Seeding MySQL..."
+	mysql -h 127.0.0.1 -P "$$MYSQL_PORT" -u "$$MYSQL_USER" -p"$$MYSQL_PASSWORD" "$$MYSQL_DB" < ./scripts/mysql/seed-1gb.sql
+
 
 seed-postgres:
 	@echo "Seeding Postgres..."
