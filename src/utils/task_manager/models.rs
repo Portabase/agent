@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeriodicTask {
@@ -6,4 +7,5 @@ pub struct PeriodicTask {
     pub cron: String,
     pub args: Vec<String>,
     pub enabled: bool,
+    pub metadata: Option<Value>,
 }
