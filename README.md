@@ -47,7 +47,8 @@
 You have 4 ways to install Portabase Agent:
 
 - Automated CLI (recommended) - [details](https://portabase.io/docs/agent/setup#cli)
-- Docker Compose setup - [details](https://portabase.io/docs/agent/setup#docker)
+- Docker Run - [details](https://portabase.io/docs/agent/setup#docker)
+- Docker Compose setup - [details](https://portabase.io/docs/agent/setup#docker-compose)
 - Kubernetes with Helm (soon)
 - Development setup - [details](https://portabase.io/docs/agent/setup#development)
 
