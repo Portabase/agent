@@ -1,7 +1,7 @@
 use crate::services::config::DatabaseConfig;
-use anyhow::Context;
 use std::collections::HashMap;
-use std::process::Command;
+use tokio::process::Command;
+
 
 pub async fn run(cfg: DatabaseConfig, env: HashMap<String, String>) -> anyhow::Result<bool> {
     let output = Command::new("mysqladmin")
@@ -14,6 +14,6 @@ pub async fn run(cfg: DatabaseConfig, env: HashMap<String, String>) -> anyhow::R
         .arg("ping")
         .envs(env)
         .output()
-        .with_context(|| format!("Failed to ping MySQL server {}", cfg.name))?;
+        .await?;
     Ok(output.status.success())
 }
