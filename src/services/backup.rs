@@ -69,7 +69,6 @@ impl BackupService {
                                 return;
                             }
                             Ok(false) => {
-
                                 match ctx
                                     .api
                                     .backup_create(
@@ -85,13 +84,27 @@ impl BackupService {
                                         info!("Created temp directory {}", tmp_path.display());
                                         match BackupService::run(db_cfg, &tmp_path).await {
                                             Ok(mut result) => {
+                                                let backup_id = backup_created_result.unwrap().backup.id;
+
+                                                if result.status == "failed" {
+                                                    error!("Backup failed early for {}", result.generated_id);
+
+                                                    let service = BackupService { ctx: ctx.clone() };
+
+                                                    let _ = service
+                                                        .send_result(result, vec![], &backup_id)
+                                                        .await;
+
+                                                    return;
+                                                }
+
+
                                                 if let Some(backup_file) = result.backup_file.take() {
                                                     match compress_to_tar_gz_large(&backup_file).await {
                                                         Ok(compression_result) => {
                                                             result.backup_file =
                                                                 Some(compression_result.compressed_path);
                                                             let service = BackupService { ctx: ctx.clone() };
-                                                            let backup_id = backup_created_result.unwrap().backup.id;
                                                             match service
                                                                 .upload(
                                                                     result.clone(),
@@ -107,7 +120,7 @@ impl BackupService {
                                                                         .send_result(
                                                                             result,
                                                                             upload_result,
-                                                                            &backup_id
+                                                                            &backup_id,
                                                                         )
                                                                         .await
                                                                     {
@@ -147,7 +160,7 @@ impl BackupService {
                                     }
                                     Err(e) => error!("Backup creation failed: {}", e),
                                 }
-                            },
+                            }
                             Err(e) => error!("An error occurred while checking lock : {}", e),
                         }
                     }
@@ -162,7 +175,16 @@ impl BackupService {
         let generated_id = cfg.generated_id.clone();
         let db_type = cfg.db_type.clone();
 
-        let reachable = db_instance.ping().await.unwrap_or(false);
+
+        let reachable = match db_instance.ping().await {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Ping failed: {}", e);
+                return Err(e.into());
+            }
+        };
+
+
         info!("Reachable: {}", reachable);
         if !reachable {
             return Ok(BackupResult {
@@ -276,7 +298,7 @@ impl BackupService {
                                         }
                                     }
                                 };
-                                
+
                                 match self.ctx.api.backup_upload_status(
                                     self.ctx.edge_key.agent_id.clone(),
                                     generated_id.clone(),
@@ -284,12 +306,12 @@ impl BackupService {
                                     status,
                                     remote_path,
                                     total_size,
-                                    backup_id
+                                    backup_id,
                                 ).await {
                                     Ok(_) => {
                                         upload_result
-                                    },
-                                    Err(err)=> {
+                                    }
+                                    Err(err) => {
                                         error!(
                                         "backup_upload_status failed (generated_id={}, storage_id={}): {}",
                                         generated_id, storage_id, err
@@ -355,17 +377,23 @@ impl BackupService {
             "failed"
         };
 
-        let file_size = upload_results
-            .iter()
-            .map(|r| r.total_size)
-            .try_fold((0u64, 0u64), |(sum, count), v| {
-                match v {
-                    Some(size) => Ok((sum + size, count + 1)),
-                    None => Err(()), // stop and return None
-                }
-            })
-            .ok()
-            .map(|(sum, count)| sum / count);
+        let file_size = if status == "failed" {
+            None
+        } else {
+            let mut sum = 0u64;
+            let mut count = 0u64;
+
+            for size in upload_results.iter().filter_map(|r| r.total_size) {
+                sum += size;
+                count += 1;
+            }
+
+            if count == 0 {
+                None
+            } else {
+                Some(sum / count)
+            }
+        };
 
         match self
             .ctx
