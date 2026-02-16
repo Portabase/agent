@@ -88,13 +88,10 @@ impl BackupService {
 
                                                 if result.status == "failed" {
                                                     error!("Backup failed early for {}", result.generated_id);
-
                                                     let service = BackupService { ctx: ctx.clone() };
-
                                                     let _ = service
                                                         .send_result(result, vec![], &backup_id)
                                                         .await;
-
                                                     return;
                                                 }
 
@@ -280,8 +277,12 @@ impl BackupService {
                                 } else {
                                     "failed"
                                 };
-                                info!("Storage {} uploaded to remote path {:?}", storage_id, upload_result.remote_file_path);
 
+                                if status != "success" {
+                                    return upload_result;
+                                }
+
+                                info!("Storage {} uploaded to remote path {:?}", storage_id, upload_result.remote_file_path);
 
                                 let (remote_path, total_size) = match (
                                     &upload_result.remote_file_path,

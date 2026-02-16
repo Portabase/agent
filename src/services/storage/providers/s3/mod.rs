@@ -32,6 +32,7 @@ impl StorageProvider for S3Provider {
         storage: &DatabaseStorage,
         encrypt: Option<bool>,
     ) -> UploadResult {
+
         let Some(file_path) = result.backup_file else {
             return UploadResult {
                 storage_id: storage.id.clone(),
@@ -282,8 +283,6 @@ impl StorageProvider for S3Provider {
                     "Successfully completed multipart upload: {}",
                     remote_file_path
                 );
-
-
                 UploadResult {
                     storage_id: storage.id.clone(),
                     success: true,
