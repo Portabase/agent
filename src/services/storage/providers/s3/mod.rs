@@ -61,8 +61,7 @@ impl StorageProvider for S3Provider {
         let upload = match build_stream(
             &file_path,
             encrypt,
-            &ctx.edge_key.master_key_b64
-            // encrypt.then(|| ctx.edge_key.public_key.as_bytes().to_vec()),
+            &ctx.edge_key.master_key_b64,
         )
         .await
         {
@@ -100,7 +99,7 @@ impl StorageProvider for S3Provider {
             "static-creds",
         );
 
-        let region = Region::new(config.region.clone().unwrap_or("eu-central-3".to_string()));
+        let region = Region::new(config.region.clone().unwrap_or("us-east-1".to_string()));
 
         let sdk_config = s3::config::Builder::new()
             .credentials_provider(credentials)
@@ -284,33 +283,6 @@ impl StorageProvider for S3Provider {
                     remote_file_path
                 );
 
-                // if let Some(enc) = upload.encryption {
-                //     let meta = EncryptionMetadataFile {
-                //         version: 1,
-                //         cipher: "AES-256-CBC+RSA-OAEP-SHA256".to_string(),
-                //         encrypted_aes_key_b64: general_purpose::STANDARD
-                //             .encode(enc.encrypted_aes_key),
-                //         iv_b64: general_purpose::STANDARD.encode(enc.iv),
-                //     };
-                // 
-                //     let meta_toml = toml::to_string(&meta).expect("Serialization error");
-                // 
-                //     let meta_key = format!("{}.meta", remote_file_path);
-                // 
-                //     client
-                //         .put_object()
-                //         .bucket(bucket)
-                //         .key(&meta_key)
-                //         .body(ByteStream::from(meta_toml.into_bytes()))
-                //         .content_type("application/toml")
-                //         .send()
-                //         .await
-                //         .map_err(|e| {
-                //             error!("Metadata upload failed: {}", e);
-                //             e
-                //         })
-                //         .unwrap();
-                // }
 
                 UploadResult {
                     storage_id: storage.id.clone(),
