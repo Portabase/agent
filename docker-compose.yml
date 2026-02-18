@@ -16,7 +16,7 @@ services:
       APP_ENV: development
       LOG: debug
       TZ: "Europe/Paris"
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiOWZjYjhmNjUtNTcyMC00N2M3LThkNWItYWFlMmVjOTc2OWU1IiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiNTVkODRlYjctMmJjMC00YTYzLThhNmMtZDM0YTkzNWRiMWVkIiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
       #POOLING: 1
       #DATABASES_CONFIG_FILE: "config.toml"
     extra_hosts:
