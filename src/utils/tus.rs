@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
-use log::{error, info};
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
+use tracing::{error, info};
 
 const PATCH_CHUNK_SIZE: usize = 1 * 1024 * 1024;
 
@@ -18,6 +18,7 @@ where
     let client = reqwest::Client::new();
 
     info!("File size: {}", total_size);
+    info!("Endpoint URL: {}", tus_endpoint);
 
     let mut create_headers = HeaderMap::new();
     create_headers.insert("Tus-Resumable", HeaderValue::from_static("1.0.0"));
@@ -33,7 +34,10 @@ where
     if !resp.status().is_success() {
         let status = resp.status();
         let headers = resp.headers().clone();
-        let body = resp.text().await.unwrap_or_else(|_| "<failed to read body>".into());
+        let body = resp
+            .text()
+            .await
+            .unwrap_or_else(|_| "<failed to read body>".into());
 
         error!(
             "TUS creation failed | status={} | headers={:?} | body={}",
@@ -55,7 +59,6 @@ where
         .to_str()
         .context("Invalid Location header value")?
         .to_string();
-
 
     let mut stream = Box::pin(encrypted_stream);
     let mut offset: u64 = 0;
@@ -87,8 +90,10 @@ where
             if !patch_resp.status().is_success() {
                 let status = patch_resp.status();
                 let headers = patch_resp.headers().clone();
-                let body =
-                    patch_resp.text().await.unwrap_or_else(|_| "<failed to read body>".into());
+                let body = patch_resp
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "<failed to read body>".into());
 
                 error!(
                     "TUS PATCH failure | offset={} | status={} | body={}",
@@ -132,18 +137,15 @@ where
         }
     }
 
-
     let mut finalize_headers = extra_headers.clone();
     finalize_headers.insert("Tus-Resumable", HeaderValue::from_static("1.0.0"));
     finalize_headers.insert(
         "Upload-Offset",
-        HeaderValue::from_str(&offset.to_string())
-            .context("Invalid finalize offset header")?,
+        HeaderValue::from_str(&offset.to_string()).context("Invalid finalize offset header")?,
     );
     finalize_headers.insert(
         "Upload-Length",
-        HeaderValue::from_str(&offset.to_string())
-            .context("Invalid finalize length header")?,
+        HeaderValue::from_str(&offset.to_string()).context("Invalid finalize length header")?,
     );
     finalize_headers.insert(
         CONTENT_TYPE,
@@ -159,8 +161,10 @@ where
 
     if !finalize_resp.status().is_success() {
         let status = finalize_resp.status();
-        let body =
-            finalize_resp.text().await.unwrap_or_else(|_| "<failed to read body>".into());
+        let body = finalize_resp
+            .text()
+            .await
+            .unwrap_or_else(|_| "<failed to read body>".into());
 
         error!(
             "TUS finalize failure | offset={} | status={} | body={}",
