@@ -32,7 +32,6 @@ impl StorageProvider for S3Provider {
         storage: &DatabaseStorage,
         encrypt: Option<bool>,
     ) -> UploadResult {
-
         let Some(file_path) = result.backup_file else {
             return UploadResult {
                 storage_id: storage.id.clone(),
@@ -59,13 +58,7 @@ impl StorageProvider for S3Provider {
 
         let encrypt = encrypt.unwrap_or(false);
 
-        let upload = match build_stream(
-            &file_path,
-            encrypt,
-            &ctx.edge_key.master_key_b64,
-        )
-        .await
-        {
+        let upload = match build_stream(&file_path, encrypt, &ctx.edge_key.master_key_b64).await {
             Ok(u) => u,
             Err(e) => {
                 error!("Stream build failed: {}", e);
@@ -102,15 +95,20 @@ impl StorageProvider for S3Provider {
 
         let region = Region::new(config.region.clone().unwrap_or("us-east-1".to_string()));
 
+        let scheme = if config.ssl { "https" } else { "http" };
+
+        let endpoint = match config.port {
+            Some(port) => format!("{scheme}://{}:{port}", config.end_point_url),
+            None => format!("{scheme}://{}", config.end_point_url),
+        };
+
+        info!("S3 endpoint to {}", &endpoint);
+
         let sdk_config = s3::config::Builder::new()
             .credentials_provider(credentials)
             .region(region)
             .force_path_style(true)
-            .endpoint_url(format!(
-                "{}://{}",
-                if config.ssl { "https" } else { "http" },
-                config.end_point_url
-            ))
+            .endpoint_url(endpoint)
             .behavior_version(BehaviorVersion::latest())
             .build();
 

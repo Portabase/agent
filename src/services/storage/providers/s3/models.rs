@@ -8,4 +8,5 @@ pub struct S3ProviderConfig {
     pub end_point_url: String,
     pub ssl: bool,
     pub region: Option<String>,
+    pub port: Option<String>,
 }
