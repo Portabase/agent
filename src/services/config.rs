@@ -16,8 +16,8 @@ pub enum DbType {
     Mysql,
     Mariadb,
     Postgresql,
-    MongoDB
-    // Sqlite,
+    MongoDB,
+    Sqlite
     // Add other DB types if needed
 }
 
@@ -28,7 +28,7 @@ impl DbType {
             DbType::Mariadb => "mysql",
             DbType::Postgresql => "postgresql",
             DbType::MongoDB => "mongodb",
-            // DbType::Sqlite => "sqlite",
+            DbType::Sqlite => "sqlite",
         }
     }
 }
@@ -45,6 +45,7 @@ pub struct DatabaseConfig {
     pub port: u16,
     pub host: String,
     pub generated_id: String,
+    pub path: Option<String>
 }
 
 #[allow(dead_code)]

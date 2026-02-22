@@ -6,6 +6,7 @@ use crate::services::config::{DatabaseConfig, DbType};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use crate::domain::sqlite::database::SqliteDatabase;
 
 #[async_trait::async_trait]
 pub trait Database: Send + Sync {
@@ -27,6 +28,7 @@ impl DatabaseFactory {
             DbType::Mysql => Arc::new(MySQLDatabase::new(cfg)),
             DbType::Mariadb => Arc::new(MySQLDatabase::new(cfg)),
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
+            DbType::Sqlite => Arc::new(SqliteDatabase::new(cfg)),
         }
     }
 
@@ -39,6 +41,7 @@ impl DatabaseFactory {
             DbType::Mysql => Arc::new(MySQLDatabase::new(cfg)),
             DbType::Mariadb => Arc::new(MySQLDatabase::new(cfg)),
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
+            DbType::Sqlite => Arc::new(SqliteDatabase::new(cfg)),
         }
     }
 }
