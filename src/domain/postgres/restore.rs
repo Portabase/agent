@@ -1,7 +1,7 @@
 use anyhow::Result;
-use tracing::{debug, error, info};
 use std::path::PathBuf;
 use std::process::Command;
+use tracing::{debug, error, info};
 
 use super::connection::{select_pg_path, server_version, terminate_connections};
 use super::format::PostgresDumpFormat;
@@ -14,6 +14,7 @@ pub async fn run(
 ) -> Result<()> {
     tokio::task::spawn_blocking(move || -> Result<()> {
         debug!("Starting restore for database {}", cfg.name);
+
         let version = match futures::executor::block_on(server_version(&cfg)) {
             Ok(v) => {
                 debug!("Postgres version detected: {}", v);
@@ -91,8 +92,6 @@ pub async fn run(
                 let dec = flate2::read::GzDecoder::new(tar_gz);
                 let mut archive = tar::Archive::new(dec);
 
-
-
                 let tmp_dir = match tempfile::TempDir::new() {
                     Ok(d) => d,
                     Err(e) => {
@@ -104,15 +103,12 @@ pub async fn run(
                     }
                 };
 
-
-
                 if let Err(e) = archive.unpack(tmp_dir.path()) {
                     error!("Failed to unpack FD archive for {}: {:?}", cfg.name, e);
                     return Err(e.into());
                 }
 
                 debug!("Listing contents of temp dir: {}", tmp_dir.path().display());
-
 
                 for entry in std::fs::read_dir(tmp_dir.path())? {
                     if let Ok(entry) = entry {

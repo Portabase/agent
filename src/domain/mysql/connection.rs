@@ -3,6 +3,7 @@ use std::process::Command;
 use anyhow::Result;
 
 pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
+
     let output = Command::new("mysql")
         .arg("--host").arg(&cfg.host)
         .arg("--port").arg(cfg.port.to_string())
@@ -25,3 +26,4 @@ pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
 
     Ok(version)
 }
+

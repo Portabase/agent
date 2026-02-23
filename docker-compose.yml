@@ -11,7 +11,8 @@ services:
       #      - ./databases.toml:/config/config.toml
       - cargo-registry:/usr/local/cargo/registry
       - cargo-git:/usr/local/cargo/git
-#      - cargo-target:/app/target
+      #      - cargo-target:/app/target
+      - sqlite-data:/sqlite-data/workspace/data
     environment:
       APP_ENV: development
       LOG: debug
@@ -53,54 +54,65 @@ services:
     networks:
       - portabase
 
-#
-#  db-mongodb-auth:
-#    container_name: db-mongodb-auth
-#    image: mongo:latest
-#    ports:
-#      - "27082:27017"
-#    environment:
-#      MONGO_INITDB_ROOT_USERNAME: root
-#      MONGO_INITDB_ROOT_PASSWORD: rootpassword
-#      MONGO_INITDB_DATABASE: testdbauth
-#    command: mongod --auth
-#    networks:
-#      - portabase
-#    volumes:
-#      - mongodb-data-auth:/data/db
-#    healthcheck:
-#      test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
-#      interval: 5s
-#      timeout: 5s
-#      retries: 10
-#
-#  db-mongodb:
-#    container_name: db-mongodb
-#    image: mongo:latest
-#    ports:
-#      - "27083:27017"
-#    volumes:
-#      - mongodb-data:/data/db
-#    healthcheck:
-#      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
-#      interval: 5s
-#      timeout: 5s
-#      retries: 10
-#    environment:
-#      MONGO_INITDB_DATABASE: testdb
-#    networks:
-#      - portabase
+
+  db-mongodb-auth:
+    container_name: db-mongodb-auth
+    image: mongo:latest
+    ports:
+      - "27082:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+      MONGO_INITDB_DATABASE: testdbauth
+    command: mongod --auth
+    networks:
+      - portabase
+    volumes:
+      - mongodb-data-auth:/data/db
+    healthcheck:
+      test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-mongodb:
+    container_name: db-mongodb
+    image: mongo:latest
+    ports:
+      - "27083:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      MONGO_INITDB_DATABASE: testdb
+    networks:
+      - portabase
+
+  sqlite:
+    container_name: db-sqlite
+    image: keinos/sqlite3
+    volumes:
+      - sqlite-data:/workspace/data
+    working_dir: /workspace
+    command: tail -f /dev/null
+    stdin_open: true
+    tty: true
+
 
 volumes:
   cargo-registry:
   cargo-git:
-#  cargo-target:
-
+  #  cargo-target:
 
   postgres-data:
   mariadb-data:
-#  mongodb-data:
-#  mongodb-data-auth:
+  mongodb-data:
+  mongodb-data-auth:
+  sqlite-data:
 
 networks:
   portabase:

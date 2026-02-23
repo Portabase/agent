@@ -94,12 +94,15 @@ impl StorageProvider for S3Provider {
         );
 
         let region = Region::new(config.region.clone().unwrap_or("us-east-1".to_string()));
-
-        let scheme = if config.ssl { "https" } else { "http" };
-
-        let endpoint = match config.port {
-            Some(port) => format!("{scheme}://{}:{port}", config.end_point_url),
-            None => format!("{scheme}://{}", config.end_point_url),
+        
+        let endpoint = if let Some(port) = &config.port {
+            if port.trim().is_empty() {
+                format!("{}://{}", if config.ssl { "https" } else { "http" }, config.end_point_url)
+            } else {
+                format!("{}://{}:{}", if config.ssl { "https" } else { "http" }, config.end_point_url, port)
+            }
+        } else {
+            format!("{}://{}", if config.ssl { "https" } else { "http" }, config.end_point_url)
         };
 
         info!("S3 endpoint to {}", &endpoint);

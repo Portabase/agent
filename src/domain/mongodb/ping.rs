@@ -1,14 +1,20 @@
 #![allow(dead_code)]
 
+use crate::domain::mongodb::connection::connect;
 use crate::services::config::DatabaseConfig;
 use anyhow::Result;
 use mongodb::bson::doc;
-use tracing::{error};
-use crate::domain::mongodb::connection::connect;
+use tracing::error;
 
 pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
     let client = connect(cfg.clone()).await?;
-    let db_name = if cfg.username.is_empty() { &cfg.database } else { "admin" };
+
+    let db_name = if cfg.username.is_empty() && cfg.password.is_empty() {
+        &cfg.database
+    } else {
+        "admin"
+    };
+
     match client.database(db_name).run_command(doc! {"ping": 1}).await {
         Ok(_) => Ok(true),
         Err(e) => {

@@ -1,11 +1,12 @@
-use std::path::Path;
 use crate::domain::postgres::format::PostgresDumpFormat;
 use crate::services::config::DatabaseConfig;
 use anyhow::Result;
+use std::path::Path;
 use tokio_postgres::{Client, NoTls};
-use tracing::info;
+use tracing::{error, info};
 
 pub async fn connect(cfg: &DatabaseConfig) -> Result<Client> {
+    info!("Connecting to postgres database {}:{}", cfg.host, cfg.port);
     let dsn = format!(
         "host={} port={} user={} password={} dbname={}",
         cfg.host, cfg.port, cfg.username, cfg.password, cfg.database
@@ -14,7 +15,7 @@ pub async fn connect(cfg: &DatabaseConfig) -> Result<Client> {
     let (client, connection) = tokio_postgres::connect(&dsn, NoTls).await?;
     tokio::spawn(async move {
         if let Err(e) = connection.await {
-            tracing::error!("Postgres connection error: {}", e);
+            error!("Postgres connection error: {}", e);
         }
     });
     Ok(client)
@@ -34,7 +35,7 @@ pub fn select_pg_path(version: &str) -> std::path::PathBuf {
 
 pub async fn terminate_connections(cfg: &DatabaseConfig) -> Result<()> {
     let mut admin = cfg.clone();
-    admin.database = "postgres".into();
+    admin.database = "postgres".to_string().into();
 
     let client = connect(&admin).await?;
 
