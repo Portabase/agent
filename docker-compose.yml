@@ -13,6 +13,7 @@ services:
       - cargo-git:/usr/local/cargo/git
       #      - cargo-target:/app/target
       - sqlite-data:/sqlite-data/workspace/data
+      - ./scripts/sqlite/test-db:/sqlite-data-2/workspace/data
     environment:
       APP_ENV: development
       LOG: debug
@@ -25,72 +26,72 @@ services:
     networks:
       - portabase
 
-  db-postgres:
-    container_name: db-postgres
-    image: postgres:17-alpine
-    ports:
-      - "5436:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=devdb
-      - POSTGRES_USER=devuser
-      - POSTGRES_PASSWORD=changeme
-    networks:
-      - portabase
-
-  db-mariadb:
-    container_name: db-mariadb
-    image: mariadb:latest
-    ports:
-      - "3311:3306"
-    environment:
-      - MYSQL_DATABASE=mariadb
-      - MYSQL_USER=mariadb
-      - MYSQL_PASSWORD=changeme
-      - MYSQL_RANDOM_ROOT_PASSWORD=yes
-    volumes:
-      - mariadb-data:/var/lib/mysql
-    networks:
-      - portabase
-
-
-  db-mongodb-auth:
-    container_name: db-mongodb-auth
-    image: mongo:latest
-    ports:
-      - "27082:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: rootpassword
-      MONGO_INITDB_DATABASE: testdbauth
-    command: mongod --auth
-    networks:
-      - portabase
-    volumes:
-      - mongodb-data-auth:/data/db
-    healthcheck:
-      test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  db-mongodb:
-    container_name: db-mongodb
-    image: mongo:latest
-    ports:
-      - "27083:27017"
-    volumes:
-      - mongodb-data:/data/db
-    healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    environment:
-      MONGO_INITDB_DATABASE: testdb
-    networks:
-      - portabase
+#  db-postgres:
+#    container_name: db-postgres
+#    image: postgres:17-alpine
+#    ports:
+#      - "5436:5432"
+#    volumes:
+#      - postgres-data:/var/lib/postgresql/data
+#    environment:
+#      - POSTGRES_DB=devdb
+#      - POSTGRES_USER=devuser
+#      - POSTGRES_PASSWORD=changeme
+#    networks:
+#      - portabase
+#
+#  db-mariadb:
+#    container_name: db-mariadb
+#    image: mariadb:latest
+#    ports:
+#      - "3311:3306"
+#    environment:
+#      - MYSQL_DATABASE=mariadb
+#      - MYSQL_USER=mariadb
+#      - MYSQL_PASSWORD=changeme
+#      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+#    volumes:
+#      - mariadb-data:/var/lib/mysql
+#    networks:
+#      - portabase
+#
+#
+#  db-mongodb-auth:
+#    container_name: db-mongodb-auth
+#    image: mongo:latest
+#    ports:
+#      - "27082:27017"
+#    environment:
+#      MONGO_INITDB_ROOT_USERNAME: root
+#      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+#      MONGO_INITDB_DATABASE: testdbauth
+#    command: mongod --auth
+#    networks:
+#      - portabase
+#    volumes:
+#      - mongodb-data-auth:/data/db
+#    healthcheck:
+#      test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
+#      interval: 5s
+#      timeout: 5s
+#      retries: 10
+#
+#  db-mongodb:
+#    container_name: db-mongodb
+#    image: mongo:latest
+#    ports:
+#      - "27083:27017"
+#    volumes:
+#      - mongodb-data:/data/db
+#    healthcheck:
+#      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+#      interval: 5s
+#      timeout: 5s
+#      retries: 10
+#    environment:
+#      MONGO_INITDB_DATABASE: testdb
+#    networks:
+#      - portabase
 
   sqlite:
     container_name: db-sqlite
@@ -108,10 +109,10 @@ volumes:
   cargo-git:
   #  cargo-target:
 
-  postgres-data:
-  mariadb-data:
-  mongodb-data:
-  mongodb-data-auth:
+#  postgres-data:
+#  mariadb-data:
+#  mongodb-data:
+#  mongodb-data-auth:
   sqlite-data:
 
 networks:

@@ -17,7 +17,7 @@ pub fn select_mongo_path() -> std::path::PathBuf {
 
 pub fn get_mongo_uri(cfg: DatabaseConfig) -> Result<String> {
 
-    if cfg.username.is_empty() && cfg.password.is_empty() {
+    if cfg.username.is_empty() || cfg.password.is_empty() {
         Ok(format!("mongodb://{}:{}/{}", cfg.host, cfg.port, cfg.database))
     } else {
         Ok(format!(
