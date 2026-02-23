@@ -1,4 +1,4 @@
-use crate::domain::mysql::connection::server_version;
+use crate::domain::mysql::connection::{server_version};
 use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
 use std::collections::HashMap;

@@ -34,19 +34,12 @@
       "name": "Test database 5 - MongoDB",
       "database": "testdb",
       "type": "mongodb",
-      "username": "",
-      "password": "",
       "port": 27017,
       "host": "db-mongodb",
       "generated_id": "16678147-ff7e-4c97-8c83-0adeff214681"
     },
     {
       "name": "Test database 6 - SQLite DB",
-      "database": "",
-      "username": "",
-      "password": "",
-      "port": 0,
-      "host": "",
       "type": "sqlite",
       "path": "/sqlite-data/workspace/data/app.db",
       "generated_id": "16678178-ff7e-4c97-8c83-0adeff214681"

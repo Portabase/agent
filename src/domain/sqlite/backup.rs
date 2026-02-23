@@ -12,9 +12,11 @@ pub async fn run(
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
         debug!("Starting SQLite backup for database {}", cfg.name);
 
-        let db_path_str = cfg.path
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Database path not configured"))?;
+        let db_path_str = if cfg.path.is_empty() {
+            anyhow::bail!("Database path not configured");
+        } else {
+            cfg.path.as_str().to_string()
+        };
 
         let db_path = PathBuf::from(db_path_str);
 

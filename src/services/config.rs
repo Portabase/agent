@@ -9,6 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 use toml;
 use tracing::info;
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
@@ -17,7 +18,7 @@ pub enum DbType {
     Mariadb,
     Postgresql,
     MongoDB,
-    Sqlite
+    Sqlite,
     // Add other DB types if needed
 }
 
@@ -45,7 +46,7 @@ pub struct DatabaseConfig {
     pub port: u16,
     pub host: String,
     pub generated_id: String,
-    pub path: Option<String>
+    pub path: String,
 }
 
 #[allow(dead_code)]
@@ -53,6 +54,29 @@ pub struct DatabaseConfig {
 pub struct DatabasesConfig {
     pub databases: Vec<DatabaseConfig>,
 }
+
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize, Clone)]
+pub struct InputDatabaseConfig {
+    pub name: String,
+    pub database: Option<String>,
+    #[serde(rename = "type")]
+    pub db_type: DbType,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub port: Option<u16>,
+    pub host: Option<String>,
+    pub generated_id: String,
+    pub path: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize, Clone)]
+pub struct InputDatabasesConfig {
+    pub databases: Vec<InputDatabaseConfig>,
+}
+
 
 pub struct ConfigService {
     ctx: Arc<Context>,
@@ -96,7 +120,7 @@ impl ConfigService {
         file.read_to_string(&mut contents)
             .map_err(|e| format!("Failed to read config file: {}", e))?;
 
-        let config: DatabasesConfig = match extension {
+        let input_config: InputDatabasesConfig = match extension {
             "json" => {
                 serde_json::from_str(&contents).map_err(|e| format!("JSON parsing error: {}", e))?
             }
@@ -106,8 +130,71 @@ impl ConfigService {
             _ => return Err("Unsupported config file format. Use .json or .toml".to_string()),
         };
 
-        info!("Databases : {:?} instances loaded", config.databases.len());
+        fn required<T: Clone>(opt: &Option<T>, db_name: &str, field_name: &str) -> Result<T, String> {
+            match opt {
+                Some(v) => Ok(v.clone()),
+                None => {
+                    let msg = format!("Missing required field '{}' for database '{}'", field_name, db_name);
+                    Err(msg)
+                }
+            }
+        }
 
-        Ok(config)
+        fn optional<T: Clone>(opt: &Option<T>) -> T where T: Default {
+            opt.clone().unwrap_or_default()
+        }
+
+        let mut databases = Vec::with_capacity(input_config.databases.len());
+
+        for db in input_config.databases {
+            if Uuid::parse_str(&db.generated_id).is_err() {
+                return Err(format!("Invalid UUID for database '{}'", db.name));
+            }
+
+            let username = match db.db_type {
+                DbType::Postgresql | DbType::Mysql | DbType::Mariadb => required(&db.username, &db.name, "username")?,
+                _ => optional(&db.username),
+            };
+
+            let password = match db.db_type {
+                DbType::Postgresql | DbType::Mysql | DbType::Mariadb => required(&db.password, &db.name, "password")?,
+                _ => optional(&db.password),
+            };
+
+            let host = match db.db_type {
+                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::MongoDB => required(&db.host, &db.name, "host")?,
+                DbType::Sqlite => optional(&db.host),
+            };
+
+            let port = match db.db_type {
+                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::MongoDB => required(&db.port, &db.name, "port")?,
+                DbType::Sqlite => db.port.unwrap_or(0),
+            };
+
+            let database_name = match db.db_type {
+                DbType::Sqlite => optional(&db.database),
+                _ => required(&db.database, &db.name, "database")?
+            };
+
+            let path_val = match db.db_type {
+                DbType::Sqlite => required(&db.path, &db.name, "path")?,
+                _ => optional(&db.path),
+            };
+
+            databases.push(DatabaseConfig {
+                name: db.name,
+                database: database_name,
+                db_type: db.db_type,
+                username,
+                password,
+                host,
+                port,
+                generated_id: db.generated_id,
+                path: path_val,
+            });
+        }
+
+        info!("Databases: {} instances loaded", databases.len());
+        Ok(DatabasesConfig { databases })
     }
 }

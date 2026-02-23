@@ -39,7 +39,6 @@ impl Database for PostgresDatabase {
         FileLock::acquire(&self.cfg.generated_id, DbOpLock::Backup.as_str()).await?;
         let res = backup::run(self.cfg.clone(), self.format, dir.to_path_buf()).await;
         FileLock::release(&self.cfg.generated_id).await?;
-
         res
     }
 

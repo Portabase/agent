@@ -15,7 +15,7 @@ pub async fn run(
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
         let mongodump = select_mongo_path().join("mongodump");
-        let uri = get_mongo_uri(cfg.clone());
+        let uri = get_mongo_uri(cfg.clone())?;
 
         let output = Command::new(mongodump)
             .arg(format!("--uri={}", uri))

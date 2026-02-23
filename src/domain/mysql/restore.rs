@@ -1,11 +1,10 @@
+use crate::services::config::DatabaseConfig;
+use anyhow::{Context, Result};
 use std::fs::File;
 use std::io::{Read, Write};
-use anyhow::{Context, Result};
-use tracing::{debug, error, info};
 use std::path::PathBuf;
 use std::process::Command;
-
-use crate::services::config::DatabaseConfig;
+use tracing::{debug, error, info};
 
 pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
     let handle = tokio::task::spawn_blocking(move || -> Result<()> {
@@ -55,7 +54,8 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
             .with_context(|| format!("Failed to start mysql restore for {}", cfg.name))?;
 
         let mut stdin = child.stdin.take().context("Failed to open child stdin")?;
-        stdin.write_all(sql_content.as_bytes())
+        stdin
+            .write_all(sql_content.as_bytes())
             .context("Failed to write SQL content to mysql stdin")?;
         stdin.flush()?;
         drop(stdin);
@@ -74,8 +74,7 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
         Ok(())
     });
 
-    handle
-        .await??;
+    handle.await??;
 
     Ok(())
 }

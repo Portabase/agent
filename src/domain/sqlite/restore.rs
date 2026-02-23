@@ -8,19 +8,16 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
     tokio::task::spawn_blocking(move || -> Result<()> {
         debug!("Starting SQLite restore for database {}", cfg.name);
 
-
-        let db_path_str = cfg.path
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Database path not configured"))?;
+        let db_path_str = if cfg.path.is_empty() {
+            anyhow::bail!("Database path not configured");
+        } else {
+            cfg.path.as_str().to_string()
+        };
 
         let db_path = PathBuf::from(db_path_str);
 
-
         if !restore_file.exists() {
-            anyhow::bail!(
-                "Restore file not found: {}",
-                restore_file.display()
-            );
+            anyhow::bail!("Restore file not found: {}", restore_file.display());
         }
 
         if db_path.exists() {
@@ -43,5 +40,5 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
         info!("SQLite restore completed for {}", cfg.name);
         Ok(())
     })
-        .await?
+    .await?
 }

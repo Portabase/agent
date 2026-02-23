@@ -21,7 +21,7 @@ impl MySQLDatabase {
 
     fn build_env(&self) -> HashMap<String, String> {
         let mut envs = std::env::vars().collect::<HashMap<_, _>>();
-        envs.insert("MYSQL_PWD".to_string(), self.cfg.password.clone());
+        envs.insert("MYSQL_PWD".to_string(), self.cfg.password.to_string());
         envs
     }
 }

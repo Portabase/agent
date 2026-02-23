@@ -1,7 +1,7 @@
 use anyhow::Result;
-use tracing::{debug, error, info};
 use std::path::PathBuf;
 use std::process::Command;
+use tracing::{debug, error, info};
 
 use super::connection::{select_pg_path, server_version};
 use super::format::PostgresDumpFormat;

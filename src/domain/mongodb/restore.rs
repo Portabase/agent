@@ -10,7 +10,7 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
         debug!("Starting MongoDB restore for database {}", cfg.name);
 
         let mongorestore = select_mongo_path().join("mongorestore");
-        let uri = get_mongo_uri(cfg.clone());
+        let uri = get_mongo_uri(cfg.clone())?;
 
         let output = Command::new(mongorestore)
             .arg(format!("--uri={}", uri))
