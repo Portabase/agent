@@ -1,0 +1,23 @@
+reviews:
+  auto_review:
+    enabled: true                  
+    ignore_usernames: ["dependabot[bot]"] 
+    labels: ["!wip", "!draft"]     
+  auto_apply_labels: true        
+  suggested_reviewers: true     
+  auto_assign_reviewers: true   
+
+issue_enrichment:
+  auto_enrich:
+    enabled: true                  
+  labeling:
+    auto_apply_labels: true        
+    labeling_instructions:
+      - label: bug
+        instructions: "Error, crash, or incorrect behavior reports"
+      - label: enhancement
+        instructions: "Feature requests or improvements"
+      - label: documentation
+        instructions: "Docs updates or missing documentation"
+      - label: good first issue
+        instructions: "Beginner-friendly tasks suitable for new contributors"
