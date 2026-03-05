@@ -3,14 +3,13 @@ reviews:
     enabled: true                  
     ignore_usernames: ["dependabot[bot]"] 
     labels: ["!wip", "!draft"]     
-    auto_apply_labels: true        
-    suggested_reviewers: true     
-    auto_assign_reviewers: true   
+  auto_apply_labels: true        
+  suggested_reviewers: true     
+  auto_assign_reviewers: true   
 
 issue_enrichment:
   auto_enrich:
     enabled: true                  
-    rename_title: true            
   labeling:
     auto_apply_labels: true        
     labeling_instructions:
