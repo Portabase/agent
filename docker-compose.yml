@@ -12,13 +12,13 @@ services:
       - cargo-registry:/usr/local/cargo/registry
       - cargo-git:/usr/local/cargo/git
       #      - cargo-target:/app/target
-      - sqlite-data:/sqlite-data/workspace/data
-      - ./scripts/sqlite/test-db:/sqlite-data-2/workspace/data
+#      - sqlite-data:/sqlite-data/workspace/data
+#      - ./scripts/sqlite/test-db:/sqlite-data-2/workspace/data
     environment:
       APP_ENV: development
       LOG: debug
       TZ: "Europe/Paris"
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiZjg4Y2E0MDMtNDgwOS00NGM4LTlkZjItY2VkNWYwYzhkNTM2IiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiNjI1MDQzY2YtN2MwMC00M2M4LWJjYzktZDM1MTk5ODk2ZGNkIiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
       #POOLING: 1
       #DATABASES_CONFIG_FILE: "config.toml"
     extra_hosts:
@@ -26,19 +26,19 @@ services:
     networks:
       - portabase
 
-#  db-postgres:
-#    container_name: db-postgres
-#    image: postgres:17-alpine
-#    ports:
-#      - "5436:5432"
-#    volumes:
-#      - postgres-data:/var/lib/postgresql/data
-#    environment:
-#      - POSTGRES_DB=devdb
-#      - POSTGRES_USER=devuser
-#      - POSTGRES_PASSWORD=changeme
-#    networks:
-#      - portabase
+  db-postgres:
+    container_name: db-postgres
+    image: postgres:17-alpine
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=devdb
+      - POSTGRES_USER=devuser
+      - POSTGRES_PASSWORD=changeme
+    networks:
+      - portabase
 #
 #  db-mariadb:
 #    container_name: db-mariadb
@@ -93,15 +93,15 @@ services:
 #    networks:
 #      - portabase
 
-  sqlite:
-    container_name: db-sqlite
-    image: keinos/sqlite3
-    volumes:
-      - sqlite-data:/workspace/data
-    working_dir: /workspace
-    command: tail -f /dev/null
-    stdin_open: true
-    tty: true
+#  sqlite:
+#    container_name: db-sqlite
+#    image: keinos/sqlite3
+#    volumes:
+#      - sqlite-data:/workspace/data
+#    working_dir: /workspace
+#    command: tail -f /dev/null
+#    stdin_open: true
+#    tty: true
 
 
 volumes:
@@ -109,11 +109,11 @@ volumes:
   cargo-git:
   #  cargo-target:
 
-#  postgres-data:
+  postgres-data:
 #  mariadb-data:
 #  mongodb-data:
 #  mongodb-data-auth:
-  sqlite-data:
+#  sqlite-data:
 
 networks:
   portabase:
