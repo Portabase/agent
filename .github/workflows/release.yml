@@ -55,7 +55,10 @@ jobs:
           node-version: "lts/*"
 
       - name: Install release-it globally
-        run: npm install -g release-it
+        run: |
+          npm install -g release-it
+          npm install -g @release-it/conventional-changelog
+          npm install -g @release-it/bumper
 
       - run: |
           git config --global user.name 'github-actions[bot]'
