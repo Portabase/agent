@@ -50,7 +50,6 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           ref: main
 
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "lts/*"
