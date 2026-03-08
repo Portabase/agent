@@ -12,6 +12,9 @@
     "tagName": "${version}",
     "push": true
   },
+  "hooks": {
+    "before:bump": "cargo set-version ${version}"
+  },
   "plugins": {
     "@release-it/conventional-changelog": {
       "preset": {
@@ -48,11 +51,6 @@
     },
     "@release-it/bumper": {
       "out": [
-        {
-          "file": "Cargo.toml",
-          "path": "package.version",
-          "type": "toml"
-        },
         {
           "file": "CITATION.cff",
           "path": "version",
