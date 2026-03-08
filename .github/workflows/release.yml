@@ -50,6 +50,12 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           ref: main
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-edit
+        run: cargo install cargo-edit
+
       - uses: actions/setup-node@v4
         with:
           node-version: "lts/*"
