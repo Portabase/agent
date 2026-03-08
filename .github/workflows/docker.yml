@@ -21,7 +21,7 @@ on:
       dockerfile:
         required: false
         type: string
-        default: "./docker/dockerfile/Dockerfile"
+        default: "./docker/Dockerfile"
     secrets:
       DOCKER_USERNAME:
         required: true
