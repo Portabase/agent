@@ -64,42 +64,23 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
-#      - name: Run release-it
-#        id: release_step
-#        run: |
-#          git pull origin main
-#
-#          VERSION=$(release-it --ci --release-version)
-#          echo $VERSION
-#          echo "version=$VERSION" >> $GITHUB_OUTPUT
-#
-#          OUTPUT=$(release-it --ci)
-#          echo "$OUTPUT"
-#
-#          DRAFT_TAG=$(echo "$OUTPUT" | grep -oE 'untagged-[a-z0-9]+')
-#          echo $DRAFT_TAG
-#          echo "draft_tag=$DRAFT_TAG" >> $GITHUB_OUTPUT
-#        env:
-#          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
       - name: Run release-it
         id: release_step
         run: |
           git pull origin main
-          
-          # Run release-it in CI mode (bump version, commit, tag, changelog, GitHub release)
+
+          VERSION=$(release-it --ci --release-version)
+          echo $VERSION
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
           OUTPUT=$(release-it --ci)
           echo "$OUTPUT"
-          
-          # Extract the new version
-          VERSION=$(echo "$OUTPUT" | grep -oP '(?<=Bumping version: ).*')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          
-          # Extract draft tag if any
+
           DRAFT_TAG=$(echo "$OUTPUT" | grep -oE 'untagged-[a-z0-9]+')
+          echo $DRAFT_TAG
           echo "draft_tag=$DRAFT_TAG" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-
 
   publish-docker:
     needs: create-release
