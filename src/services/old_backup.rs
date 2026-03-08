@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+mod dispatcher;
+
 use crate::core::context::Context as CoreContext;
 use crate::domain::factory::DatabaseFactory;
 use crate::services::api::models::agent::status::DatabaseStorage;

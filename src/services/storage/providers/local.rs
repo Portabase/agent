@@ -1,6 +1,5 @@
 use crate::core::context::Context;
 use crate::services::api::models::agent::status::DatabaseStorage;
-use crate::services::backup::{BackupResult, UploadResult};
 use crate::services::storage::StorageProvider;
 use crate::utils::common::BackupMethod;
 use crate::utils::file::{full_file_name, full_file_path};
@@ -11,6 +10,7 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use std::sync::Arc;
 use tokio::fs;
 use tracing::error;
+use crate::services::backup::models::{BackupResult, UploadResult};
 
 pub struct LocalProvider;
 
