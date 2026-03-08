@@ -2,7 +2,6 @@ mod models;
 
 use crate::core::context::Context;
 use crate::services::api::models::agent::status::DatabaseStorage;
-use crate::services::backup::{BackupResult, UploadResult};
 use crate::services::storage::StorageProvider;
 use crate::services::storage::providers::s3::models::S3ProviderConfig;
 use crate::utils::common::BackupMethod;
@@ -19,6 +18,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::fs;
 use tracing::{error, info};
+use crate::services::backup::models::{BackupResult, UploadResult};
 
 pub struct S3Provider {}
 

@@ -60,7 +60,7 @@ SELECT
     )
 FROM users u
          JOIN generate_series(1, 30) AS p(post_no)
-              ON u.id <= 300000;
+              ON u.id <= 500000;
 
 -- ============================================================
 -- OPTIONAL: FORCE DISK MATERIALIZATION
