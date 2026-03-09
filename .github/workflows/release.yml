@@ -100,11 +100,20 @@ jobs:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
+  publish-helm:
+    needs: create-release
+    if: ${{ needs.create-release.result == 'success' }}
+    uses: ./.github/workflows/helm.yml
+    with:
+      version: ${{ needs.create-release.outputs.version }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   finalize-release:
     needs:
       - create-release
       - publish-docker
+      - publish-helm
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.publish_release_step.outputs.release_tag }}
@@ -126,6 +135,7 @@ jobs:
   notify-discord:
     needs:
       - publish-docker
+      - publish-helm
       - create-release
       - finalize-release
     uses: ./.github/workflows/discord.yml

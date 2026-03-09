@@ -1,0 +1,29 @@
+apiVersion: v2
+name: portabase-agent
+description: Helm chart for Portabase Agent
+type: application
+version: 0.0.0
+appVersion: "latest"
+keywords:
+  - postgresql
+  - mariadb
+  - mongodb
+  - mysql
+  - sqlite
+  - backup
+  - database
+  - restore
+  - agent
+home: https://github.com/Portabase/agent
+
+sources:
+  - https://github.com/Portabase/agent
+  - https://github.com/Portabase/agent/tree/main/helm
+
+maintainers:
+  - name: Charles Gauthereau
+    url: https://github.com/RambokDev
+  - name: Killian Larcher
+    url: https://github.com/KillianLarcher
+
+icon: https://raw.githubusercontent.com/Portabase/agent/main/.github/assets/logo.png

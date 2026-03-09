@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: portabase-agent-config
+data:
+  config.json: |
+{{ .Values.volume.configFile.content | nindent 4 }}
