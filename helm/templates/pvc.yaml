@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: portabase-agent-data
+spec:
+  accessModes:
+    - {{ .Values.volume.data.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.volume.data.size }}
+  {{- if .Values.volume.data.storageClassName }}
+  storageClassName: {{ .Values.volume.data.storageClassName }}
+  {{- end }}

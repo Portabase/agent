@@ -1,0 +1,53 @@
+replicaCount: 1
+
+image:
+  repository: portabase/agent
+  tag: latest
+  pullPolicy: IfNotPresent
+
+env:
+  EDGE_KEY: "your_edge_key_here"
+  TZ: "UTC"
+  POLLING: "5"
+  APP_ENV: "production"
+  DATA_PATH: "/data"
+  LOG: "info"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+volume:
+  configFile:
+    enabled: true
+    hostPath: ""         # Use host file if set, otherwise use `content`
+    content: |           # JSON content for config.json if no hostPath
+      {
+        "databases": [
+          {
+            "name": "my-site-prod (readable name)",
+            "database": "devdb",
+            "type": "postgresql",
+            "host": "localhost",
+            "port": 5432,
+            "username": "admin_prod",
+            "password": "super_secure_password",
+            "generated_id": "550e8400-e29b-41d4-a716-446655440000"
+          },
+        ]
+      }
+  data:
+    enabled: true
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+    size: 1Gi
+
+network:
+  hostAliases:
+    - ip: "127.0.0.1"
+      hostnames:
+        - "localhost"
