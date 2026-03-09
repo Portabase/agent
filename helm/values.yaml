@@ -10,7 +10,6 @@ env:
   TZ: "UTC"
   POLLING: "5"
   APP_ENV: "production"
-  DATA_PATH: "/data"
   LOG: "info"
 
 resources:
@@ -37,14 +36,10 @@ volume:
             "username": "admin_prod",
             "password": "super_secure_password",
             "generated_id": "550e8400-e29b-41d4-a716-446655440000"
-          },
+          }
         ]
       }
-  data:
-    enabled: true
-    storageClassName: ""
-    accessMode: ReadWriteOnce
-    size: 1Gi
+
 
 network:
   hostAliases:

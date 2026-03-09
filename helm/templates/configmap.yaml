@@ -4,4 +4,4 @@ metadata:
   name: portabase-agent-config
 data:
   config.json: |
-    {{ .Values.volume.configFile.content | indent 4 }}
+{{ .Values.volume.configFile.content | nindent 4 }}

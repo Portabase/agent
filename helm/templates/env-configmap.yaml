@@ -7,5 +7,4 @@ data:
   TZ: {{ .Values.env.TZ | quote }}
   POLLING: {{ .Values.env.POLLING | quote }}
   APP_ENV: {{ .Values.env.APP_ENV | quote }}
-  DATA_PATH: {{ .Values.env.DATA_PATH | quote }}
   LOG: {{ .Values.env.LOG | quote }}

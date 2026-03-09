@@ -44,10 +44,6 @@ spec:
               # uses ConfigMap content
               {{- end }}
             {{- end }}
-            {{- if .Values.volume.data.enabled }}
-            - name: agent-data
-              mountPath: /data
-            {{- end }}
       volumes:
         {{- if .Values.volume.configFile.enabled }}
           {{- if .Values.volume.configFile.hostPath }}
@@ -63,9 +59,4 @@ spec:
               - key: config.json
                 path: config.json
           {{- end }}
-        {{- end }}
-        {{- if .Values.volume.data.enabled }}
-        - name: agent-data
-          persistentVolumeClaim:
-            claimName: portabase-agent-data
         {{- end }}
