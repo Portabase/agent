@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portabase-agent
+  labels:
+    app: portabase-agent
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: portabase-agent
+  template:
+    metadata:
+      labels:
+        app: portabase-agent
+    spec:
+      hostAliases:
+      {{- range .Values.network.hostAliases }}
+        - ip: {{ .ip }}
+          hostnames:
+        {{- range .hostnames }}
+            - {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: portabase-agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: portabase-agent-env
+          volumeMounts:
+            {{- if .Values.volume.configFile.enabled }}
+              {{- if .Values.volume.configFile.hostPath }}
+            - name: config
+              mountPath: /config/config.json
+              subPath: config.json
+              readOnly: true
+              # uses hostPath
+              {{- else }}
+            - name: config
+              mountPath: /config/config.json
+              subPath: config.json
+              # uses ConfigMap content
+              {{- end }}
+            {{- end }}
+      volumes:
+        {{- if .Values.volume.configFile.enabled }}
+          {{- if .Values.volume.configFile.hostPath }}
+        - name: config
+          hostPath:
+            path: {{ .Values.volume.configFile.hostPath }}
+            type: File
+          {{- else }}
+        - name: config
+          configMap:
+            name: portabase-agent-config
+            items:
+              - key: config.json
+                path: config.json
+          {{- end }}
+        {{- end }}
