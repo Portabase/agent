@@ -8,7 +8,8 @@ where
     let value = Value::deserialize(deserializer)?;
     Ok(to_snake_case(value))
 }
-fn to_snake_case(value: Value) -> Value {
+
+pub fn to_snake_case(value: Value) -> Value {
     match value {
         Value::Table(table) => Value::Table(
             table
@@ -16,14 +17,12 @@ fn to_snake_case(value: Value) -> Value {
                 .map(|(k, v)| (camel_to_snake(&k), to_snake_case(v)))
                 .collect(),
         ),
-        Value::Array(arr) => {
-            Value::Array(arr.into_iter().map(to_snake_case).collect())
-        }
+        Value::Array(arr) => Value::Array(arr.into_iter().map(to_snake_case).collect()),
         other => other,
     }
 }
 
-fn camel_to_snake(s: &str) -> String {
+pub fn camel_to_snake(s: &str) -> String {
     let mut out = String::new();
     for (i, c) in s.chars().enumerate() {
         if c.is_uppercase() {

@@ -1,7 +1,11 @@
 include .env
 export $(shell sed 's/=.*//' .env)
+CLUSTER_SCRIPT=docker/entrypoints/app-dev-entrypoint.sh
 
 .PHONY: seed-mongo seed-mysql seed-postgres
+
+up:
+	@bash $(CLUSTER_SCRIPT)
 
 seed-mongo:
 	@echo "Seeding MongoDB..."

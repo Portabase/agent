@@ -90,7 +90,6 @@ pub async fn decompress_large_tar_gz(
         extracted_files.push(full_path);
     }
 
-    // remove_file(tar_gz_path).await?;
     info!("Decompressed {:?} into {:?}", tar_gz_path, output_dir);
 
     Ok(extracted_files)

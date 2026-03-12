@@ -120,4 +120,3 @@ networks:
     name: portabase_network
     external: true
 
-# docker network create portabase_network

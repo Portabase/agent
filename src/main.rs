@@ -4,6 +4,8 @@ mod services;
 mod settings;
 mod tasks;
 mod utils;
+#[cfg(test)]
+mod tests;
 
 use crate::tasks::ping::ping_server;
 use crate::utils::locks::FileLock;
