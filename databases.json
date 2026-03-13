@@ -49,6 +49,22 @@
       "type": "sqlite",
       "path": "/sqlite-data-2/workspace/data/app.db",
       "generated_id": "16678179-ff7e-4c97-8c83-0adeff214681"
+    },
+    {
+      "name": "Test database 8 - Redis",
+      "type": "redis",
+      "port": 6379,
+      "host": "db-redis",
+      "generated_id": "16678166-ff7e-4c97-8c83-0adeff214681"
+    },
+    {
+      "name": "Test database 9 - Redis Auth",
+      "type": "redis",
+      "password": "m6o2L0Ukw3Og5RJUKh",
+      "port": 6379,
+      "username": "default",
+      "host": "db-redis-auth",
+      "generated_id": "16678160-ff7e-4c97-8c83-0adeff214681"
     }
   ]
 }

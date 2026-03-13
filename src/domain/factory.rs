@@ -6,6 +6,7 @@ use crate::services::config::{DatabaseConfig, DbType};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use crate::domain::redis::database::RedisDatabase;
 use crate::domain::sqlite::database::SqliteDatabase;
 
 #[async_trait::async_trait]
@@ -29,6 +30,7 @@ impl DatabaseFactory {
             DbType::Mariadb => Arc::new(MySQLDatabase::new(cfg)),
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
             DbType::Sqlite => Arc::new(SqliteDatabase::new(cfg)),
+            DbType::Redis => Arc::new(RedisDatabase::new(cfg)),
         }
     }
 
@@ -42,6 +44,7 @@ impl DatabaseFactory {
             DbType::Mariadb => Arc::new(MySQLDatabase::new(cfg)),
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
             DbType::Sqlite => Arc::new(SqliteDatabase::new(cfg)),
+            DbType::Redis => Arc::new(RedisDatabase::new(cfg)),
         }
     }
 }

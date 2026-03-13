@@ -3,4 +3,5 @@ pub mod postgres;
 pub mod mysql;
 mod mongodb;
 mod sqlite;
+mod redis;
 
