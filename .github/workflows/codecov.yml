@@ -20,6 +20,7 @@ jobs:
         with:
           toolchain: stable
           override: true
+          components: llvm-tools-preview
 
       - name: Install grcov
         run: cargo install grcov
@@ -51,4 +52,4 @@ jobs:
           verbose: true
           fail_ci_if_error: true
         env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_ORG_TOKEN }}
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
