@@ -2,9 +2,9 @@ name: Codecov Rust
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,26 +12,43 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
+
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: stable
           override: true
+
+      - name: Install grcov
+        run: cargo install grcov
+
       - name: Build
         run: cargo build --verbose
+
       - name: Run tests
+        env:
+          CARGO_INCREMENTAL: 0
+          RUSTFLAGS: "-C instrument-coverage"
+          LLVM_PROFILE_FILE: "cargo-test-%p-%m.profraw"
         run: cargo test --verbose
-        env:
-          CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-      - name: rust-grcov
-        uses: actions-rs/grcov@v0.1
-      - name: Codecov
+
+      - name: Generate coverage
+        run: |
+          grcov . \
+            --binary-path ./target/debug/ \
+            -s . \
+            -t lcov \
+            --branch \
+            --ignore-not-existing \
+            -o lcov.info
+
+      - name: Upload to Codecov
         uses: codecov/codecov-action@v5
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_ORG_TOKEN }}
         with:
+          files: lcov.info
           verbose: true
           fail_ci_if_error: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_ORG_TOKEN }}
