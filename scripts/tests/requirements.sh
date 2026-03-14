@@ -1,29 +1,57 @@
 #!/usr/bin/env bash
-
 set -e
 
-echo "Detecting OS..."
-
+POSTGRES_BASE="/usr/local/postgresql"
+echo "Detecting OS and architecture..."
 OS_TYPE="$(uname -s)"
+ARCH="$(uname -m)"
+
+install_pg_binaries() {
+    echo "Installing PostgreSQL binaries for versions 12-18..."
+
+    for v in 12 13 14 15 16 17 18; do
+        TARGET_DIR="$POSTGRES_BASE/$v/bin"
+        sudo mkdir -p "$TARGET_DIR"
+
+        if [[ "$OS_TYPE" == "Linux" ]]; then
+            if [[ "$ARCH" == "x86_64" ]]; then
+                cp -r ../../assets/tools/amd64/postgresql/postgresql-$v/bin/* "$TARGET_DIR/"
+            elif [[ "$ARCH" == "aarch64" ]]; then
+                cp -r ../../assets/tools/arm64/postgresql/postgresql-$v/bin/* "$TARGET_DIR/"
+            fi
+
+        elif [[ "$OS_TYPE" == "Darwin" ]]; then
+            PG_SRC="$(brew --prefix postgresql@$v)/bin" 2>/dev/null || true
+
+            if [[ ! -d "$PG_SRC" ]]; then
+                echo "PostgreSQL $v not installed via Homebrew. Trying to install..."
+                if ! brew install postgresql@$v; then
+                    echo "PostgreSQL $v not available, skipping..."
+                    continue  # passe à la version suivante
+                fi
+                PG_SRC="$(brew --prefix postgresql@$v)/bin"
+            fi
+
+            echo "Copying PostgreSQL $v binaries from $PG_SRC to $TARGET_DIR"
+            sudo cp -r "$PG_SRC"/* "$TARGET_DIR/"
+
+        fi
+
+        find "$TARGET_DIR" -type f -exec chmod +x {} +
+    done
+
+    echo "PostgreSQL binaries installed under $POSTGRES_BASE"
+}
 
 if [[ "$OS_TYPE" == "Linux" ]]; then
     if command -v apt >/dev/null 2>&1; then
-        echo "Linux detected with apt. Installing tools..."
-
-        echo "Adding PostgreSQL APT repository..."
+        echo "Linux detected with apt. Installing prerequisites..."
         sudo apt update
-        sudo apt install -y wget gnupg lsb-release
-        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-        echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+        sudo apt install -y wget gnupg lsb-release redis-tools
 
-        sudo apt update
-
-        echo "Installing redis-tools..."
-        sudo apt install -y redis-tools
-
-        echo "Installing PostgreSQL client v17..."
-        sudo apt install -y postgresql-client-17
-
+        if [[ -d "../../assets/tools" ]]; then
+            install_pg_binaries
+        fi
     else
         echo "Unsupported Linux distribution. Only apt-based distros are supported."
         exit 1
@@ -31,15 +59,13 @@ if [[ "$OS_TYPE" == "Linux" ]]; then
 
 elif [[ "$OS_TYPE" == "Darwin" ]]; then
     if command -v brew >/dev/null 2>&1; then
-        echo "macOS detected. Installing tools via Homebrew..."
-
-        echo "Installing redis..."
+        echo "macOS detected. Installing prerequisites..."
         brew install redis
 
-        echo "Installing PostgreSQL client..."
-        brew install postgresql@18
-        brew link --force postgresql@18
+        sudo mkdir -p "$POSTGRES_BASE"
+        sudo chown -R "$(whoami)" "$POSTGRES_BASE"
 
+        install_pg_binaries
     else
         echo "Homebrew not found. Please install Homebrew first: https://brew.sh/"
         exit 1

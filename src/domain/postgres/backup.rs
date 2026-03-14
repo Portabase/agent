@@ -27,12 +27,8 @@ pub async fn run(
             }
         };
 
-        let pg_dump = if is_test == Option::from(false) {
-            select_pg_path(&version).join("pg_dump")
-        } else {
-            "pg_dump".to_string().parse()?
-        };
-          
+        let pg_dump = select_pg_path(&version, is_test).join("pg_dump");
+        
         debug!("Using pg_dump at {:?}", pg_dump);
 
         match format {

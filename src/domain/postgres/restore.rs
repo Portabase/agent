@@ -27,11 +27,7 @@ pub async fn run(
             }
         };
 
-        let pg_restore = if is_test.unwrap_or(false) {
-            "pg_restore".to_string().parse()?
-        } else {
-            select_pg_path(&version).join("pg_restore")
-        };
+        let pg_restore = select_pg_path(&version, is_test).join("pg_restore");
 
         debug!("Using pg_restore at {:?}", pg_restore);
 
