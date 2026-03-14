@@ -15,9 +15,20 @@ install_pg_binaries() {
 
         if [[ "$OS_TYPE" == "Linux" ]]; then
             if [[ "$ARCH" == "x86_64" ]]; then
-                cp -r ../../assets/tools/amd64/postgresql/postgresql-$v/bin/* "$TARGET_DIR/"
+                SRC_DIR="../../assets/tools/amd64/postgresql/postgresql-$v/bin"
             elif [[ "$ARCH" == "aarch64" ]]; then
-                cp -r ../../assets/tools/arm64/postgresql/postgresql-$v/bin/* "$TARGET_DIR/"
+                SRC_DIR="../../assets/tools/arm64/postgresql/postgresql-$v/bin"
+            else
+                echo "Unsupported architecture: $ARCH"
+                continue
+            fi
+
+            if [[ -d "$SRC_DIR" ]]; then
+                echo "Copying PostgreSQL $v binaries from $SRC_DIR to $TARGET_DIR"
+                sudo cp -r "$SRC_DIR"/* "$TARGET_DIR/"
+            else
+                echo "Binaries for PostgreSQL $v not found for Linux, skipping..."
+                continue
             fi
 
         elif [[ "$OS_TYPE" == "Darwin" ]]; then
@@ -27,17 +38,17 @@ install_pg_binaries() {
                 echo "PostgreSQL $v not installed via Homebrew. Trying to install..."
                 if ! brew install postgresql@$v; then
                     echo "PostgreSQL $v not available, skipping..."
-                    continue  # passe à la version suivante
+                    continue
                 fi
                 PG_SRC="$(brew --prefix postgresql@$v)/bin"
             fi
 
             echo "Copying PostgreSQL $v binaries from $PG_SRC to $TARGET_DIR"
             sudo cp -r "$PG_SRC"/* "$TARGET_DIR/"
-
         fi
 
-        find "$TARGET_DIR" -type f -exec chmod +x {} +
+        sudo chown -R "$(whoami)" "$TARGET_DIR"
+        chmod +x "$TARGET_DIR"/*
     done
 
     echo "PostgreSQL binaries installed under $POSTGRES_BASE"
@@ -48,10 +59,7 @@ if [[ "$OS_TYPE" == "Linux" ]]; then
         echo "Linux detected with apt. Installing prerequisites..."
         sudo apt update
         sudo apt install -y wget gnupg lsb-release redis-tools
-
-        if [[ -d "../../assets/tools" ]]; then
-            install_pg_binaries
-        fi
+        install_pg_binaries
     else
         echo "Unsupported Linux distribution. Only apt-based distros are supported."
         exit 1
