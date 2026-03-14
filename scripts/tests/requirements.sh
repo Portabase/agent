@@ -21,8 +21,8 @@ if [[ "$OS_TYPE" == "Linux" ]]; then
         echo "Installing redis-tools..."
         sudo apt install -y redis-tools
 
-        echo "Installing PostgreSQL client v18..."
-        sudo apt install -y postgresql-client-18
+        echo "Installing PostgreSQL client v17..."
+        sudo apt install -y postgresql-client-17
 
     else
         echo "Unsupported Linux distribution. Only apt-based distros are supported."
