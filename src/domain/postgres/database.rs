@@ -2,11 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 
-use super::{
-    backup,
-    format::PostgresDumpFormat,
-    ping, restore,
-};
+use super::{backup, format::PostgresDumpFormat, ping, restore};
 use crate::domain::factory::Database;
 use crate::services::config::DatabaseConfig;
 use crate::utils::locks::{DbOpLock, FileLock};
@@ -35,17 +31,27 @@ impl Database for PostgresDatabase {
         ping::run(self.cfg.clone()).await
     }
 
-    async fn backup(&self, dir: &Path) -> Result<PathBuf> {
-        FileLock::acquire(&self.cfg.generated_id, DbOpLock::Backup.as_str()).await?;
-        let res = backup::run(self.cfg.clone(), self.format, dir.to_path_buf()).await;
-        FileLock::release(&self.cfg.generated_id).await?;
+    async fn backup(&self, dir: &Path, is_test: Option<bool>) -> Result<PathBuf> {
+        let test_mode = is_test.unwrap_or(false);
+        if !test_mode {
+            FileLock::acquire(&self.cfg.generated_id, DbOpLock::Backup.as_str()).await?;
+        }
+        let res = backup::run(self.cfg.clone(), self.format, dir.to_path_buf(), is_test).await;
+        if !test_mode {
+            FileLock::release(&self.cfg.generated_id).await?;
+        }
         res
     }
 
-    async fn restore(&self, file: &Path) -> Result<()> {
-        FileLock::acquire(&self.cfg.generated_id, DbOpLock::Restore.as_str()).await?;
-        let res = restore::run(self.cfg.clone(), self.format, file.to_path_buf()).await;
-        FileLock::release(&self.cfg.generated_id).await?;
+    async fn restore(&self, file: &Path, is_test: Option<bool>) -> Result<()> {
+        let test_mode = is_test.unwrap_or(false);
+        if !test_mode {
+            FileLock::acquire(&self.cfg.generated_id, DbOpLock::Restore.as_str()).await?;
+        }
+        let res = restore::run(self.cfg.clone(), self.format, file.to_path_buf(), is_test).await;
+        if !test_mode {
+            FileLock::release(&self.cfg.generated_id).await?;
+        }
         res
     }
 }

@@ -31,7 +31,7 @@ impl RestoreService {
             });
         }
 
-        match db.restore(&backup_file).await {
+        match db.restore(&backup_file, Some(false)).await {
 
             Ok(_) => Ok(RestoreResult {
                 generated_id,

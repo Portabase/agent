@@ -40,7 +40,7 @@ impl BackupService {
             });
         }
 
-        match db.backup(tmp_path).await {
+        match db.backup(tmp_path, Some(false)).await {
 
             Ok(file) => Ok(BackupResult {
                 generated_id,

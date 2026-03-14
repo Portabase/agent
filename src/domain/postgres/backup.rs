@@ -11,6 +11,7 @@ pub async fn run(
     cfg: DatabaseConfig,
     format: PostgresDumpFormat,
     backup_dir: PathBuf,
+    is_test: Option<bool>
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
         debug!("Starting backup for database {}", cfg.name);
@@ -26,7 +27,12 @@ pub async fn run(
             }
         };
 
-        let pg_dump = select_pg_path(&version).join("pg_dump");
+        let pg_dump = if is_test == Option::from(false) {
+            select_pg_path(&version).join("pg_dump")
+        } else {
+            "pg_dump".to_string().parse()?
+        };
+          
         debug!("Using pg_dump at {:?}", pg_dump);
 
         match format {
