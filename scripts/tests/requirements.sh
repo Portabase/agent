@@ -15,9 +15,9 @@ install_pg_binaries() {
 
         if [[ "$OS_TYPE" == "Linux" ]]; then
             if [[ "$ARCH" == "x86_64" ]]; then
-                SRC_DIR="../../assets/tools/amd64/postgresql/postgresql-$v/bin"
+                SRC_DIR="./assets/tools/amd64/postgresql/postgresql-$v/bin"
             elif [[ "$ARCH" == "aarch64" ]]; then
-                SRC_DIR="../../assets/tools/arm64/postgresql/postgresql-$v/bin"
+                SRC_DIR="./assets/tools/arm64/postgresql/postgresql-$v/bin"
             else
                 echo "Unsupported architecture: $ARCH"
                 continue
