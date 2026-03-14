@@ -25,6 +25,9 @@ jobs:
       - name: Install grcov
         run: cargo install grcov
 
+      - name: Install test requirements
+        run: bash script/tests/requirements.sh
+
       - name: Build
         run: cargo build --verbose
 
