@@ -1,26 +1,26 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 
-use super::{backup, ping, restore};
 use crate::domain::factory::Database;
+use crate::domain::redis::{backup, ping};
 use crate::services::config::DatabaseConfig;
 use crate::utils::locks::{DbOpLock, FileLock};
 
-pub struct SqliteDatabase {
+pub struct RedisDatabase {
     cfg: DatabaseConfig,
 }
 
-impl SqliteDatabase {
+impl RedisDatabase {
     pub fn new(cfg: DatabaseConfig) -> Self {
         Self { cfg }
     }
 }
 
 #[async_trait]
-impl Database for SqliteDatabase {
+impl Database for RedisDatabase {
     fn file_extension(&self) -> &'static str {
-        ".backup"
+        ".rdb"
     }
 
     async fn ping(&self) -> Result<bool> {
@@ -38,15 +38,8 @@ impl Database for SqliteDatabase {
         }
         res
     }
-    async fn restore(&self, file: &Path, is_test: Option<bool>) -> Result<()> {
-        let test_mode = is_test.unwrap_or(false);
-        if !test_mode {
-            FileLock::acquire(&self.cfg.generated_id, DbOpLock::Restore.as_str()).await?;
-        }
-        let res = restore::run(self.cfg.clone(), file.to_path_buf()).await;
-        if !test_mode {
-            FileLock::release(&self.cfg.generated_id).await?;
-        }
-        res
+
+    async fn restore(&self, _file: &Path, _is_test: Option<bool>) -> Result<()> {
+        bail!("Restore not supported for Redis databases")
     }
 }

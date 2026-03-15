@@ -43,9 +43,10 @@ impl Agent {
         let ping_result = self.status_service.ping(&config.databases).await?;
 
         for db in ping_result.databases.iter() {
+            let database = config.databases.iter().find(|cfg_db|cfg_db.generated_id == db.generated_id).unwrap();
             info!(
-                "Generated Id: {} | backup action: {} | restore action: {}",
-                db.generated_id, db.data.backup.action, db.data.restore.action
+                "Generated Id: {} | backup action: {} | restore action: {} | Database Name: {}",
+                 db.generated_id, db.data.backup.action, db.data.restore.action, database.name,
             );
             let _ = self.cron_service.sync(db).await;
 

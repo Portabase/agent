@@ -19,6 +19,7 @@ pub enum DbType {
     Postgresql,
     MongoDB,
     Sqlite,
+    Redis
     // Add other DB types if needed
 }
 
@@ -30,6 +31,7 @@ impl DbType {
             DbType::Postgresql => "postgresql",
             DbType::MongoDB => "mongodb",
             DbType::Sqlite => "sqlite",
+            DbType::Redis => "redis",
         }
     }
 }
@@ -162,17 +164,17 @@ impl ConfigService {
             };
 
             let host = match db.db_type {
-                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::MongoDB => required(&db.host, &db.name, "host")?,
+                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::MongoDB | DbType::Redis => required(&db.host, &db.name, "host")?,
                 DbType::Sqlite => optional(&db.host),
             };
 
             let port = match db.db_type {
-                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::MongoDB => required(&db.port, &db.name, "port")?,
+                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::MongoDB | DbType::Redis => required(&db.port, &db.name, "port")?,
                 DbType::Sqlite => db.port.unwrap_or(0),
             };
 
             let database_name = match db.db_type {
-                DbType::Sqlite => optional(&db.database),
+                DbType::Sqlite | DbType::Redis => optional(&db.database),
                 _ => required(&db.database, &db.name, "database")?
             };
 

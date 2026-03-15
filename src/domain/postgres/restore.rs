@@ -11,6 +11,7 @@ pub async fn run(
     cfg: DatabaseConfig,
     format: PostgresDumpFormat,
     restore_file: PathBuf,
+    is_test: Option<bool>,
 ) -> Result<()> {
     tokio::task::spawn_blocking(move || -> Result<()> {
         debug!("Starting restore for database {}", cfg.name);
@@ -26,7 +27,8 @@ pub async fn run(
             }
         };
 
-        let pg_restore = select_pg_path(&version).join("pg_restore");
+        let pg_restore = select_pg_path(&version, is_test).join("pg_restore");
+
         debug!("Using pg_restore at {:?}", pg_restore);
 
         if let Err(e) = futures::executor::block_on(terminate_connections(&cfg)) {
