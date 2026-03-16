@@ -122,8 +122,35 @@ services:
     volumes:
       - redis-data-auth:/data
     environment:
-      - REDIS_PASSWORD=m6o2L0Ukw3Og5RJUKh
-    command: [ "redis-server", "--requirepass", "m6o2L0Ukw3Og5RJUKh", "--appendonly", "yes" ]
+      - REDIS_PASSWORD=supersecurepassword
+    command: [ "redis-server", "--requirepass", "supersecurepassword", "--appendonly", "yes" ]
+    networks:
+      - portabase
+
+  db-valkey:
+    image: valkey/valkey
+    container_name: db-valkey
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+      - VALKEY_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+    ports:
+      - '6381:6379'
+    volumes:
+      - valkey-data:/bitnami/valkey/data
+    networks:
+      - portabase
+
+  db-valkey-auth:
+    image: valkey/valkey
+    container_name: db-valkey-auth
+    command: >
+      --requirepass "supersecurepassword"
+    environment:
+      - VALKEY_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+    ports:
+      - '6382:6379'
+    volumes:
+      - valkey-data-auth:/bitnami/valkey/data
     networks:
       - portabase
 
@@ -131,7 +158,6 @@ volumes:
   cargo-registry:
   cargo-git:
 #  cargo-target:
-
   postgres-data:
   #  mariadb-data:
   #  mongodb-data:
@@ -139,6 +165,8 @@ volumes:
   #  sqlite-data:
   redis-data:
   redis-data-auth:
+  valkey-data:
+  valkey-data-auth:
 
 networks:
   portabase:
