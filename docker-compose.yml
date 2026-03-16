@@ -132,7 +132,6 @@ services:
     container_name: db-valkey
     environment:
       - ALLOW_EMPTY_PASSWORD=yes
-      - VALKEY_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
     ports:
       - '6381:6379'
     volumes:
@@ -145,8 +144,6 @@ services:
     container_name: db-valkey-auth
     command: >
       --requirepass "supersecurepassword"
-    environment:
-      - VALKEY_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
     ports:
       - '6382:6379'
     volumes:
