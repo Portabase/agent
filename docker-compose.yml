@@ -136,7 +136,7 @@ services:
     ports:
       - '6381:6379'
     volumes:
-      - valkey-data:/bitnami/valkey/data
+      - valkey-data:/data
     networks:
       - portabase
 
@@ -150,7 +150,7 @@ services:
     ports:
       - '6382:6379'
     volumes:
-      - valkey-data-auth:/bitnami/valkey/data
+      - valkey-data-auth:/data
     networks:
       - portabase
 
