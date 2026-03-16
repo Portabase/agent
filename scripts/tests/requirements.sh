@@ -58,7 +58,7 @@ if [[ "$OS_TYPE" == "Linux" ]]; then
     if command -v apt >/dev/null 2>&1; then
         echo "Linux detected with apt. Installing prerequisites..."
         sudo apt update
-        sudo apt install -y wget gnupg lsb-release redis-tools
+        sudo apt install -y wget gnupg lsb-release redis-tools valkey
         install_pg_binaries
     else
         echo "Unsupported Linux distribution. Only apt-based distros are supported."
@@ -69,6 +69,7 @@ elif [[ "$OS_TYPE" == "Darwin" ]]; then
     if command -v brew >/dev/null 2>&1; then
         echo "macOS detected. Installing prerequisites..."
         brew install redis
+        brew install valkey
 
         sudo mkdir -p "$POSTGRES_BASE"
         sudo chown -R "$(whoami)" "$POSTGRES_BASE"

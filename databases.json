@@ -60,11 +60,27 @@
     {
       "name": "Test database 9 - Redis Auth",
       "type": "redis",
-      "password": "m6o2L0Ukw3Og5RJUKh",
+      "password": "supersecurepassword",
       "port": 6379,
       "username": "default",
       "host": "db-redis-auth",
       "generated_id": "16678160-ff7e-4c97-8c83-0adeff214681"
+    },
+    {
+      "name": "Test database 10 - Valkey",
+      "type": "valkey",
+      "port": 6379,
+      "host": "db-valkey",
+      "generated_id": "16678560-ff7e-4c97-8c83-0adeff214681"
+    },
+    {
+      "name": "Test database 11 - Valkey Auth",
+      "type": "valkey",
+      "password": "supersecurepassword",
+      "port": 6379,
+      "username": "default",
+      "host": "db-valkey-auth",
+      "generated_id": "16678561-ff7e-4c97-8c83-0adeff214681"
     }
   ]
 }

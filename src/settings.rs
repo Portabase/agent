@@ -31,7 +31,7 @@ impl Settings {
             app_version: env!("CARGO_PKG_VERSION").to_string(),
             app_env: env::var("APP_ENV").unwrap_or_else(|_| "development".into()),
             redis_url: env::var("CELERY_BROKER_URL")
-                .unwrap_or_else(|_| "redis://localhost:6379/".into()),
+                .unwrap_or_else(|_| "redis://localhost:65515/".into()),
             edge_key: env::var("EDGE_KEY").unwrap_or_default(),
             databases_config_file: env::var("DATABASES_CONFIG_FILE")
                 .unwrap_or_else(|_| "config.json".into()),

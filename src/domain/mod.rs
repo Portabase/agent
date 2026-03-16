@@ -4,4 +4,5 @@ pub mod mysql;
 mod mongodb;
 mod sqlite;
 mod redis;
+mod valkey;
 
