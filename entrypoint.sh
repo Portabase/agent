@@ -34,16 +34,23 @@ if [ -n "$TZ" ]; then
     fi
 fi
 
+REDIS_PORT=65515
 echo "[entrypoint] APP_ENV=$APP_ENV"
 echo "[entrypoint] Starting Redis..."
-redis-server --daemonize yes
+redis-server --port $REDIS_PORT --daemonize yes
 
 echo "[entrypoint] Waiting for Redis to be ready..."
-until redis-cli ping >/dev/null 2>&1; do
+MAX_RETRIES=20
+COUNT=0
+until redis-cli -h localhost -p "$REDIS_PORT" ping >/dev/null 2>&1 ; do
+    COUNT=$((COUNT+1))
+    if [ $COUNT -ge $MAX_RETRIES ]; then
+        echo "[ERROR] Redis did not start after $MAX_RETRIES attempts"
+        exit 1
+    fi
     echo "[entrypoint] Redis not ready, sleeping 1s..."
     sleep 1
 done
-
 echo "[entrypoint] Redis is ready"
 
 

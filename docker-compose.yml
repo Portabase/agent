@@ -18,7 +18,7 @@ services:
       APP_ENV: development
       LOG: debug
       TZ: "Europe/Paris"
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiZWE5OWE5ZjMtNDhkYy00MjMyLTkzMTAtNTc5YWVkY2IyZjhmIiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiMmVkZWFlYjctNWYwNi00MjI1LWIzNWItOGYyM2MwOTMyMTA2IiwibWFzdGVyS2V5QjY0IjoiMUh0djdtWCtYVkJxL0IzUEV2WDlZZjlQeUdVZW5oRHlXemo5THRqNW90WT0ifQ=="
       #POOLING: 1
       #DATABASES_CONFIG_FILE: "config.toml"
     extra_hosts:
@@ -122,8 +122,32 @@ services:
     volumes:
       - redis-data-auth:/data
     environment:
-      - REDIS_PASSWORD=m6o2L0Ukw3Og5RJUKh
-    command: [ "redis-server", "--requirepass", "m6o2L0Ukw3Og5RJUKh", "--appendonly", "yes" ]
+      - REDIS_PASSWORD=supersecurepassword
+    command: [ "redis-server", "--requirepass", "supersecurepassword", "--appendonly", "yes" ]
+    networks:
+      - portabase
+
+  db-valkey:
+    image: valkey/valkey
+    container_name: db-valkey
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    ports:
+      - '6381:6379'
+    volumes:
+      - valkey-data:/data
+    networks:
+      - portabase
+
+  db-valkey-auth:
+    image: valkey/valkey
+    container_name: db-valkey-auth
+    command: >
+      --requirepass "supersecurepassword"
+    ports:
+      - '6382:6379'
+    volumes:
+      - valkey-data-auth:/data
     networks:
       - portabase
 
@@ -131,7 +155,6 @@ volumes:
   cargo-registry:
   cargo-git:
 #  cargo-target:
-
   postgres-data:
   #  mariadb-data:
   #  mongodb-data:
@@ -139,6 +162,8 @@ volumes:
   #  sqlite-data:
   redis-data:
   redis-data-auth:
+  valkey-data:
+  valkey-data-auth:
 
 networks:
   portabase:

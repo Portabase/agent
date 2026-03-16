@@ -8,6 +8,7 @@ use crate::services::config::{DatabaseConfig, DbType};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use crate::domain::valkey::database::ValkeyDatabase;
 
 #[async_trait::async_trait]
 pub trait Database: Send + Sync {
@@ -31,6 +32,7 @@ impl DatabaseFactory {
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
             DbType::Sqlite => Arc::new(SqliteDatabase::new(cfg)),
             DbType::Redis => Arc::new(RedisDatabase::new(cfg)),
+            DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg))
         }
     }
 
@@ -45,6 +47,8 @@ impl DatabaseFactory {
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
             DbType::Sqlite => Arc::new(SqliteDatabase::new(cfg)),
             DbType::Redis => Arc::new(RedisDatabase::new(cfg)),
+            DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg))
+
         }
     }
 }
