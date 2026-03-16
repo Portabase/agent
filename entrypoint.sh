@@ -37,8 +37,7 @@ fi
 REDIS_PORT=65515
 echo "[entrypoint] APP_ENV=$APP_ENV"
 echo "[entrypoint] Starting Redis..."
-redis-server --port $REDIS_PORT --daemonize yes &
-sleep 1
+redis-server --port $REDIS_PORT --daemonize yes
 
 echo "[entrypoint] Waiting for Redis to be ready..."
 MAX_RETRIES=20
