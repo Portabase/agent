@@ -1,7 +1,7 @@
 # =========================
 # Base image (shared)
 # =========================
-FROM rust:1.92.0 AS base
+FROM rust:1.94.0 AS base
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     pkg-config \
