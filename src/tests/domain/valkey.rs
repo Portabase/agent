@@ -21,7 +21,7 @@ async fn create_config() -> (ContainerAsync<Valkey>, DatabaseConfig) {
         .unwrap_or(6379);
 
     let config = DatabaseConfig {
-        name: "Test Valey".to_string(),
+        name: "Test Valkey".to_string(),
         database: "valkey".to_string(),
         username: "".to_string(),
         password: "".to_string(),
