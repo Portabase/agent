@@ -1,5 +1,7 @@
 use serde::{Deserialize, Deserializer};
 use toml::Value;
+use serde_json::{Value as ValueJson, };
+
 
 pub fn deserialize_snake_case<'de, D>(deserializer: D) -> Result<Value, D::Error>
 where
@@ -35,4 +37,19 @@ pub fn camel_to_snake(s: &str) -> String {
         }
     }
     out
+}
+
+
+pub fn string_or_number_to_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<ValueJson>::deserialize(deserializer)?;
+
+    match value {
+        Some(ValueJson::String(s)) => Ok(Some(s)),
+        Some(ValueJson::Number(n)) => Ok(Some(n.to_string())),
+        Some(_) => Err(serde::de::Error::custom("port must be string or number")),
+        None => Ok(None),
+    }
 }
