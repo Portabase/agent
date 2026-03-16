@@ -36,7 +36,7 @@ fi
 
 echo "[entrypoint] APP_ENV=$APP_ENV"
 echo "[entrypoint] Starting Redis..."
-redis-server --daemonize yes
+redis-server --port 84569 --daemonize yes
 
 echo "[entrypoint] Waiting for Redis to be ready..."
 until redis-cli ping >/dev/null 2>&1; do

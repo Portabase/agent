@@ -35,5 +35,5 @@ check_docker
 check_network
 
 echo "Starting docker-compose..."
-docker-compose -f ./docker-compose.yml up
+docker compose -f ./docker-compose.yml up
 echo "Docker-compose started successfully."

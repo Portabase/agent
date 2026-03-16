@@ -17,6 +17,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     mariadb-client \
     sqlite3 \
     redis-tools \
+    valkey \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -96,6 +97,7 @@ RUN apt-get update && apt-get install -y \
     mariadb-client \
     sqlite3 \
     redis-tools \
+    valkey \
     && rm -rf /var/lib/apt/lists/*
 
 
