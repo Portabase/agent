@@ -10,7 +10,7 @@ pub async fn run(
     file_extension: &'static str,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        debug!("Starting Redis backup for database {}", cfg.name);
+        debug!("Starting Valkey backup for database {}", cfg.name);
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
 
