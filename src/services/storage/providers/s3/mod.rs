@@ -16,6 +16,9 @@ use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use futures::StreamExt;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
+use aws_config::retry::RetryConfig;
+use aws_sdk_s3::config::retry::ReconnectMode;
 use tokio::fs;
 use tracing::{error, info};
 use crate::services::backup::models::{BackupResult, UploadResult};
@@ -107,7 +110,14 @@ impl StorageProvider for S3Provider {
 
         info!("S3 endpoint to {}", &endpoint);
 
+        let retry_config = RetryConfig::standard()
+            .with_max_attempts(5)
+            .with_initial_backoff(Duration::from_millis(200))
+            .with_max_backoff(Duration::from_secs(5))
+            .with_reconnect_mode(ReconnectMode::ReuseAllConnections);
+
         let sdk_config = s3::config::Builder::new()
+            .retry_config(retry_config)
             .credentials_provider(credentials)
             .region(region)
             .force_path_style(true)
