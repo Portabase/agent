@@ -88,7 +88,7 @@ jobs:
           RUSTFLAGS: "-C instrument-coverage -C link-dead-code"
           LLVM_PROFILE_FILE: "/app/coverage/cargo-test-%p-%m.profraw"
         run: |
-          docker compose -f docker-compose.test.yml run --rm \
+          docker compose -f docker-compose.test.yml run \
             -e CARGO_TARGET_DIR \
             -e CARGO_INCREMENTAL \
             -e RUSTFLAGS \
@@ -119,6 +119,10 @@ jobs:
       - name: Copy lcov.info from container to host
         run: |
           docker compose -f docker-compose.test.yml cp agent-test:/app/lcov.info ./lcov.info
+
+      - name: Remove container
+        run: |
+          docker rm agent-test-run
 
       - name: Show basic coverage report info (debug)
         run: |
