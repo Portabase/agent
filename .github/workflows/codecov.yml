@@ -92,7 +92,9 @@ jobs:
           RUSTFLAGS: "-C instrument-coverage"
           LLVM_PROFILE_FILE: "/app/coverage/cargo-test-%p-%m.profraw"
         run: |
+          rm -rf coverage
           mkdir -p coverage
+
           docker compose -f docker-compose.test.yml run --rm \
             -e CARGO_TARGET_DIR \
             -e CARGO_INCREMENTAL \
@@ -119,14 +121,18 @@ jobs:
           test -x "$LLVM_PATH/llvm-profdata"
           "$LLVM_PATH/llvm-profdata" --version
 
-          grcov . \
-            --binary-path ./target/debug/ \
+          grcov coverage \
+            --binary-path ./target/debug \
             --llvm-path "$LLVM_PATH" \
             -s . \
             -t lcov \
             --branch \
             --ignore-not-existing \
+            --ignore "/*" \
+            --ignore "target/*" \
             -o lcov.info
+
+          test -s lcov.info || (echo "lcov empty" && exit 1)
 
       - name: Normalize lcov paths
         run: |
