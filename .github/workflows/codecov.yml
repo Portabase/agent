@@ -114,24 +114,28 @@ jobs:
           SYSROOT="$(rustc --print sysroot)"
           LLVM_PATH="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin"
 
-          echo "HOST_TRIPLE=$HOST_TRIPLE"
-          echo "SYSROOT=$SYSROOT"
           echo "LLVM_PATH=$LLVM_PATH"
 
           test -x "$LLVM_PATH/llvm-profdata"
-          "$LLVM_PATH/llvm-profdata" --version
+          test -x "$LLVM_PATH/llvm-cov"
 
-          grcov coverage \
+          # Merge des profils LLVM (obligatoire)
+          "$LLVM_PATH/llvm-profdata" merge -sparse coverage/*.profraw -o coverage/merged.profdata
+
+          # Génération du rapport lcov
+          grcov . \
             --binary-path ./target/debug \
             --llvm-path "$LLVM_PATH" \
-            -s . \
-            -t lcov \
             --branch \
             --ignore-not-existing \
             --ignore "/*" \
             --ignore "target/*" \
+            --llvm \
+            --instr-profile coverage/merged.profdata \
+            -t lcov \
             -o lcov.info
 
+          # Fail si vide
           test -s lcov.info || (echo "lcov empty" && exit 1)
 
       - name: Normalize lcov paths
