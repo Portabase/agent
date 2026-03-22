@@ -119,22 +119,16 @@ jobs:
           test -x "$LLVM_PATH/llvm-profdata"
           test -x "$LLVM_PATH/llvm-cov"
 
-          # Merge des profils LLVM
-          "$LLVM_PATH/llvm-profdata" merge -sparse coverage/*.profraw -o coverage/merged.profdata
-
-          # Génération du rapport lcov (compatible grcov actuel)
-          grcov coverage \
+          grcov . \
             --binary-path ./target/debug \
             --llvm-path "$LLVM_PATH" \
+            -s . \
             --branch \
             --ignore-not-existing \
-            --ignore "/*" \
             --ignore "target/*" \
-            --llvm coverage/merged.profdata \
             -t lcov \
             -o lcov.info
 
-          # Fail si coverage vide
           test -s lcov.info || (echo "lcov empty" && exit 1)
 
       - name: Normalize lcov paths
