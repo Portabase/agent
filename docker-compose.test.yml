@@ -5,8 +5,11 @@ services:
       dockerfile: docker/Dockerfile
       target: dev
     working_dir: /app
+    container_name: agent-test
     volumes:
       - .:/app
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       APP_ENV: test
@@ -14,4 +17,6 @@ services:
       TZ: Europe/Paris
       EDGE_KEY: ""
 
-
+volumes:
+  cargo-registry:
+  cargo-git:
