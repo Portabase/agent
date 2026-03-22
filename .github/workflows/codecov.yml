@@ -132,16 +132,53 @@ jobs:
           test -s lcov.info || (echo "lcov empty" && exit 1)
 
       - name: Normalize lcov paths
+        env:
+          WORKSPACE: ${{ github.workspace }}
         run: |
-          sed -i 's#SF:/app/#SF:#g' lcov.info
+          python3 <<'PY'
+          from pathlib import Path
+          import os
+
+          workspace = Path(os.environ["WORKSPACE"]).resolve()
+          lines = Path("lcov.info").read_text().splitlines()
+          out = []
+
+          for line in lines:
+              if line.startswith("SF:"):
+                  raw = line[3:]
+
+                  if raw.startswith("/app/"):
+                      raw = raw[len("/app/"):]
+
+                  p = Path(raw)
+
+                  if not p.is_absolute():
+                      p = workspace / p
+
+                  out.append(f"SF:{p}")
+              else:
+                  out.append(line)
+
+          Path("lcov.info").write_text("\n".join(out) + "\n")
+          PY
+
           echo "First source files in lcov:"
-          grep '^SF:' lcov.info | head -20
+          grep '^SF:' lcov.info | head -20 || true
 
       - name: Verify lcov paths exist
         run: |
           grep '^SF:' lcov.info | sed 's/^SF://' | head -20 | while read -r f; do
             test -f "$f" && echo "OK $f" || echo "MISSING $f"
           done
+
+      - name: Debug lcov stats
+        run: |
+          echo "SF count:"
+          grep -c '^SF:' lcov.info || true
+          echo "DA count:"
+          grep -c '^DA:' lcov.info || true
+          echo "end_of_record count:"
+          grep -c '^end_of_record' lcov.info || true
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5
