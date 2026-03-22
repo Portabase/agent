@@ -1,0 +1,17 @@
+services:
+  agent-test:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: dev
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      APP_ENV: test
+      LOG: debug
+      TZ: Europe/Paris
+      EDGE_KEY: ""
+
+

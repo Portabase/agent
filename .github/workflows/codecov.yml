@@ -1,3 +1,62 @@
+#name: Codecov Rust
+#
+#on:
+#  push:
+#    branches: ["main"]
+#  pull_request:
+#    branches: ["main"]
+#
+#env:
+#  CARGO_TERM_COLOR: always
+#
+#jobs:
+#  build:
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      - uses: actions/checkout@v3
+#
+#      - uses: actions-rs/toolchain@v1
+#        with:
+#          toolchain: stable
+#          override: true
+#          components: llvm-tools-preview
+#
+#      - name: Install grcov
+#        run: cargo install grcov
+#
+#      - name: Install test requirements
+#        run: bash scripts/tests/requirements.sh
+#
+#      - name: Build
+#        run: cargo build --verbose
+#
+#      - name: Run tests
+#        env:
+#          CARGO_INCREMENTAL: 0
+#          RUSTFLAGS: "-C instrument-coverage"
+#          LLVM_PROFILE_FILE: "cargo-test-%p-%m.profraw"
+#        run: cargo test --verbose
+#
+#      - name: Generate coverage
+#        run: |
+#          grcov . \
+#            --binary-path ./target/debug/ \
+#            -s . \
+#            -t lcov \
+#            --branch \
+#            --ignore-not-existing \
+#            -o lcov.info
+#
+#      - name: Upload to Codecov
+#        uses: codecov/codecov-action@v5
+#        with:
+#          files: lcov.info
+#          verbose: true
+#          fail_ci_if_error: true
+#        env:
+#          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
 name: Codecov Rust
 
 on:
@@ -16,27 +75,24 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          components: llvm-tools-preview
-
       - name: Install grcov
         run: cargo install grcov
 
-      - name: Install test requirements
-        run: bash scripts/tests/requirements.sh
-
-      - name: Build
-        run: cargo build --verbose
+      - name: Build test image
+        run: docker compose -f docker-compose.test.yml build agent-test
 
       - name: Run tests
         env:
           CARGO_INCREMENTAL: 0
           RUSTFLAGS: "-C instrument-coverage"
-          LLVM_PROFILE_FILE: "cargo-test-%p-%m.profraw"
-        run: cargo test --verbose
+          LLVM_PROFILE_FILE: "/app/coverage/cargo-test-%p-%m.profraw"
+        run: |
+          mkdir -p coverage
+          docker compose -f docker-compose.test.yml run --rm \
+            -e CARGO_INCREMENTAL \
+            -e RUSTFLAGS \
+            -e LLVM_PROFILE_FILE \
+            agent-test cargo test --verbose
 
       - name: Generate coverage
         run: |

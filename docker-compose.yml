@@ -11,7 +11,9 @@ services:
       #      - ./databases.toml:/config/config.toml
       - cargo-registry:/usr/local/cargo/registry
       - cargo-git:/usr/local/cargo/git
-#      - cargo-target:/app/target
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    #      - cargo-target:/app/target
     #      - sqlite-data:/sqlite-data/workspace/data
     #      - ./scripts/sqlite/test-db:/sqlite-data-2/workspace/data
     environment:

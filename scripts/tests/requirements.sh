@@ -70,6 +70,9 @@ elif [[ "$OS_TYPE" == "Darwin" ]]; then
         echo "macOS detected. Installing prerequisites..."
         brew install redis
         brew install valkey
+        brew install mysql-client
+        brew tap mongodb/brew
+        brew install mongodb-database-tools
 
         sudo mkdir -p "$POSTGRES_BASE"
         sudo chown -R "$(whoami)" "$POSTGRES_BASE"
