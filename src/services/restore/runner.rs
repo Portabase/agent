@@ -29,7 +29,7 @@ impl RestoreService {
             });
         }
 
-        match db.restore(&backup_file, Some(false)).await {
+        match db.restore(&backup_file).await {
             Ok(_) => Ok(RestoreResult {
                 generated_id,
                 status: "success".into(),

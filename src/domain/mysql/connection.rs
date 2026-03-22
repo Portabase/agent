@@ -22,7 +22,7 @@ pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
 
     let version = String::from_utf8_lossy(&output.stdout)
         .lines()
-        .nth(1) // skip column header
+        .nth(1)
         .unwrap_or_default()
         .trim()
         .to_string();

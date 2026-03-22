@@ -14,8 +14,8 @@ use std::sync::Arc;
 pub trait Database: Send + Sync {
     fn file_extension(&self) -> &'static str;
     async fn ping(&self) -> Result<bool>;
-    async fn backup(&self, backup_dir: &Path, is_test: Option<bool>) -> Result<PathBuf>;
-    async fn restore(&self, restore_file: &Path, is_test: Option<bool>) -> Result<()>;
+    async fn backup(&self, backup_dir: &Path) -> Result<PathBuf>;
+    async fn restore(&self, restore_file: &Path) -> Result<()>;
 }
 
 pub struct DatabaseFactory;

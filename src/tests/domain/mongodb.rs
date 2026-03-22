@@ -75,7 +75,7 @@ async fn mongodb_backup_restore_test() {
     let backup_path = temp_dir.path();
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
-    let file_path = db.backup(backup_path, Some(true)).await.unwrap();
+    let file_path = db.backup(backup_path).await.unwrap();
     info!("Backup path: {:?}", file_path);
     assert!(file_path.is_file());
 
@@ -85,7 +85,7 @@ async fn mongodb_backup_restore_test() {
     info!("Reachable: {}", reachable);
     assert!(reachable);
 
-    match db.restore(&file_path, Some(true)).await {
+    match db.restore(&file_path).await {
         Ok(_) => {
             info!("Restore succeeded for {}", config.generated_id);
             assert!(true)

@@ -55,7 +55,7 @@ async fn valkey_backup_test() {
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
 
-    let file_path = db.backup(backup_path, Some(true)).await.unwrap();
+    let file_path = db.backup(backup_path).await.unwrap();
 
     assert!(file_path.is_file());
 }

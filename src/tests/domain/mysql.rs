@@ -58,7 +58,7 @@ async fn mysql_backup_restore_test() {
     let backup_path = temp_dir.path();
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
-    let file_path = db.backup(backup_path, Some(true)).await.unwrap();
+    let file_path = db.backup(backup_path).await.unwrap();
 
     assert!(file_path.is_file());
 
@@ -81,7 +81,7 @@ async fn mysql_backup_restore_test() {
     info!("Reachable: {}", reachable);
     assert!(reachable);
 
-    match db.restore(&backup_file, Some(true)).await {
+    match db.restore(&backup_file).await {
         Ok(_) => {
             info!("Restore succeeded for {}", config.generated_id);
             assert!(true)
