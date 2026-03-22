@@ -112,11 +112,10 @@ jobs:
           grcov ./coverage \
             --binary-path ./target/debug/ \
             -s . \
+            --path-mapping /app=$(pwd) \
             -t lcov \
             --branch \
             --ignore-not-existing \
-            --ignore "/*" \
-            --ignore "../*" \
             -o lcov.info
 
       - name: Check lcov content
