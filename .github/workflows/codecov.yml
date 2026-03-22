@@ -100,19 +100,22 @@ jobs:
             -e CARGO_INCREMENTAL \
             -e RUSTFLAGS \
             -e LLVM_PROFILE_FILE \
-            agent-test bash -c "cargo test --verbose && sync"
+            agent-test bash -c "cargo clean && cargo test --verbose && sync"
 
-      - name: Verify profraw files
+      - name: Verify artifacts
         run: |
           echo "==== PROFRAW FILES ===="
           find coverage -type f || true
+          echo "==== TARGET FILES ===="
+          ls -R target || true
 
       - name: Generate coverage
         run: |
-          grcov ./coverage \
-            --binary-path ./target/debug/ \
+          grcov coverage \
+            --binary-path ./target/debug \
             -s . \
             --path-mapping /app=$(pwd) \
+            --llvm \
             -t lcov \
             --branch \
             --ignore-not-existing \
@@ -120,9 +123,7 @@ jobs:
 
       - name: Check lcov content
         run: |
-          echo "==== LCOV SIZE ===="
           wc -l lcov.info || true
-          echo "==== LCOV HEAD ===="
           head -20 lcov.info || true
 
       - name: Upload to Codecov
