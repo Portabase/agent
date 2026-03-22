@@ -1,5 +1,6 @@
 use crate::core::context::Context;
 use crate::services::api::models::agent::status::DatabaseStorage;
+use crate::services::backup::models::{BackupResult, UploadResult};
 use crate::services::storage::StorageProvider;
 use crate::utils::common::BackupMethod;
 use crate::utils::file::{full_file_name, full_file_path};
@@ -10,7 +11,6 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use std::sync::Arc;
 use tokio::fs;
 use tracing::error;
-use crate::services::backup::models::{BackupResult, UploadResult};
 
 pub struct LocalProvider;
 
@@ -53,13 +53,7 @@ impl StorageProvider for LocalProvider {
             }
         };
 
-        let upload = match build_stream(
-            &file_path,
-            encrypt,
-            &ctx.edge_key.master_key_b64
-        )
-        .await
-        {
+        let upload = match build_stream(&file_path, encrypt, &ctx.edge_key.master_key_b64).await {
             Ok(u) => u,
             Err(e) => {
                 error!("Stream build failed: {}", e);
@@ -68,7 +62,7 @@ impl StorageProvider for LocalProvider {
                     success: false,
                     error: Some(e.to_string()),
                     remote_file_path: None,
-                    total_size: None
+                    total_size: None,
                 };
             }
         };
@@ -76,7 +70,10 @@ impl StorageProvider for LocalProvider {
         let mut extra_headers = HeaderMap::new();
 
         extra_headers.insert("X-File-Name", HeaderValue::from_str(&file_name).unwrap());
-        extra_headers.insert("X-File-Size", HeaderValue::from_str(&total_size.to_string()).unwrap());
+        extra_headers.insert(
+            "X-File-Size",
+            HeaderValue::from_str(&total_size.to_string()).unwrap(),
+        );
         extra_headers.insert(
             "X-File-Path",
             HeaderValue::from_str(&remote_file_path).unwrap(),
@@ -90,10 +87,17 @@ impl StorageProvider for LocalProvider {
             "X-Method",
             HeaderValue::from_str(&method.to_string()).unwrap(),
         );
-        
+
         let tus_endpoint = format!("{}/tus/files", ctx.edge_key.server_url);
 
-        match upload_to_tus_stream_with_headers(upload.stream, &tus_endpoint, extra_headers, total_size).await {
+        match upload_to_tus_stream_with_headers(
+            upload.stream,
+            &tus_endpoint,
+            extra_headers,
+            total_size,
+        )
+        .await
+        {
             Ok(_) => UploadResult {
                 storage_id: storage.id.clone(),
                 success: true,

@@ -1,14 +1,11 @@
-use std::collections::HashMap;
-use anyhow::Result;
-use async_trait::async_trait;
-use std::path::{Path, PathBuf};
-use super::{
-    backup,
-    ping, restore,
-};
+use super::{backup, ping, restore};
 use crate::domain::factory::Database;
 use crate::services::config::DatabaseConfig;
 use crate::utils::locks::{DbOpLock, FileLock};
+use anyhow::Result;
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 pub struct MySQLDatabase {
     cfg: DatabaseConfig,
@@ -36,13 +33,18 @@ impl Database for MySQLDatabase {
         ping::run(self.cfg.clone(), self.build_env().clone()).await
     }
 
-
     async fn backup(&self, dir: &Path, is_test: Option<bool>) -> Result<PathBuf> {
         let test_mode = is_test.unwrap_or(false);
         if !test_mode {
             FileLock::acquire(&self.cfg.generated_id, DbOpLock::Backup.as_str()).await?;
         }
-        let res = backup::run(self.cfg.clone(), dir.to_path_buf(), self.build_env().clone(), self.file_extension()).await;
+        let res = backup::run(
+            self.cfg.clone(),
+            dir.to_path_buf(),
+            self.build_env().clone(),
+            self.file_extension(),
+        )
+        .await;
         if !test_mode {
             FileLock::release(&self.cfg.generated_id).await?;
         }

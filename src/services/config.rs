@@ -20,7 +20,7 @@ pub enum DbType {
     MongoDB,
     Sqlite,
     Redis,
-    Valkey
+    Valkey,
 }
 
 impl DbType {
@@ -58,7 +58,6 @@ pub struct DatabasesConfig {
     pub databases: Vec<DatabaseConfig>,
 }
 
-
 #[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 pub struct InputDatabaseConfig {
@@ -79,7 +78,6 @@ pub struct InputDatabaseConfig {
 pub struct InputDatabasesConfig {
     pub databases: Vec<InputDatabaseConfig>,
 }
-
 
 pub struct ConfigService {
     ctx: Arc<Context>,
@@ -133,17 +131,27 @@ impl ConfigService {
             _ => return Err("Unsupported config file format. Use .json or .toml".to_string()),
         };
 
-        fn required<T: Clone>(opt: &Option<T>, db_name: &str, field_name: &str) -> Result<T, String> {
+        fn required<T: Clone>(
+            opt: &Option<T>,
+            db_name: &str,
+            field_name: &str,
+        ) -> Result<T, String> {
             match opt {
                 Some(v) => Ok(v.clone()),
                 None => {
-                    let msg = format!("Missing required field '{}' for database '{}'", field_name, db_name);
+                    let msg = format!(
+                        "Missing required field '{}' for database '{}'",
+                        field_name, db_name
+                    );
                     Err(msg)
                 }
             }
         }
 
-        fn optional<T: Clone>(opt: &Option<T>) -> T where T: Default {
+        fn optional<T: Clone>(opt: &Option<T>) -> T
+        where
+            T: Default,
+        {
             opt.clone().unwrap_or_default()
         }
 
@@ -155,28 +163,42 @@ impl ConfigService {
             }
 
             let username = match db.db_type {
-                DbType::Postgresql | DbType::Mysql | DbType::Mariadb => required(&db.username, &db.name, "username")?,
+                DbType::Postgresql | DbType::Mysql | DbType::Mariadb => {
+                    required(&db.username, &db.name, "username")?
+                }
                 _ => optional(&db.username),
             };
 
             let password = match db.db_type {
-                DbType::Postgresql | DbType::Mysql | DbType::Mariadb => required(&db.password, &db.name, "password")?,
+                DbType::Postgresql | DbType::Mysql | DbType::Mariadb => {
+                    required(&db.password, &db.name, "password")?
+                }
                 _ => optional(&db.password),
             };
 
             let host = match db.db_type {
-                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::MongoDB | DbType::Redis | DbType::Valkey => required(&db.host, &db.name, "host")?,
+                DbType::Postgresql
+                | DbType::Mysql
+                | DbType::Mariadb
+                | DbType::MongoDB
+                | DbType::Redis
+                | DbType::Valkey => required(&db.host, &db.name, "host")?,
                 DbType::Sqlite => optional(&db.host),
             };
 
             let port = match db.db_type {
-                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::MongoDB | DbType::Redis | DbType::Valkey => required(&db.port, &db.name, "port")?,
+                DbType::Postgresql
+                | DbType::Mysql
+                | DbType::Mariadb
+                | DbType::MongoDB
+                | DbType::Redis
+                | DbType::Valkey => required(&db.port, &db.name, "port")?,
                 DbType::Sqlite => db.port.unwrap_or(0),
             };
 
             let database_name = match db.db_type {
                 DbType::Sqlite | DbType::Redis | DbType::Valkey => optional(&db.database),
-                _ => required(&db.database, &db.name, "database")?
+                _ => required(&db.database, &db.name, "database")?,
             };
 
             let path_val = match db.db_type {

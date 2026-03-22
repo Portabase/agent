@@ -1,15 +1,15 @@
+use crate::services::storage::providers::google_drive::models::GoogleDriveProviderConfig;
 use anyhow::{Context, Result, anyhow};
+use bytes::Bytes;
+use futures::Stream;
 use futures::StreamExt;
 use oauth2::{
     AuthUrl, ClientId, ClientSecret, RefreshToken, TokenResponse, TokenUrl, basic::BasicClient,
     reqwest::Client as OAuth2ReqwestClient,
 };
 use reqwest::{Client as ReqwestClient, StatusCode};
-use serde_json::{Value, json};
-use futures::{Stream};
-use bytes::Bytes;
 use reqwest::{Client, header};
-use crate::services::storage::providers::google_drive::models::GoogleDriveProviderConfig;
+use serde_json::{Value, json};
 
 pub async fn get_google_drive_token(config: &GoogleDriveProviderConfig) -> Result<String> {
     let http_client = OAuth2ReqwestClient::new();
@@ -34,7 +34,10 @@ pub async fn get_google_drive_token(config: &GoogleDriveProviderConfig) -> Resul
     Ok(token_result.access_token().secret().clone())
 }
 
-pub async fn ensure_folder_path(config: &GoogleDriveProviderConfig, path_parts: &[&str]) -> Result<String> {
+pub async fn ensure_folder_path(
+    config: &GoogleDriveProviderConfig,
+    path_parts: &[&str],
+) -> Result<String> {
     if path_parts.is_empty() {
         return Ok(config.folder_id.clone());
     }
@@ -152,7 +155,10 @@ pub async fn upload_stream_to_google_drive(
 
     let folder_id = ensure_folder_path(config, folder_path).await?;
 
-    if find_file_by_name(config, file_name, &folder_id).await?.is_some() {
+    if find_file_by_name(config, file_name, &folder_id)
+        .await?
+        .is_some()
+    {
         return Err(anyhow::anyhow!("File already exists: {}", full_path));
     }
 
@@ -172,7 +178,7 @@ pub async fn upload_stream_to_google_drive(
         .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable")
         .bearer_auth(&token)
         .header("X-Upload-Content-Type", mime)
-        .header("X-Upload-Content-Length", total_size.to_string())  // Helps a lot
+        .header("X-Upload-Content-Length", total_size.to_string()) // Helps a lot
         .json(&metadata)
         .send()
         .await
@@ -237,12 +243,15 @@ pub async fn upload_stream_to_google_drive(
                 .put(&upload_url)
                 .header("Content-Range", &content_range)
                 .header("Content-Length", chunk_bytes.len().to_string())
-                .body(chunk_bytes.clone())  // clone is cheap if small; optimize later if needed
+                .body(chunk_bytes.clone()) // clone is cheap if small; optimize later if needed
                 .send()
                 .await;
 
             match res {
-                Ok(resp) if resp.status().is_success() || resp.status() == StatusCode::PERMANENT_REDIRECT => {
+                Ok(resp)
+                    if resp.status().is_success()
+                        || resp.status() == StatusCode::PERMANENT_REDIRECT =>
+                {
                     // 200 or 308 = good
                     uploaded += chunk_bytes.len() as u64;
                     tracing::info!("Uploaded {}/{} bytes", uploaded, total_size);

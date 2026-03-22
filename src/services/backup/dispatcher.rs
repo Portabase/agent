@@ -1,11 +1,10 @@
 use super::service::BackupService;
-use crate::services::config::DatabasesConfig;
 use crate::services::api::models::agent::status::DatabaseStorage;
+use crate::services::config::DatabasesConfig;
 use crate::utils::common::BackupMethod;
 use tracing::error;
 
 impl BackupService {
-
     pub async fn dispatch(
         &self,
         generated_id: &String,
@@ -14,7 +13,6 @@ impl BackupService {
         storages: &Vec<DatabaseStorage>,
         encrypt: bool,
     ) {
-
         let Some(cfg) = config
             .databases
             .iter()

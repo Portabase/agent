@@ -2,26 +2,26 @@ mod models;
 
 use crate::core::context::Context;
 use crate::services::api::models::agent::status::DatabaseStorage;
+use crate::services::backup::models::{BackupResult, UploadResult};
 use crate::services::storage::StorageProvider;
 use crate::services::storage::providers::s3::models::S3ProviderConfig;
 use crate::utils::common::BackupMethod;
 use crate::utils::file::{full_file_name, full_file_path};
 use crate::utils::stream::build_stream;
 use async_trait::async_trait;
+use aws_config::retry::RetryConfig;
 use aws_sdk_s3 as s3;
 use aws_sdk_s3::config::BehaviorVersion;
 use aws_sdk_s3::config::Region;
+use aws_sdk_s3::config::retry::ReconnectMode;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use futures::StreamExt;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use aws_config::retry::RetryConfig;
-use aws_sdk_s3::config::retry::ReconnectMode;
 use tokio::fs;
 use tracing::{error, info};
-use crate::services::backup::models::{BackupResult, UploadResult};
 
 pub struct S3Provider {}
 
@@ -97,15 +97,28 @@ impl StorageProvider for S3Provider {
         );
 
         let region = Region::new(config.region.clone().unwrap_or("us-east-1".to_string()));
-        
+
         let endpoint = if let Some(port) = &config.port {
             if port.trim().is_empty() {
-                format!("{}://{}", if config.ssl { "https" } else { "http" }, config.end_point_url)
+                format!(
+                    "{}://{}",
+                    if config.ssl { "https" } else { "http" },
+                    config.end_point_url
+                )
             } else {
-                format!("{}://{}:{}", if config.ssl { "https" } else { "http" }, config.end_point_url, port)
+                format!(
+                    "{}://{}:{}",
+                    if config.ssl { "https" } else { "http" },
+                    config.end_point_url,
+                    port
+                )
             }
         } else {
-            format!("{}://{}", if config.ssl { "https" } else { "http" }, config.end_point_url)
+            format!(
+                "{}://{}",
+                if config.ssl { "https" } else { "http" },
+                config.end_point_url
+            )
         };
 
         info!("S3 endpoint to {}", &endpoint);

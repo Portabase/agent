@@ -9,12 +9,7 @@ use std::path::Path;
 use tracing::{error, info};
 
 impl BackupService {
-
-    pub async fn run(
-        cfg: DatabaseConfig,
-        tmp_path: &Path,
-    ) -> Result<BackupResult> {
-
+    pub async fn run(cfg: DatabaseConfig, tmp_path: &Path) -> Result<BackupResult> {
         let db = DatabaseFactory::create_for_backup(cfg.clone()).await;
 
         let generated_id = cfg.generated_id.clone();
@@ -41,7 +36,6 @@ impl BackupService {
         }
 
         match db.backup(tmp_path, Some(false)).await {
-
             Ok(file) => Ok(BackupResult {
                 generated_id,
                 db_type,

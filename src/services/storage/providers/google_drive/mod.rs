@@ -1,9 +1,12 @@
 mod helpers;
-mod models; 
+mod models;
 
 use crate::core::context::Context;
 use crate::services::api::models::agent::status::DatabaseStorage;
+use crate::services::backup::models::{BackupResult, UploadResult};
 use crate::services::storage::StorageProvider;
+use crate::services::storage::providers::google_drive::helpers::upload_stream_to_google_drive;
+use crate::services::storage::providers::google_drive::models::GoogleDriveProviderConfig;
 use crate::utils::common::BackupMethod;
 use crate::utils::file::{full_file_name, full_file_path};
 use crate::utils::stream::build_stream;
@@ -11,9 +14,6 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::fs;
 use tracing::{error, info};
-use crate::services::backup::models::{BackupResult, UploadResult};
-use crate::services::storage::providers::google_drive::helpers::{upload_stream_to_google_drive};
-use crate::services::storage::providers::google_drive::models::GoogleDriveProviderConfig;
 
 pub struct GoogleDriveProvider {}
 
@@ -53,13 +53,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         let encrypt = encrypt.unwrap_or(false);
 
-        let upload = match build_stream(
-            &file_path,
-            encrypt,
-            &ctx.edge_key.master_key_b64
-        )
-            .await
-        {
+        let upload = match build_stream(&file_path, encrypt, &ctx.edge_key.master_key_b64).await {
             Ok(u) => u,
             Err(e) => {
                 error!("Stream build failed: {}", e);
@@ -86,7 +80,6 @@ impl StorageProvider for GoogleDriveProvider {
             }
         };
 
-
         let file_name = full_file_name(encrypt);
 
         info!("Uploading file {}", file_name);
@@ -96,12 +89,13 @@ impl StorageProvider for GoogleDriveProvider {
         match upload_stream_to_google_drive(
             &config,
             &remote_file_path,
-            upload.stream,   
+            upload.stream,
             total_size,
             Some("application/octet-stream"),
-        ).await {
+        )
+        .await
+        {
             Ok(_file_id) => {
-                
                 info!("Google Drive upload successful");
 
                 UploadResult {
@@ -124,6 +118,5 @@ impl StorageProvider for GoogleDriveProvider {
                 }
             }
         }
-
     }
 }

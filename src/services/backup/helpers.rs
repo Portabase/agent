@@ -1,16 +1,14 @@
 use super::service::BackupService;
+use crate::services::api::models::agent::backup::BackupResponse;
 use crate::utils::common::BackupMethod;
 use anyhow::{Result, anyhow};
-use crate::services::api::models::agent::backup::BackupResponse;
 
 impl BackupService {
-
     pub async fn create_backup_record(
         &self,
         generated_id: &str,
         method: &BackupMethod,
     ) -> Result<BackupResponse> {
-
         let response = self
             .ctx
             .api

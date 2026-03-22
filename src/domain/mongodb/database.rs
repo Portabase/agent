@@ -39,7 +39,7 @@ impl Database for MongoDatabase {
         res
     }
 
-    async fn restore(&self, file: &Path,  is_test: Option<bool>) -> Result<()> {
+    async fn restore(&self, file: &Path, is_test: Option<bool>) -> Result<()> {
         let test_mode = is_test.unwrap_or(false);
         if !test_mode {
             FileLock::acquire(&self.cfg.generated_id, DbOpLock::Restore.as_str()).await?;

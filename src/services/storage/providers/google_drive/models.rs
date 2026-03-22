@@ -7,5 +7,3 @@ pub struct GoogleDriveProviderConfig {
     pub refresh_token: String,
     pub folder_id: String,
 }
-
-

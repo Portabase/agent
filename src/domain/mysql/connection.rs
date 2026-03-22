@@ -1,14 +1,17 @@
 use crate::services::config::DatabaseConfig;
-use std::process::Command;
 use anyhow::Result;
+use std::process::Command;
 
 pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
-
     let output = Command::new("mysql")
-        .arg("--host").arg(&cfg.host)
-        .arg("--port").arg(cfg.port.to_string())
-        .arg("--user").arg(&cfg.username)
-        .arg("-e").arg("SELECT VERSION();")
+        .arg("--host")
+        .arg(&cfg.host)
+        .arg("--port")
+        .arg(cfg.port.to_string())
+        .arg("--user")
+        .arg(&cfg.username)
+        .arg("-e")
+        .arg("SELECT VERSION();")
         .env("MYSQL_PWD", &cfg.password)
         .output()?;
 
@@ -26,4 +29,3 @@ pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
 
     Ok(version)
 }
-

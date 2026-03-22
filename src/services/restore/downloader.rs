@@ -1,18 +1,12 @@
 use super::service::RestoreService;
 
-use reqwest::{Client, Url};
 use anyhow::Result;
+use reqwest::{Client, Url};
 use std::path::{Path, PathBuf};
 use tracing::info;
 
 impl RestoreService {
-
-    pub async fn download_backup(
-        &self,
-        file_url: &str,
-        tmp_path: &Path,
-    ) -> Result<PathBuf> {
-
+    pub async fn download_backup(&self, file_url: &str, tmp_path: &Path) -> Result<PathBuf> {
         let client = Client::new();
 
         let response = client.get(file_url).send().await?;
@@ -27,7 +21,6 @@ impl RestoreService {
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.split("filename=").nth(1))
             .map(|f| f.trim_matches('"').to_string());
-
 
         let filename_from_url = Url::parse(file_url).ok().and_then(|u| {
             u.path_segments()?

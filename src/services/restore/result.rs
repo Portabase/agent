@@ -1,24 +1,25 @@
-use super::service::RestoreService;
 use super::models::RestoreResult;
+use super::service::RestoreService;
 
-use tracing::{info, error};
+use tracing::{error, info};
 
 impl RestoreService {
     pub async fn send_result(&self, result: RestoreResult) {
-
         info!(
             "[RestoreService] DB: {} | Status: {}",
             result.generated_id, result.status
         );
 
-        match self.ctx
+        match self
+            .ctx
             .api
             .restore_result(
                 self.ctx.edge_key.agent_id.clone(),
                 &result.generated_id,
                 &result.status,
             )
-            .await {
+            .await
+        {
             Ok(_) => {
                 info!("Restoration result sent successfully");
             }
