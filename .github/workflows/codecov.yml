@@ -1,3 +1,86 @@
+#name: Codecov Rust
+#
+#on:
+#  push:
+#    branches: ["main"]
+#  pull_request:
+#    branches: ["main"]
+#
+#env:
+#  CARGO_TERM_COLOR: always
+#
+#jobs:
+#  coverage:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#
+#      - name: Install Rust toolchain
+#        uses: dtolnay/rust-toolchain@stable
+#        with:
+#          components: llvm-tools-preview
+#
+#      - name: Build test image (with grcov included)
+#        run: docker compose -f docker-compose.test.yml build agent-test
+#
+#      - name: Run tests in container
+#        env:
+#          CARGO_TARGET_DIR: /app/target
+#          CARGO_INCREMENTAL: 0
+#          RUSTFLAGS: "-C instrument-coverage -C link-dead-code"
+#          LLVM_PROFILE_FILE: "/app/coverage/cargo-test-%p-%m.profraw"
+#        run: |
+#          docker compose -f docker-compose.test.yml run \
+#            -e CARGO_TARGET_DIR \
+#            -e CARGO_INCREMENTAL \
+#            -e RUSTFLAGS \
+#            -e LLVM_PROFILE_FILE \
+#            agent-test bash -c "cargo clean && cargo test --verbose && sync"
+#
+#      - name: Verify profraw files exist
+#        run: |
+#          docker compose -f docker-compose.test.yml run agent-test \
+#            find /app/coverage -type f -name "*.profraw" | wc -l || true
+#
+#      - name: Generate coverage report inside container
+#        run: |
+#          docker compose -f docker-compose.test.yml run agent-test bash -c "
+#            rustup component add llvm-tools &&
+#            grcov /app/coverage \
+#              --binary-path /app/target/debug \
+#              -s /app \
+#              --llvm \
+#              -t lcov \
+#              --branch \
+#              --ignore-not-existing \
+#              --ignore '/app/target/*' \
+#              --ignore '/*' \
+#              -o /app/lcov.info
+#          "
+#
+#      - name: Copy lcov.info from container to host
+#        run: |
+#          docker compose -f docker-compose.test.yml cp agent-test:/app/lcov.info ./lcov.info
+#
+#      - name: Remove container
+#        run: |
+#          docker rm agent-test-run
+#
+#      - name: Show basic coverage report info (debug)
+#        run: |
+#          echo "lcov.info size:" $(wc -c ./lcov.info | awk '{print $1}')
+#          head -n 30 ./lcov.info || true
+#
+#      - name: Upload coverage to Codecov
+#        uses: codecov/codecov-action@v5
+#        with:
+#          files: ./lcov.info
+#          flags: unittests
+#          name: rust-unit-coverage
+#          verbose: true
+#          fail_ci_if_error: true
+#        env:
+#          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 name: Codecov Rust
 
 on:
@@ -8,6 +91,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: /app/target
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: "-C instrument-coverage -C link-dead-code"
+  LLVM_PROFILE_FILE: "/app/coverage/cargo-test-%p-%m.profraw"
 
 jobs:
   coverage:
@@ -27,40 +114,42 @@ jobs:
         run: docker compose -f docker-compose.test.yml up -d agent-test
 
       - name: Run tests inside container
-        env:
-          CARGO_TARGET_DIR: /app/target
-          CARGO_INCREMENTAL: 0
-          RUSTFLAGS: "-C instrument-coverage -C link-dead-code"
-          LLVM_PROFILE_FILE: "/app/coverage/cargo-test-%p-%m.profraw"
         run: |
-          docker compose -f docker-compose.test.yml exec agent-test bash -c "
-            cargo clean &&
-            cargo test --verbose &&
-            sync
-          "
+          docker compose -f docker-compose.test.yml exec \
+            -e CARGO_TARGET_DIR \
+            -e CARGO_INCREMENTAL \
+            -e RUSTFLAGS \
+            -e LLVM_PROFILE_FILE \
+            agent-test bash -c "
+              cargo clean &&
+              cargo test --verbose &&
+              sync
+            "
 
       - name: Verify profraw files exist
         run: |
-          docker compose -f docker-compose.test.yml exec agent-test \
-            find /app/coverage -type f -name "*.profraw" | wc -l || true
+          docker compose -f docker-compose.test.yml exec \
+            -e LLVM_PROFILE_FILE \
+            agent-test find /app/coverage -type f -name "*.profraw" | wc -l || true
 
-      - name: Generate coverage report
+      - name: Generate coverage report inside container
         run: |
-          docker compose -f docker-compose.test.yml exec agent-test bash -c "
-            rustup component add llvm-tools &&
-            grcov /app/coverage \
-              --binary-path /app/target/debug \
-              -s /app \
-              --llvm \
-              -t lcov \
-              --branch \
-              --ignore-not-existing \
-              --ignore '/app/target/*' \
-              --ignore '/*' \
-              -o /app/lcov.info
-          "
+          docker compose -f docker-compose.test.yml exec \
+            agent-test bash -c "
+              rustup component add llvm-tools &&
+              grcov /app/coverage \
+                --binary-path /app/target/debug \
+                -s /app \
+                --llvm \
+                -t lcov \
+                --branch \
+                --ignore-not-existing \
+                --ignore '/app/target/*' \
+                --ignore '/*' \
+                -o /app/lcov.info
+            "
 
-      - name: Copy lcov.info to host
+      - name: Copy lcov.info from container to host
         run: docker compose -f docker-compose.test.yml cp agent-test:/app/lcov.info ./lcov.info
 
       - name: Show basic coverage report info (debug)
