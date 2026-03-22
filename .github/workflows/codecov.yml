@@ -103,7 +103,7 @@ jobs:
       - name: Verify generated coverage files
         run: |
           ls -la coverage
-          find coverage -name '*.profraw' | head -50
+          find coverage -name '*.profraw' | head -50 || true
           ls -la target/debug
 
       - name: Generate lcov report
@@ -122,7 +122,7 @@ jobs:
           grcov . \
             --binary-path ./target/debug/ \
             --llvm-path "$LLVM_PATH" \
-            -s /app \
+            -s . \
             -t lcov \
             --branch \
             --ignore-not-existing \
@@ -130,7 +130,7 @@ jobs:
 
       - name: Normalize lcov paths
         run: |
-          sed -i "s#SF:/app/#SF:${GITHUB_WORKSPACE}/#g" lcov.info
+          sed -i 's#SF:/app/#SF:#g' lcov.info
           echo "First source files in lcov:"
           grep '^SF:' lcov.info | head -20
 
