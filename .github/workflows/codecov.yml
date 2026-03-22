@@ -111,8 +111,7 @@ jobs:
         run: |
           grcov ./coverage \
             --binary-path ./target/debug/ \
-            -s /app \
-            --prefix-dir /app \
+            -s . \
             -t lcov \
             --branch \
             --ignore-not-existing \
