@@ -108,7 +108,17 @@ jobs:
 
       - name: Generate lcov report
         run: |
-          LLVM_PATH="$(rustc --print target-libdir | sed 's#/rustlib/.*#/bin#')"
+          HOST_TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
+          SYSROOT="$(rustc --print sysroot)"
+          LLVM_PATH="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin"
+
+          echo "HOST_TRIPLE=$HOST_TRIPLE"
+          echo "SYSROOT=$SYSROOT"
+          echo "LLVM_PATH=$LLVM_PATH"
+
+          test -x "$LLVM_PATH/llvm-profdata"
+          "$LLVM_PATH/llvm-profdata" --version
+
           grcov . \
             --binary-path ./target/debug/ \
             --llvm-path "$LLVM_PATH" \
