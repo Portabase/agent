@@ -122,11 +122,23 @@ jobs:
           grcov . \
             --binary-path ./target/debug/ \
             --llvm-path "$LLVM_PATH" \
-            -s . \
+            -s /app \
             -t lcov \
             --branch \
             --ignore-not-existing \
             -o lcov.info
+
+      - name: Normalize lcov paths
+        run: |
+          sed -i "s#SF:/app/#SF:${GITHUB_WORKSPACE}/#g" lcov.info
+          echo "First source files in lcov:"
+          grep '^SF:' lcov.info | head -20
+
+      - name: Verify lcov paths exist
+        run: |
+          grep '^SF:' lcov.info | sed 's/^SF://' | head -20 | while read -r f; do
+            test -f "$f" && echo "OK $f" || echo "MISSING $f"
+          done
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5
