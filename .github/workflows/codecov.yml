@@ -100,27 +100,39 @@ jobs:
             -e CARGO_INCREMENTAL \
             -e RUSTFLAGS \
             -e LLVM_PROFILE_FILE \
-            agent-test cargo test --verbose
+            agent-test bash -c "cargo test --verbose && sync"
 
-      - name: Debug coverage files
+      - name: Verify profraw files
         run: |
-          echo "Listing coverage files:"
-          ls -R coverage || true
+          echo "==== PROFRAW FILES ===="
+          find coverage -type f || true
 
       - name: Generate coverage
         run: |
           grcov ./coverage \
             --binary-path ./target/debug/ \
-            -s . \
+            -s /app \
+            --prefix-dir /app \
             -t lcov \
             --branch \
             --ignore-not-existing \
+            --ignore "/*" \
+            --ignore "../*" \
             -o lcov.info
+
+      - name: Check lcov content
+        run: |
+          echo "==== LCOV SIZE ===="
+          wc -l lcov.info || true
+          echo "==== LCOV HEAD ===="
+          head -20 lcov.info || true
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5
         with:
           files: lcov.info
+          flags: unittests
+          name: rust-docker-coverage
           verbose: true
           fail_ci_if_error: true
         env:
