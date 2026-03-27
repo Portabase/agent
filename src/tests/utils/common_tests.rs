@@ -1,5 +1,5 @@
+use crate::utils::common::{BackupMethod, vec_to_option_json};
 use serde_json::json;
-use crate::utils::common::{vec_to_option_json, BackupMethod};
 
 #[test]
 fn backup_method_to_string_automatic() {
@@ -39,8 +39,11 @@ fn vec_to_option_json_serializes_struct_vector() {
     let v = vec![Item { id: 1 }, Item { id: 2 }];
     let result = vec_to_option_json(v);
 
-    assert_eq!(result, Some(json!([
+    assert_eq!(
+        result,
+        Some(json!([
             { "id": 1 },
             { "id": 2 }
-        ])));
+        ]))
+    );
 }

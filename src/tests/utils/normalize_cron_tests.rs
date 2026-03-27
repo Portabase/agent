@@ -1,7 +1,7 @@
+use crate::utils::task_manager::cron::next_run_timestamp;
 use crate::utils::text::normalize_cron;
 use cron::Schedule;
 use std::str::FromStr;
-use crate::utils::task_manager::cron::next_run_timestamp;
 
 #[test]
 fn normalize_adds_seconds_to_five_field_cron() {

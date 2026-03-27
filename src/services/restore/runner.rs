@@ -1,21 +1,19 @@
-use super::service::RestoreService;
 use super::models::RestoreResult;
+use super::service::RestoreService;
 
 use crate::domain::factory::DatabaseFactory;
 use crate::services::config::DatabaseConfig;
 
 use anyhow::Result;
 use std::path::PathBuf;
-use tracing::{info, error};
+use tracing::{error, info};
 
 impl RestoreService {
-
     pub async fn run_restore(
         &self,
         cfg: DatabaseConfig,
         backup_file: PathBuf,
     ) -> Result<RestoreResult> {
-
         let generated_id = cfg.generated_id.clone();
 
         let db = DatabaseFactory::create_for_restore(cfg.clone(), &backup_file).await;
@@ -31,8 +29,7 @@ impl RestoreService {
             });
         }
 
-        match db.restore(&backup_file, Some(false)).await {
-
+        match db.restore(&backup_file).await {
             Ok(_) => Ok(RestoreResult {
                 generated_id,
                 status: "success".into(),

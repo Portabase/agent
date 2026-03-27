@@ -1,8 +1,8 @@
+use crate::services::api::models::agent::backup::BackupUploadResponse;
 use crate::services::api::{ApiClient, ApiError};
 use anyhow::Result;
 use reqwest::Method;
 use serde::Serialize;
-use crate::services::api::models::agent::backup::BackupUploadResponse;
 
 #[derive(Serialize)]
 pub struct InitUploadRequest {

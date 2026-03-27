@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
+use crate::services::api::ApiError;
 use reqwest::{Client, Method};
 use serde::de::DeserializeOwned;
 use std::time::Duration;
-use crate::services::api::ApiError;
 
 #[derive(Clone, Debug)]
 pub struct ApiClient {
@@ -57,12 +57,7 @@ impl ApiClient {
     {
         let url = format!("{}{}", self.base_url, path);
 
-        let res = self
-            .http
-            .request(method, &url)
-            .json(body)
-            .send()
-            .await?;
+        let res = self.http.request(method, &url).json(body).send().await?;
 
         let status = res.status();
         let body_text = res.text().await.unwrap_or_default();

@@ -1,11 +1,11 @@
-use tempfile::TempDir;
-use testcontainers::runners::AsyncRunner;
-use testcontainers::ContainerAsync;
-use testcontainers_modules::valkey::{Valkey};
-use url::Host;
 use crate::domain::factory::DatabaseFactory;
 use crate::services::config::{DatabaseConfig, DbType};
 use crate::tests::init_tracing_for_test;
+use tempfile::TempDir;
+use testcontainers::ContainerAsync;
+use testcontainers::runners::AsyncRunner;
+use testcontainers_modules::valkey::Valkey;
+use url::Host;
 
 async fn create_config() -> (ContainerAsync<Valkey>, DatabaseConfig) {
     let container = Valkey::default().start().await.unwrap();
@@ -15,10 +15,7 @@ async fn create_config() -> (ContainerAsync<Valkey>, DatabaseConfig) {
         .await
         .unwrap_or(Host::parse("127.0.0.1").unwrap());
 
-    let port = container
-        .get_host_port_ipv4(6379)
-        .await
-        .unwrap_or(6379);
+    let port = container.get_host_port_ipv4(6379).await.unwrap_or(6379);
 
     let config = DatabaseConfig {
         name: "Test Valkey".to_string(),
@@ -58,7 +55,7 @@ async fn valkey_backup_test() {
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
 
-    let file_path = db.backup(backup_path, Some(true)).await.unwrap();
+    let file_path = db.backup(backup_path).await.unwrap();
 
     assert!(file_path.is_file());
 }

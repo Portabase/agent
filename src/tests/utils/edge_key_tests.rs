@@ -1,6 +1,6 @@
-use base64::{engine::general_purpose, Engine as _};
+use crate::utils::edge_key::{EdgeKeyError, decode_edge_key};
+use base64::{Engine as _, engine::general_purpose};
 use serde_json::json;
-use crate::utils::edge_key::{decode_edge_key, EdgeKeyError};
 
 #[test]
 fn decode_valid_edge_key() {
@@ -9,7 +9,10 @@ fn decode_valid_edge_key() {
 
     assert_eq!(decoded.server_url, "http://localhost:8887");
     assert_eq!(decoded.agent_id, "625043cf-7c00-43c8-bcc9-d35199896dcd");
-    assert_eq!(decoded.master_key_b64, "BXV3XolC656SV7dNgcWPGQlk++rpLI6lGDi7CPB5ieo=");
+    assert_eq!(
+        decoded.master_key_b64,
+        "BXV3XolC656SV7dNgcWPGQlk++rpLI6lGDi7CPB5ieo="
+    );
 }
 
 #[test]
@@ -19,7 +22,7 @@ fn decode_edge_key_missing_field() {
         "agentId": "123"
         // masterKeyB64 is missing
     })
-        .to_string();
+    .to_string();
 
     let b64 = general_purpose::URL_SAFE.encode(incomplete_json);
     let result = decode_edge_key(&b64);

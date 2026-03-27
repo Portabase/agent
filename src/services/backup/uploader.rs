@@ -1,16 +1,15 @@
-use super::service::BackupService;
 use super::models::{BackupResult, UploadResult};
+use super::service::BackupService;
 
-use crate::services::storage;
 use crate::services::api::models::agent::status::DatabaseStorage;
+use crate::services::storage;
 use crate::utils::common::BackupMethod;
 
-use futures::future::join_all;
 use anyhow::{Result, bail};
-use tracing::{info, error};
+use futures::future::join_all;
+use tracing::{error, info};
 
 impl BackupService {
-
     pub async fn upload(
         &self,
         result: BackupResult,
@@ -19,7 +18,6 @@ impl BackupService {
         encrypt: bool,
         backup_id: &String,
     ) -> Result<Vec<UploadResult>> {
-
         if result.code.as_deref() == Some("backup_already_in_progress") {
             info!("Skipping send: backup already in progress");
             bail!("backup_already_in_progress");
@@ -28,7 +26,6 @@ impl BackupService {
         let ctx = self.ctx.clone();
 
         let futures = storages.into_iter().map(|storage| {
-
             let ctx_clone = ctx.clone();
             let result_clone = result.clone();
             let provider = storage::get_provider(&storage);
@@ -37,13 +34,16 @@ impl BackupService {
             let generated_id = result_clone.generated_id.clone();
 
             async move {
-
-                info!("Uploading storage -> {:?} for {:?}", storage.provider, storage_id);
+                info!(
+                    "Uploading storage -> {:?} for {:?}",
+                    storage.provider, storage_id
+                );
 
                 /*
                  INIT STEP
                 */
-                let init = match ctx_clone.api
+                let init = match ctx_clone
+                    .api
                     .backup_upload_init(
                         ctx_clone.edge_key.agent_id.clone(),
                         generated_id.clone(),
@@ -107,7 +107,11 @@ impl BackupService {
                     )
                     .await;
 
-                let status = if upload_result.success { "success" } else { "failed" };
+                let status = if upload_result.success {
+                    "success"
+                } else {
+                    "failed"
+                };
 
                 if status != "success" {
                     return upload_result;
@@ -115,49 +119,48 @@ impl BackupService {
 
                 info!(
                     "Storage {} uploaded to remote path {:?}",
-                    storage_id,
-                    upload_result.remote_file_path
+                    storage_id, upload_result.remote_file_path
                 );
 
                 /*
                  METADATA VALIDATION
                 */
-                let (remote_path, total_size) = match (
-                    &upload_result.remote_file_path,
-                    upload_result.total_size,
-                ) {
-                    (Some(path), Some(size)) => (path.clone(), size),
-                    _ => {
-                        return UploadResult {
-                            storage_id,
-                            success: false,
-                            error: Some("remote_file_path or total_size missing".into()),
-                            remote_file_path: None,
-                            total_size: None,
-                        };
-                    }
-                };
+                let (remote_path, total_size) =
+                    match (&upload_result.remote_file_path, upload_result.total_size) {
+                        (Some(path), Some(size)) => (path.clone(), size),
+                        _ => {
+                            return UploadResult {
+                                storage_id,
+                                success: false,
+                                error: Some("remote_file_path or total_size missing".into()),
+                                remote_file_path: None,
+                                total_size: None,
+                            };
+                        }
+                    };
 
                 /*
                  STATUS UPDATE
                 */
-                match ctx_clone.api.backup_upload_status(
-                    ctx_clone.edge_key.agent_id.clone(),
-                    generated_id,
-                    backup_storage_id,
-                    status,
-                    remote_path,
-                    total_size,
-                    backup_id,
-                ).await {
-
+                match ctx_clone
+                    .api
+                    .backup_upload_status(
+                        ctx_clone.edge_key.agent_id.clone(),
+                        generated_id,
+                        backup_storage_id,
+                        status,
+                        remote_path,
+                        total_size,
+                        backup_id,
+                    )
+                    .await
+                {
                     Ok(_) => upload_result,
 
                     Err(err) => {
                         error!(
                             "backup_upload_status failed (storage_id={}): {}",
-                            storage_id,
-                            err
+                            storage_id, err
                         );
 
                         UploadResult {

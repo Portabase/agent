@@ -50,18 +50,11 @@ pub async fn check_and_update_cron(
                 let metadata_changed = stored.metadata != metadata;
 
                 if cron_changed || args_changed || metadata_changed {
-                    upsert_task(
-                        conn,
-                        &task_name,
-                        task,
-                        &cron,
-                        args.clone(),
-                        metadata,
-                    )
-                    .await
-                    .unwrap_or_else(|e| {
-                        tracing::error!("Failed to update task {}: {:?}", task_name, e);
-                    });
+                    upsert_task(conn, &task_name, task, &cron, args.clone(), metadata)
+                        .await
+                        .unwrap_or_else(|e| {
+                            tracing::error!("Failed to update task {}: {:?}", task_name, e);
+                        });
 
                     info!(
                         "Task {} updated (cron: {}, args: {}, metadata: {})",

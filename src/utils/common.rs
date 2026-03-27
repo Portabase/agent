@@ -16,7 +16,6 @@ impl ToString for BackupMethod {
     }
 }
 
-
 pub fn vec_to_option_json<T: Serialize>(v: Vec<T>) -> Option<Value> {
     if v.is_empty() {
         None

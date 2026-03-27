@@ -1,8 +1,8 @@
 pub mod backup;
-pub mod database;
-mod restore;
 mod connection;
+pub mod database;
 mod format;
 mod ping;
+mod restore;
 
-pub use connection::{detect_format_from_size, detect_format_from_file};
+pub use connection::{detect_format_from_file, detect_format_from_size};

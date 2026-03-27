@@ -31,6 +31,7 @@ impl ApiClient {
         let agent_id = agent_id.into();
         let path = format!("/agent/{}/status", agent_id);
 
-        self.request_with_body(Method::POST, path.as_str(), &body).await
+        self.request_with_body(Method::POST, path.as_str(), &body)
+            .await
     }
 }

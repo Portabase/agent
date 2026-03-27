@@ -4,18 +4,18 @@ use crate::domain::postgres::database::PostgresDatabase;
 use crate::domain::postgres::{detect_format_from_file, detect_format_from_size};
 use crate::domain::redis::database::RedisDatabase;
 use crate::domain::sqlite::database::SqliteDatabase;
+use crate::domain::valkey::database::ValkeyDatabase;
 use crate::services::config::{DatabaseConfig, DbType};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use crate::domain::valkey::database::ValkeyDatabase;
 
 #[async_trait::async_trait]
 pub trait Database: Send + Sync {
     fn file_extension(&self) -> &'static str;
     async fn ping(&self) -> Result<bool>;
-    async fn backup(&self, backup_dir: &Path, is_test: Option<bool>) -> Result<PathBuf>;
-    async fn restore(&self, restore_file: &Path, is_test: Option<bool>) -> Result<()>;
+    async fn backup(&self, backup_dir: &Path) -> Result<PathBuf>;
+    async fn restore(&self, restore_file: &Path) -> Result<()>;
 }
 
 pub struct DatabaseFactory;
@@ -32,7 +32,7 @@ impl DatabaseFactory {
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
             DbType::Sqlite => Arc::new(SqliteDatabase::new(cfg)),
             DbType::Redis => Arc::new(RedisDatabase::new(cfg)),
-            DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg))
+            DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg)),
         }
     }
 
@@ -47,8 +47,7 @@ impl DatabaseFactory {
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
             DbType::Sqlite => Arc::new(SqliteDatabase::new(cfg)),
             DbType::Redis => Arc::new(RedisDatabase::new(cfg)),
-            DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg))
-
+            DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg)),
         }
     }
 }

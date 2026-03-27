@@ -4,11 +4,11 @@ use crate::core::context::Context;
 use crate::services::backup::BackupService;
 use crate::services::config::ConfigService;
 use crate::services::cron::CronService;
+use crate::services::restore::RestoreService;
 use crate::services::status::StatusService;
 use crate::utils::common::BackupMethod;
 use std::sync::Arc;
 use tracing::info;
-use crate::services::restore::RestoreService;
 
 pub struct Agent {
     ctx: Arc<Context>,
@@ -43,23 +43,30 @@ impl Agent {
         let ping_result = self.status_service.ping(&config.databases).await?;
 
         for db in ping_result.databases.iter() {
-            let database = config.databases.iter().find(|cfg_db|cfg_db.generated_id == db.generated_id).unwrap();
+            let database = config
+                .databases
+                .iter()
+                .find(|cfg_db| cfg_db.generated_id == db.generated_id)
+                .unwrap();
             info!(
                 "Generated Id: {} | backup action: {} | restore action: {} | Database Name: {}",
-                 db.generated_id, db.data.backup.action, db.data.restore.action, database.name,
+                db.generated_id, db.data.backup.action, db.data.restore.action, database.name,
             );
             let _ = self.cron_service.sync(db).await;
 
             if db.data.backup.action {
                 let _ = self
                     .backup_service
-                    .dispatch(&db.generated_id, &config, method.clone(), &db.storages, db.encrypt)
+                    .dispatch(
+                        &db.generated_id,
+                        &config,
+                        method.clone(),
+                        &db.storages,
+                        db.encrypt,
+                    )
                     .await;
             } else if db.data.restore.action {
-                let _ = self
-                    .restore_service
-                    .dispatch(db, &config)
-                    .await;
+                let _ = self.restore_service.dispatch(db, &config).await;
             }
         }
 

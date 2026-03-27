@@ -23,7 +23,7 @@ pub async fn upsert_task(
         cron: cron.to_string(),
         args,
         enabled: true,
-        metadata
+        metadata,
     };
 
     let payload = serde_json::to_string(&entry).unwrap();

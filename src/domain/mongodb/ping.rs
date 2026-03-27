@@ -24,7 +24,7 @@ pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
             error!("Full Error: {}", e);
             error!("Check you database network connectivity");
             error!("----------------------------------------");
-            Err(anyhow::anyhow!("Ping failed for {}: {}", cfg.name, e))
+            Ok(false)
         }
     }
 }

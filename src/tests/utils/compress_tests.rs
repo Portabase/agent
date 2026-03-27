@@ -1,7 +1,7 @@
-use tempfile::tempdir;
-use tokio::fs::{write, read};
-use anyhow::Result;
 use crate::utils::compress::{compress_to_tar_gz_large, decompress_large_tar_gz};
+use anyhow::Result;
+use tempfile::tempdir;
+use tokio::fs::{read, write};
 
 #[tokio::test]
 async fn compress_creates_tar_gz() -> Result<()> {
@@ -39,7 +39,8 @@ async fn decompress_restores_file() -> Result<()> {
     let output_dir = tmp.path().join("out");
     tokio::fs::create_dir_all(&output_dir).await?;
 
-    let extracted_files = decompress_large_tar_gz(&compress_result.compressed_path, &output_dir).await?;
+    let extracted_files =
+        decompress_large_tar_gz(&compress_result.compressed_path, &output_dir).await?;
     assert_eq!(extracted_files.len(), 1);
 
     let extracted_content = read(&extracted_files[0]).await?;

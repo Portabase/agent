@@ -23,7 +23,6 @@ pub struct BackupUpdateRequest {
     pub generated_id: String,
 }
 
-
 impl ApiClient {
     pub async fn backup_create(
         &self,

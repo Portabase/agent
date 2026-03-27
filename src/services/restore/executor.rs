@@ -1,17 +1,11 @@
 use super::service::RestoreService;
 use crate::services::config::DatabaseConfig;
-use tempfile::TempDir;
 use anyhow::Result;
+use tempfile::TempDir;
 use tracing::info;
 
 impl RestoreService {
-
-    pub async fn execute_restore(
-        &self,
-        cfg: DatabaseConfig,
-        file_url: String,
-    ) -> Result<()> {
-
+    pub async fn execute_restore(&self, cfg: DatabaseConfig, file_url: String) -> Result<()> {
         let temp_dir = TempDir::new()?;
         let tmp_path = temp_dir.path();
 

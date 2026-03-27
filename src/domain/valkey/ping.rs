@@ -1,8 +1,8 @@
-use tracing::{debug, info};
 use crate::services::config::DatabaseConfig;
+use anyhow::{Context, Result};
 use tokio::process::Command;
-use tokio::time::{timeout, Duration};
-use anyhow::{Result, Context};
+use tokio::time::{Duration, timeout};
+use tracing::{debug, info};
 
 pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
     let mut cmd = Command::new("valkey-cli");
@@ -22,7 +22,6 @@ pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
     cmd.arg("PING");
 
     debug!("Command Ping: {:?}", cmd);
-
 
     let result = timeout(Duration::from_secs(10), cmd.output()).await;
 
