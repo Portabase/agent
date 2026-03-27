@@ -49,7 +49,7 @@ tokio-stream = "0.1.18"
 aes = "0.9.0-rc.4"
 typenum = "1.19.0"
 testcontainers = "0.27.1"
-testcontainers-modules = { version = "0.15.0", features = ["postgres", "redis", "valkey"] }
+testcontainers-modules = { version = "0.15.0", features = ["postgres", "redis", "valkey", "mysql", "mariadb", "mongo"] }
 postgres = "0.19.12"
 url = "2.5.8"
 
@@ -57,7 +57,7 @@ url = "2.5.8"
 tokio = { version = "1", features = ["full"] }
 mockall = "0.13"
 testcontainers = "0.27.1"
-testcontainers-modules = { version = "0.15.0", features = ["postgres", "redis"] }
+testcontainers-modules = { version = "0.15.0", features = ["postgres", "redis", "mysql", "mariadb", "mongo"] }
 wiremock = "0.6"
 
 [profile.release]

@@ -34,7 +34,7 @@ pub fn decode_edge_key(edge_key: &str) -> Result<EdgeKey, EdgeKeyError> {
     let decoded_str = String::from_utf8_lossy(&decoded_bytes);
 
     let parsed: Value = serde_json::from_str(&decoded_str)?;
-    
+
     if parsed.get("serverUrl").is_some()
         && parsed.get("agentId").is_some()
         && parsed.get("masterKeyB64").is_some()

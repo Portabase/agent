@@ -28,14 +28,9 @@ pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
     Ok(version)
 }
 
-pub fn select_pg_path(version: &str, is_test: Option<bool>) -> std::path::PathBuf {
+pub fn select_pg_path(version: &str) -> std::path::PathBuf {
     let major = version.split('.').next().unwrap_or("17");
-
-    if is_test.unwrap_or(false) {
-        format!("/usr/local/postgresql/{}/bin", major).into()
-    } else {
-        format!("/usr/lib/postgresql/{}/bin", major).into()
-    }
+    format!("/usr/lib/postgresql/{}/bin", major).into()
 }
 
 pub async fn terminate_connections(cfg: &DatabaseConfig) -> Result<()> {

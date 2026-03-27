@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use serde::Deserialize;
-    use toml::map::Map;
-    use toml::Value;
     use crate::utils::deserializer::{camel_to_snake, deserialize_snake_case, to_snake_case};
+    use serde::Deserialize;
+    use toml::Value;
+    use toml::map::Map;
 
     #[test]
     fn camel_to_snake_simple() {
@@ -45,10 +45,7 @@ mod tests {
         let mut table2 = Map::new();
         table2.insert("AnotherKey".into(), Value::Integer(2));
 
-        let value = Value::Array(vec![
-            Value::Table(table1),
-            Value::Table(table2),
-        ]);
+        let value = Value::Array(vec![Value::Table(table1), Value::Table(table2)]);
 
         let mut expected_table1 = Map::new();
         expected_table1.insert("camel_key".into(), Value::Integer(1));

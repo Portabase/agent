@@ -60,6 +60,7 @@ WORKDIR /app
 FROM base AS dev
 
 RUN cargo install cargo-watch
+RUN cargo install grcov --locked
 
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs

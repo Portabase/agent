@@ -1,14 +1,13 @@
 use super::service::BackupService;
-use crate::services::config::DatabaseConfig;
 use crate::services::api::models::agent::status::DatabaseStorage;
+use crate::services::config::DatabaseConfig;
 use crate::utils::common::BackupMethod;
 use crate::utils::locks::FileLock;
 
-use tempfile::TempDir;
 use anyhow::Result;
+use tempfile::TempDir;
 
 impl BackupService {
-
     pub async fn execute_backup(
         &self,
         generated_id: String,
@@ -17,11 +16,10 @@ impl BackupService {
         storages: Vec<DatabaseStorage>,
         encrypt: bool,
     ) -> Result<()> {
-
         if FileLock::is_locked(&generated_id).await? {
             anyhow::bail!("backup already running");
         }
-        
+
         let backup = self.create_backup_record(&generated_id, &method).await?;
         let backup_id = backup.backup.id;
 

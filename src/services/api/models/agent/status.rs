@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
+use crate::utils::deserializer::deserialize_snake_case;
 use serde::{Deserialize, Serialize};
 use toml::Value;
-use crate::utils::deserializer::deserialize_snake_case;
 
 #[derive(Debug, Deserialize)]
 pub struct PingResult {

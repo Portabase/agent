@@ -1,4 +1,4 @@
 mod backup;
-mod restore;
-mod ping;
 pub mod database;
+mod ping;
+mod restore;

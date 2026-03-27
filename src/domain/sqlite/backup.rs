@@ -41,5 +41,5 @@ pub async fn run(
         info!("SQLite backup completed for {}", cfg.name);
         Ok(file_path)
     })
-        .await?
+    .await?
 }

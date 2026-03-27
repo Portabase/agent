@@ -7,13 +7,11 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 impl RestoreService {
-
     pub async fn prepare_archive(
         &self,
         downloaded_file: PathBuf,
         tmp_path: &Path,
     ) -> Result<PathBuf> {
-
         let filename = downloaded_file
             .file_name()
             .unwrap()
@@ -31,7 +29,6 @@ impl RestoreService {
         let mut archive = downloaded_file.clone();
 
         if encrypted {
-
             let new_name = filename.strip_suffix(".enc").unwrap();
 
             let decrypted = tmp_path.join(new_name);
@@ -41,7 +38,7 @@ impl RestoreService {
                 decrypted.clone(),
                 self.ctx.edge_key.master_key_b64.clone(),
             )
-                .await?;
+            .await?;
 
             archive = decrypted;
         }

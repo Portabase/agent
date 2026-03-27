@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::utils::deserializer::string_or_number_to_string;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct S3ProviderConfig {
@@ -12,4 +12,3 @@ pub struct S3ProviderConfig {
     #[serde(default, deserialize_with = "string_or_number_to_string")]
     pub port: Option<String>,
 }
-

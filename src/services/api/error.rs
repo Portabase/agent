@@ -11,10 +11,7 @@ pub enum ApiError {
     Serialization(#[from] serde_json::Error),
 
     #[error("api error: status={status}, body={body}")]
-    HttpResponse {
-        status: StatusCode,
-        body: String,
-    },
+    HttpResponse { status: StatusCode, body: String },
 
     #[error("api returned unexpected response")]
     UnexpectedResponse,

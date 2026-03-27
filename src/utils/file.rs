@@ -14,8 +14,8 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use bytes::Bytes;
 use futures::Stream;
-use rand::rngs::OsRng;
 use rand::TryRngCore;
+use rand::rngs::OsRng;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -77,7 +77,8 @@ pub async fn encrypt_file_stream_gcm(
         rng.try_fill_bytes(&mut base_nonce).unwrap();
 
         let key = Key::<Aes256Gcm>::try_from(master_key_bytes.as_slice())
-            .map_err(|_| anyhow::anyhow!("Invalid AES-256 key length")).unwrap();
+            .map_err(|_| anyhow::anyhow!("Invalid AES-256 key length"))
+            .unwrap();
 
         let cipher = Aes256Gcm::new(&key);
 
@@ -105,7 +106,8 @@ pub async fn encrypt_file_stream_gcm(
             nonce_bytes[..8].copy_from_slice(&base_nonce);
             nonce_bytes[8..].copy_from_slice(&chunk_index.to_be_bytes());
             let nonce = Nonce::try_from(&nonce_bytes[..])
-                .map_err(|_| anyhow::anyhow!("Invalid nonce length")).unwrap();
+                .map_err(|_| anyhow::anyhow!("Invalid nonce length"))
+                .unwrap();
 
             let ciphertext = cipher.encrypt(&nonce, &buffer[..n]).unwrap();
             let mut out = Vec::with_capacity(4 + ciphertext.len());

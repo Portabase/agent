@@ -24,3 +24,7 @@ docker exec -it db-sqlite sqlite3 /workspace/data/app.db "SELECT * FROM users LI
 ```bash
 docker exec -it db-sqlite sqlite3 /workspace/data/app.db "SELECT name FROM sqlite_master WHERE type='table';"
 ```
+
+```bash
+docker compose -f docker-compose.test.yml run agent-test bash -c "cargo clean && cargo test" 
+```

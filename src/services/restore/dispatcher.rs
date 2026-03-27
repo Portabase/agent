@@ -1,13 +1,11 @@
 use super::service::RestoreService;
-use crate::services::config::DatabasesConfig;
 use crate::services::api::models::agent::status::DatabaseStatus;
+use crate::services::config::DatabasesConfig;
 
 use tracing::error;
 
 impl RestoreService {
-
     pub async fn dispatch(&self, db: &DatabaseStatus, config: &DatabasesConfig) {
-
         let Some(cfg) = config
             .databases
             .iter()
@@ -29,14 +27,9 @@ impl RestoreService {
         let db_cfg = cfg.clone();
 
         tokio::spawn(async move {
-
-            if let Err(e) = service
-                .execute_restore(db_cfg, file_to_restore)
-                .await
-            {
+            if let Err(e) = service.execute_restore(db_cfg, file_to_restore).await {
                 error!("Restore failed: {}", e);
             }
-
         });
     }
 }
