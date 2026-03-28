@@ -5,21 +5,18 @@ services:
 #      dockerfile: docker/Dockerfile
 #      target: prod
     image: portabase/agent:latest
-#    platform: linux/arm64
     container_name: rust-prod
     volumes:
       - ./databases.json:/config/config.json
     environment:
-      #      APP_ENV: production
       LOG: info
       TZ: "Europe/Paris"
-      #      DATABASES_CONFIG_FILE: "config.toml"
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiNWU1OGU2MGEtODhiMy00YTBjLWI0NDktNTQ3OWZhOTQzZDBkIiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
+      #DATABASES_CONFIG_FILE: "config.toml"
+      EDGE_KEY: "<to complete>"
     extra_hosts:
       - "localhost:host-gateway"
     networks:
       - portabase
-
 
 
   db-mongodb-auth:
