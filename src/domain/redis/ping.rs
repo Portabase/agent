@@ -2,7 +2,7 @@ use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
 use tokio::process::Command;
 use tokio::time::{Duration, timeout};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
     let mut cmd = Command::new("redis-cli");
@@ -21,7 +21,7 @@ pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
 
     cmd.arg("PING");
 
-    debug!("Command Ping: {:?}", cmd);
+    debug!("Command Ping Redis: {:?}", cmd);
 
     let result = timeout(Duration::from_secs(10), cmd.output()).await;
 
@@ -31,16 +31,17 @@ pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
 
-            info!("Redis stdout: {}", stdout);
-            info!("Redis stderr: {}", stderr);
+            if !stdout.is_empty() {
+                error!("Redis stderr: {}", stderr);
+            }
 
             if stderr.contains("NOAUTH") {
-                info!("Redis authentication failed (NOAUTH required)");
+                error!("Redis authentication failed (NOAUTH required)");
                 return Ok(false);
             }
 
             if !output.status.success() {
-                info!("Redis command failed with status: {:?}", output.status);
+                error!("Redis command failed with status: {:?}", output.status);
                 return Ok(false);
             }
 

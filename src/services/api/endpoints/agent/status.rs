@@ -11,6 +11,8 @@ pub struct DatabasePayload<'a> {
     pub dbms: &'a str,
     #[serde(rename = "generatedId")]
     pub generated_id: &'a str,
+    #[serde(rename = "pingStatus")]
+    pub ping_status: bool
 }
 
 #[derive(Serialize)]
