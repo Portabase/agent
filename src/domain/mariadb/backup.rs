@@ -1,4 +1,4 @@
-use crate::domain::mysql::connection::server_version;
+use crate::domain::mariadb::connection::{select_mariadb_path, server_version};
 use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -17,7 +17,7 @@ pub async fn run(
 
         let version = match futures::executor::block_on(server_version(&cfg)) {
             Ok(v) => {
-                debug!("Mysql version detected: {}", v);
+                debug!("Mariadb version detected: {}", v);
                 v
             }
             Err(e) => {
@@ -26,42 +26,39 @@ pub async fn run(
             }
         };
 
-        info!("Mysql version found: {}", version);
+        info!("Mariadb version found: {}", version);
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
 
-        // let mysql_dump = select_mysql_path(&version).join("mysqldump");
-        // info!("MySQL dump found: {}", mysql_dump.display());
+        let mariadb_dump = select_mariadb_path(&version).join("mariadb-dump");
+        info!("Mariadb dump found: {}", mariadb_dump.display());
 
-        let output = Command::new("mysqldump")
-            .arg("--host")
-            .arg(cfg.host)
-            .arg("--port")
-            .arg(cfg.port.to_string())
-            .arg("--user")
-            .arg(cfg.username)
+        let output = Command::new("mariadb-dump")
+            .arg("--host").arg(&cfg.host)
+            .arg("--port").arg(cfg.port.to_string())
+            .arg("--user").arg(&cfg.username)
             .arg("--routines")
             .arg("--events")
             .arg("--triggers")
-            .arg("--verbose")
             .arg("--single-transaction")
             .arg("--quick")
+            .arg("--skip-lock-tables")
             .arg("--add-drop-database")
-            .arg("--databases")
-            .arg(cfg.database)
-            .arg("-r")
-            .arg(&file_path)
+            .arg("--databases").arg(&cfg.database)
+            .arg("--compress")
+            .arg("--max-allowed-packet=512M")
+            .arg("--net-buffer-length=16K")
+            .arg("--default-character-set=utf8mb4")
+            .arg("-r").arg(&file_path)
             .envs(env)
             .output()
-            .with_context(|| format!("Failed to run mysqldump for {}", cfg.name))?;
+            .with_context(|| format!("Failed to run mariadb-dump for {}", cfg.name))?;
+
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            info!("mysqldump stderr: {}", stderr);
-            anyhow::bail!("MySQL backup failed for {}: {}", cfg.name, stderr);
+            anyhow::bail!("Mariadb backup failed for {}: {}", cfg.name, stderr);
         }
-
-        info!("Output {}", String::from_utf8_lossy(&output.stdout));
 
         Ok(file_path)
     })
