@@ -25,6 +25,16 @@ impl Settings {
             .parse::<usize>()
             .expect("POOLING must be a valid positive integer");
 
+        if pooling_seconds < 1 || pooling_seconds > 600 {
+            panic!("POOLING must be between 1 second and 600 seconds (10 minutes)");
+        }
+
+        if pooling_seconds < 5 {
+            eprintln!(
+                "[WARNING] POOLING is set to {}s. Values under 5s are not recommended for production.",
+                pooling_seconds
+            );
+        }
         let tz = env::var("TZ").unwrap_or_else(|_| "UTC".to_string());
 
         Self {

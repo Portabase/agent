@@ -2,7 +2,7 @@ use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
 use tokio::process::Command;
 use tokio::time::{Duration, timeout};
-use tracing::{debug, info};
+use tracing::{debug, info, error};
 
 pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
     let mut cmd = Command::new("valkey-cli");
@@ -21,33 +21,34 @@ pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
 
     cmd.arg("PING");
 
-    debug!("Command Ping: {:?}", cmd);
+    debug!("Command Ping Valkey: {:?}", cmd);
 
     let result = timeout(Duration::from_secs(10), cmd.output()).await;
 
     match result {
         Ok(output) => {
-            let output = output.context("Failed to execute redis-cli")?;
+            let output = output.context("Failed to execute valkey-cli")?;
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
 
-            info!("Redis stdout: {}", stdout);
-            info!("Redis stderr: {}", stderr);
+            if !stdout.is_empty() {
+                error!("Valkey stderr: {}", stderr);
+            }
 
             if stderr.contains("NOAUTH") {
-                info!("Redis authentication failed (NOAUTH required)");
+                error!("Valkey authentication failed (NOAUTH required)");
                 return Ok(false);
             }
 
             if !output.status.success() {
-                info!("Redis command failed with status: {:?}", output.status);
+                error!("Valkey command failed with status: {:?}", output.status);
                 return Ok(false);
             }
 
             Ok(stdout.contains("PONG"))
         }
         Err(_) => {
-            info!("Timeout connecting to Redis at {}:{}", cfg.host, cfg.port);
+            info!("Timeout connecting to Valkey at {}:{}", cfg.host, cfg.port);
             Ok(false)
         }
     }
