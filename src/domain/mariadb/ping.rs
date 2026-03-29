@@ -4,7 +4,7 @@ use tokio::process::Command;
 use tokio::time::{Duration, timeout};
 
 pub async fn run(cfg: DatabaseConfig, env: HashMap<String, String>) -> anyhow::Result<bool> {
-    let mut cmd = Command::new("mariadb-admin");
+    let mut cmd = Command::new("mysqladmin");
     cmd.arg("--host")
         .arg(cfg.host)
         .arg("--port")
@@ -24,3 +24,5 @@ pub async fn run(cfg: DatabaseConfig, env: HashMap<String, String>) -> anyhow::R
         Err(_) => Ok(false),
     }
 }
+
+

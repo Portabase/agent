@@ -46,6 +46,7 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     rm -rf /tmp/pg-x64 /tmp/pg-arm && \
     chmod +x /usr/lib/postgresql/*/bin/*
 
+
 # =========================
 # MongoDB client binaries
 # =========================

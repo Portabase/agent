@@ -13,7 +13,7 @@
     {
       "name": "Test database 2 - MariaDB",
       "database": "mariadb",
-      "type": "mysql",
+      "type": "mariadb",
       "username": "mariadb",
       "password": "changeme",
       "port": 3306,
@@ -81,6 +81,16 @@
       "username": "default",
       "host": "db-valkey-auth",
       "generated_id": "16678561-ff7e-4c97-8c83-0adeff214681"
+    },
+    {
+      "name": "Test database 12 - Mysql",
+      "database": "mysqldb",
+      "type": "mysql",
+      "username": "mysqldb",
+      "password": "changeme",
+      "port": 3306,
+      "host": "db-mysql",
+      "generated_id": "16656124-ff7e-4c97-8c83-0adeff214681"
     }
   ]
 }

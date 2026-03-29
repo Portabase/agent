@@ -5,3 +5,4 @@ pub mod postgres;
 mod redis;
 mod sqlite;
 mod valkey;
+mod mariadb;

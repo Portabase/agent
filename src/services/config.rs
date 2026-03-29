@@ -27,7 +27,7 @@ impl DbType {
     pub fn as_str(&self) -> &'static str {
         match self {
             DbType::Mysql => "mysql",
-            DbType::Mariadb => "mysql",
+            DbType::Mariadb => "mariadb",
             DbType::Postgresql => "postgresql",
             DbType::MongoDB => "mongodb",
             DbType::Sqlite => "sqlite",
