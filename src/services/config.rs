@@ -21,6 +21,7 @@ pub enum DbType {
     Sqlite,
     Redis,
     Valkey,
+    Firebird
 }
 
 impl DbType {
@@ -33,6 +34,7 @@ impl DbType {
             DbType::Sqlite => "sqlite",
             DbType::Redis => "redis",
             DbType::Valkey => "valkey",
+            DbType::Firebird => "firebird",
         }
     }
 }
@@ -182,6 +184,7 @@ impl ConfigService {
                 | DbType::Mariadb
                 | DbType::MongoDB
                 | DbType::Redis
+                | DbType::Firebird
                 | DbType::Valkey => required(&db.host, &db.name, "host")?,
                 DbType::Sqlite => optional(&db.host),
             };
@@ -192,6 +195,7 @@ impl ConfigService {
                 | DbType::Mariadb
                 | DbType::MongoDB
                 | DbType::Redis
+                | DbType::Firebird
                 | DbType::Valkey => required(&db.port, &db.name, "port")?,
                 DbType::Sqlite => db.port.unwrap_or(0),
             };

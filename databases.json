@@ -91,6 +91,16 @@
       "port": 3306,
       "host": "db-mysql",
       "generated_id": "16656124-ff7e-4c97-8c83-0adeff214681"
+    },
+    {
+      "name": "Test database 13 - Firebird",
+      "database": "/var/lib/firebird/data/mirror.fdb",
+      "type": "firebird",
+      "username": "alice",
+      "password": "fake_password",
+      "port": 3050,
+      "host": "db-firebird",
+      "generated_id": "16706124-ff7e-4c97-8c83-0adeff214681"
     }
   ]
 }

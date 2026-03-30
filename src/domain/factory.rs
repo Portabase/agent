@@ -9,6 +9,7 @@ use crate::services::config::{DatabaseConfig, DbType};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use crate::domain::firebird::database::FirebirdDatabase;
 use crate::domain::mariadb::database::MariaDBDatabase;
 
 #[async_trait::async_trait]
@@ -34,6 +35,7 @@ impl DatabaseFactory {
             DbType::Sqlite => Arc::new(SqliteDatabase::new(cfg)),
             DbType::Redis => Arc::new(RedisDatabase::new(cfg)),
             DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg)),
+            DbType::Firebird => Arc::new(FirebirdDatabase::new(cfg)),
         }
     }
 
@@ -49,6 +51,7 @@ impl DatabaseFactory {
             DbType::Sqlite => Arc::new(SqliteDatabase::new(cfg)),
             DbType::Redis => Arc::new(RedisDatabase::new(cfg)),
             DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg)),
+            DbType::Firebird => Arc::new(FirebirdDatabase::new(cfg)),
         }
     }
 }

@@ -49,6 +49,11 @@ seed-sqlite:
 	docker exec -it db-sqlite sqlite3 /workspace/data/app.db "SELECT name FROM sqlite_master WHERE type='table';"
 	@echo "Done"
 
-
+seed-firebird:
+	@echo "Seeding Firebird..."
+	docker exec -i db-firebird isql -user alice -password fake_password /var/lib/firebird/data/mirror.fdb < ./scripts/firebird/seed.sql
+	@echo "Verifying Firebird tables..."
+	docker exec -i db-firebird isql -user alice -password fake_password /var/lib/firebird/data/mirror.fdb \
+		-sql "SHOW TABLES;"
 
 seed-all: seed-mongo seed-mysql seed-postgres seed-postgres-1gb
