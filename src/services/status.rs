@@ -9,6 +9,7 @@ use reqwest::Client;
 use std::error::Error;
 use std::sync::Arc;
 use futures_util::future::try_join_all;
+use tracing::info;
 use crate::domain::factory::DatabaseFactory;
 
 pub struct StatusService {
@@ -32,6 +33,8 @@ impl StatusService {
                 let db_engine = DatabaseFactory::create_for_backup(db.clone()).await;
 
                 let reachable = db_engine.ping().await?;
+
+                info!("Ping {} => {:?}",db.name, reachable);
 
                 Ok::<DatabasePayload, anyhow::Error>(DatabasePayload {
                     name: &db.name,

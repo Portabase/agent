@@ -8,6 +8,8 @@ use tokio::time::{Duration, timeout};
 pub async fn run(cfg: DatabaseConfig) -> anyhow::Result<bool> {
     let db_path = format!("{}/{}:{}", cfg.host, cfg.port, cfg.database);
 
+    info!("Running Ping database from {}", db_path);
+
     let mut child = Command::new("isql-fb")
         .arg("-q")
         .arg("-user")

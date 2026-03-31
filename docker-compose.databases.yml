@@ -1,0 +1,177 @@
+services:
+  db-postgres:
+    container_name: db-postgres
+    image: postgres:17-alpine
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=devdb
+      - POSTGRES_USER=devuser
+      - POSTGRES_PASSWORD=changeme
+    networks:
+      - portabase
+
+  db-mariadb:
+    container_name: db-mariadb
+    image: mariadb:latest
+    ports:
+      - "3311:3306"
+    environment:
+      - MYSQL_DATABASE=mariadb
+      - MYSQL_USER=mariadb
+      - MYSQL_PASSWORD=changeme
+      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    networks:
+      - portabase
+
+  db-mysql:
+    container_name: db-mysql
+    image: mysql:9.5
+    ports:
+      - "3312:3306"
+    environment:
+      - MYSQL_DATABASE=mysqldb
+      - MYSQL_USER=mysqldb
+      - MYSQL_PASSWORD=changeme
+      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - portabase
+
+
+  db-mongodb-auth:
+    container_name: db-mongodb-auth
+    image: mongo:latest
+    ports:
+      - "27082:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+      MONGO_INITDB_DATABASE: testdbauth
+    command: mongod --auth
+    networks:
+      - portabase
+    volumes:
+      - mongodb-data-auth:/data/db
+    healthcheck:
+      test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-mongodb:
+    container_name: db-mongodb
+    image: mongo:latest
+    ports:
+      - "27083:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      MONGO_INITDB_DATABASE: testdb
+    networks:
+      - portabase
+
+  sqlite:
+    container_name: db-sqlite
+    image: keinos/sqlite3
+    volumes:
+      - sqlite-data:/workspace/data
+    working_dir: /workspace
+    command: tail -f /dev/null
+    stdin_open: true
+    tty: true
+
+  db-redis:
+    image: redis:latest
+    container_name: db-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: [ "redis-server", "--appendonly", "yes" ]
+    networks:
+      - portabase
+
+  db-redis-auth:
+    image: redis:latest
+    container_name: db-redis-auth
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data-auth:/data
+    environment:
+      - REDIS_PASSWORD=supersecurepassword
+    command: [ "redis-server", "--requirepass", "supersecurepassword", "--appendonly", "yes" ]
+    networks:
+      - portabase
+
+  db-valkey:
+    image: valkey/valkey
+    container_name: db-valkey
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    ports:
+      - '6381:6379'
+    volumes:
+      - valkey-data:/data
+    networks:
+      - portabase
+
+  db-valkey-auth:
+    image: valkey/valkey
+    container_name: db-valkey-auth
+    command: >
+      --requirepass "supersecurepassword"
+    ports:
+      - '6382:6379'
+    volumes:
+      - valkey-data-auth:/data
+    networks:
+      - portabase
+
+  db-firebird:
+    image: firebirdsql/firebird
+    container_name: db-firebird
+    restart: always
+    environment:
+      - FIREBIRD_ROOT_PASSWORD=fake_root_password
+      - FIREBIRD_USER=alice
+      - FIREBIRD_PASSWORD=fake_password
+      - FIREBIRD_DATABASE=mirror.fdb
+      - FIREBIRD_DATABASE_DEFAULT_CHARSET=UTF8
+    volumes:
+      - firebird-data:/var/lib/firebird/data
+    ports:
+      - "3060:3050"
+
+    networks:
+      - portabase
+
+volumes:
+  postgres-data:
+  mariadb-data:
+  mysql-data:
+  mongodb-data:
+  mongodb-data-auth:
+  sqlite-data:
+  redis-data:
+  redis-data-auth:
+  valkey-data:
+  valkey-data-auth:
+  firebird-data:
+
+networks:
+  portabase:
+    name: portabase_network
+    external: true
+
