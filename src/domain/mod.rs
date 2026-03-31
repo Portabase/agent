@@ -6,3 +6,4 @@ mod redis;
 mod sqlite;
 mod valkey;
 mod mariadb;
+mod firebird;
