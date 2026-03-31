@@ -6,7 +6,7 @@ use tracing::{debug, error, info};
 
 pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
     tokio::task::spawn_blocking(move || -> Result<()> {
-        debug!("Starting MongoDB restore for database {}", cfg.name);
+        debug!("Starting Firebird restore for database {}", cfg.name);
 
         let db_path = format!("{}/{}:{}", cfg.host, cfg.port, cfg.database);
 

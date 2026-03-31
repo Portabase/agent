@@ -7,14 +7,18 @@ use std::time::Duration;
 use tempfile::TempDir;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
-use testcontainers::core::{IntoContainerPort};
+use testcontainers::core::{AccessMode, IntoContainerPort};
 use tracing::{error, info};
-
+use testcontainers::core::{Mount};
 
 async fn create_config() -> (ContainerAsync<GenericImage>, DatabaseConfig) {
 
-    let container = GenericImage::new("jacobalberty/firebird", "latest")
+    let mount = Mount::volume_mount("firebird-test-data", "/var/lib/firebird/data")
+        .with_access_mode(AccessMode::ReadWrite);
+
+    let container = GenericImage::new("firebirdsql/firebird", "latest")
         .with_exposed_port(3050.tcp())
+        .with_mount(mount)
         .with_env_var("FIREBIRD_ROOT_PASSWORD", "fake_root_password")
         .with_env_var("FIREBIRD_USER", "alice")
         .with_env_var("FIREBIRD_PASSWORD", "fake_password")
@@ -24,12 +28,12 @@ async fn create_config() -> (ContainerAsync<GenericImage>, DatabaseConfig) {
         .await
         .expect("Firebird started");
 
-    tokio::time::sleep(Duration::from_secs(10)).await;
+    tokio::time::sleep(Duration::from_secs(15)).await;
 
     let host = container.get_host().await.unwrap().to_string();
     let port = container.get_host_port_ipv4(3050).await.unwrap();
 
-    let database = "/firebird/data/mirror.fdb";
+    let database = "/var/lib/firebird/data/mirror.fdb";
 
     let config = DatabaseConfig {
         name: "Test Firebird".to_string(),
@@ -70,6 +74,9 @@ async fn firebird_backup_restore_test() {
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
 
     let file_path = db.backup(backup_path).await.unwrap();
+
+    tokio::time::sleep(Duration::from_secs(10)).await;
+
     assert!(file_path.is_file());
 
     let compression = compress_to_tar_gz_large(&file_path).await.unwrap();

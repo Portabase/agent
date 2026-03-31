@@ -19,6 +19,7 @@ pub async fn run(
         };
 
         let db_path = PathBuf::from(db_path_str);
+        info!("database path: {}", db_path.display());
 
         if !db_path.exists() {
             anyhow::bail!("SQLite database file not found: {}", db_path.display());
@@ -31,7 +32,7 @@ pub async fn run(
             .arg(format!(".backup '{}'", file_path.display()))
             .output()
             .context("SQLite backup command failed to start")?;
-
+        info!("Backup successful: {:?}", output);
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             error!("SQLite backup failed for {}: {}", cfg.name, stderr);

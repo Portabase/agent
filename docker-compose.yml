@@ -13,15 +13,15 @@ services:
       #- ./databases.toml:/config/config.toml
       #- /var/run/docker.sock:/var/run/docker.sock
       #- cargo-target:/app/target
-      #- sqlite-data:/sqlite-data/workspace/data
+      #- agent-rust_sqlite-data:/sqlite-data/workspace/data
       #- ./scripts/sqlite/test-db:/sqlite-data-2/workspace/data
     environment:
       APP_ENV: development
       LOG: debug
       TZ: "Europe/Paris"
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiZWQzNDNmOTUtNTU0Yi00NTAwLTkzZjAtMzEyODQzMjQ2M2RhIiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiOWRjZjYzNzQtZTc5ZC00MzU5LTkwMTYtNjA0OTQ2NDNhNjEwIiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
       #POOLING: 1
-      #DATABASES_CONFIG_FILE: "config.toml"
+      DATABASES_CONFIG_FILE: "config.toml"
     extra_hosts:
       - "localhost:host-gateway"
     networks:
@@ -31,6 +31,9 @@ volumes:
   cargo-registry:
   cargo-git:
   #cargo-target:
+#  agent-rust_sqlite-data:
+#    external: true
+
 
 
 networks:
