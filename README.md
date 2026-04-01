@@ -13,6 +13,7 @@
 
 [![License: Apache](https://img.shields.io/badge/License-apache-yellow.svg)](LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/portabase/agent?color=brightgreen)](https://hub.docker.com/r/portabase/agent)
+[![Helm Chart](https://img.shields.io/badge/Helm-Kubernetes-326ce5?logo=helm&logoColor=white)](https://github.com/Portabase/agent/pkgs/container/charts%2Fportabase-agent)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey)](https://github.com/Portabase/portabase)
 [![Support Portabase](https://img.shields.io/badge/Support-Portabase-orange)](https://www.buymeacoffee.com/portabase)
 
@@ -20,9 +21,12 @@
 [![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![SQLite](https://img.shields.io/badge/-SQLite-blue?logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=Redis&logoColor=white)](https://redis.io/)
-[![Valkey](https://img.shields.io/badge/Valkey-6284fc?style=flat&logo=Valkey&logoColor=white)](https://valkey.io/)
 [![MariaDB](https://img.shields.io/badge/MariaDB-003545?logo=mariadb&logoColor=white)](https://mariadb.org/)
 [![MongoDB](https://img.shields.io/badge/-MongoDB-13aa52?logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![Valkey](https://img.shields.io/badge/Valkey-6284fc?style=flat&logo=Valkey&logoColor=white)](https://valkey.io/)
+[![Firebird](https://img.shields.io/badge/Firebird-f55b14?style=flat&logo=Firebird&logoColor=white)](https://firebirdsql.org/)
+
+
 [![Self Hosted](https://img.shields.io/badge/self--hosted-yes-brightgreen)](https://github.com/Portabase/portabase)
 [![Open Source](https://img.shields.io/badge/open%20source-❤️-red)](https://github.com/Portabase/portabase)
 
@@ -50,7 +54,7 @@ You have 4 ways to install Portabase Agent:
 
 - Automated CLI (recommended) - [details](https://portabase.io/docs/agent/setup#cli)
 - Docker Compose setup - [details](https://portabase.io/docs/agent/setup#docker)
-- Kubernetes with Helm (soon)
+- Kubernetes with Helm [details](https://portabase.io/docs/agent/setup#helm)
 - Development setup - [details](https://portabase.io/docs/agent/setup#development)
 
 **Ensure Docker is installed on your machine before getting started.**

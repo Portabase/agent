@@ -4,3 +4,4 @@ mod mysql;
 mod postgres;
 mod redis;
 mod valkey;
+mod firebird;

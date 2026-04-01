@@ -21,7 +21,7 @@
       "generated_id": "16678124-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 4 - MongoDB Auth",
+      "name": "Test database 3 - MongoDB Auth",
       "database": "testdbauth",
       "type": "mongodb",
       "username": "root",
@@ -31,7 +31,7 @@
       "generated_id": "16678145-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 5 - MongoDB",
+      "name": "Test database 4 - MongoDB",
       "database": "testdb",
       "type": "mongodb",
       "port": 27017,
@@ -39,26 +39,26 @@
       "generated_id": "16678147-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 6 - SQLite DB",
+      "name": "Test database 5 - SQLite DB",
       "type": "sqlite",
       "path": "/sqlite-data/workspace/data/app.db",
       "generated_id": "16678178-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 7 - SQLite DB",
+      "name": "Test database 6 - SQLite DB",
       "type": "sqlite",
       "path": "/sqlite-data-2/workspace/data/app.db",
       "generated_id": "16678179-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 8 - Redis",
+      "name": "Test database 7 - Redis",
       "type": "redis",
       "port": 6379,
       "host": "db-redis",
       "generated_id": "16678166-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 9 - Redis Auth",
+      "name": "Test database 8 - Redis Auth",
       "type": "redis",
       "password": "supersecurepassword",
       "port": 6379,
@@ -67,14 +67,14 @@
       "generated_id": "16678160-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 10 - Valkey",
+      "name": "Test database 9 - Valkey",
       "type": "valkey",
       "port": 6379,
       "host": "db-valkey",
       "generated_id": "16678560-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 11 - Valkey Auth",
+      "name": "Test database 10 - Valkey Auth",
       "type": "valkey",
       "password": "supersecurepassword",
       "port": 6379,
@@ -83,7 +83,7 @@
       "generated_id": "16678561-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 12 - Mysql",
+      "name": "Test database 11 - Mysql",
       "database": "mysqldb",
       "type": "mysql",
       "username": "mysqldb",
@@ -91,6 +91,16 @@
       "port": 3306,
       "host": "db-mysql",
       "generated_id": "16656124-ff7e-4c97-8c83-0adeff214681"
+    },
+    {
+      "name": "Test database 12 - Firebird",
+      "database": "/var/lib/firebird/data/mirror.fdb",
+      "type": "firebird",
+      "username": "alice",
+      "password": "fake_password",
+      "port": 3050,
+      "host": "db-firebird",
+      "generated_id": "16706124-ff7e-4c97-8c83-0adeff214681"
     }
   ]
 }
