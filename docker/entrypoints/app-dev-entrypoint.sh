@@ -31,10 +31,14 @@ check_network() {
     fi
 }
 
-#check_docker
+check_docker
 check_network
 
-echo "Starting docker-compose..."
+echo "Stopping old database containers..."
+docker compose -f ./docker-compose.databases.yml down
+
+echo "Starting database containers..."
 docker compose -f ./docker-compose.databases.yml up -d
+
+echo "Starting main services..."
 docker compose -f ./docker-compose.yml up
-echo "Docker-compose started successfully."
