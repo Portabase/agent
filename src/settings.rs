@@ -14,6 +14,7 @@ pub struct Settings {
     pub pooling: usize,
     pub timezone: String,
     pub log: String,
+    pub chunk_size: usize, // bytes
 }
 
 impl Settings {
@@ -35,6 +36,18 @@ impl Settings {
                 pooling_seconds
             );
         }
+
+        let chunk_size_mb = env::var("CHUNK_SIZE_MB")
+            .unwrap_or_else(|_| "1".to_string())
+            .parse::<usize>()
+            .expect("CHUNK_SIZE_MB must be a valid positive integer");
+
+        if chunk_size_mb == 0 || chunk_size_mb > 10 {
+            panic!("CHUNK_SIZE_MB must be between 1 and 10 MB");
+        }
+
+        let chunk_size = chunk_size_mb * 1024 * 1024;
+
         let tz = env::var("TZ").unwrap_or_else(|_| "UTC".to_string());
 
         Self {
@@ -49,6 +62,7 @@ impl Settings {
             pooling: pooling_seconds,
             timezone: tz,
             log: env::var("LOG").unwrap_or_else(|_| "info".into()),
+            chunk_size
         }
     }
 }
