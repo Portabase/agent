@@ -33,6 +33,7 @@ pub async fn run(
         let mariadb_dump = select_mariadb_path(&version).join("mariadb-dump");
         info!("Mariadb dump found: {}", mariadb_dump.display());
 
+
         let output = Command::new("mariadb-dump")
             .arg("--host").arg(&cfg.host)
             .arg("--port").arg(cfg.port.to_string())
@@ -43,17 +44,17 @@ pub async fn run(
             .arg("--single-transaction")
             .arg("--quick")
             .arg("--skip-lock-tables")
-            .arg("--add-drop-database")
-            .arg("--databases").arg(&cfg.database)
+            .arg("--no-create-db")
+            .arg("--skip-add-drop-table") 
             .arg("--compress")
             .arg("--max-allowed-packet=512M")
             .arg("--net-buffer-length=16K")
             .arg("--default-character-set=utf8mb4")
+            .arg(&cfg.database)
             .arg("-r").arg(&file_path)
             .envs(env)
             .output()
             .with_context(|| format!("Failed to run mariadb-dump for {}", cfg.name))?;
-
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
