@@ -3,8 +3,7 @@ use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use tracing::{error, info};
-
-const PATCH_CHUNK_SIZE: usize = 1 * 1024 * 1024;
+use crate::settings::CONFIG;
 
 pub async fn upload_to_tus_stream_with_headers<S>(
     encrypted_stream: S,
@@ -66,7 +65,9 @@ where
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.context("Stream produced IO error")?;
 
-        for sub_chunk in chunk.chunks(PATCH_CHUNK_SIZE) {
+        info!("Chunk: {:?}", CONFIG.chunk_size);
+
+        for sub_chunk in chunk.chunks(CONFIG.chunk_size) {
             let mut patch_headers = extra_headers.clone();
             patch_headers.insert("Tus-Resumable", HeaderValue::from_static("1.0.0"));
             patch_headers.insert(

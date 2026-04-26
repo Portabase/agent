@@ -30,10 +30,7 @@ pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
             let output = output.context("Failed to execute redis-cli")?;
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
-
-            if !stdout.is_empty() {
-                error!("Redis stderr: {}", stderr);
-            }
+            
 
             if stderr.contains("NOAUTH") {
                 error!("Redis authentication failed (NOAUTH required)");

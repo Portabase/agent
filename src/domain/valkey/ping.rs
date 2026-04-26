@@ -30,11 +30,7 @@ pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
             let output = output.context("Failed to execute valkey-cli")?;
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
-
-            if !stdout.is_empty() {
-                error!("Valkey stderr: {}", stderr);
-            }
-
+            
             if stderr.contains("NOAUTH") {
                 error!("Valkey authentication failed (NOAUTH required)");
                 return Ok(false);
