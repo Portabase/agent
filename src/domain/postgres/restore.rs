@@ -140,7 +140,7 @@ pub async fn run(
                     .arg("--clean")
                     .arg("--if-exists")
                     // .arg("--create")
-                    .arg("--dbname={}")
+                    .arg("--dbname")
                     .arg(&url)
                     .arg("-v")
                     .arg("-j")
