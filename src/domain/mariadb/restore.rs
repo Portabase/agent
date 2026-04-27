@@ -15,9 +15,9 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
             .with_context(|| format!("Failed to open restore file {}", restore_file.display()))?;
         file.read_to_string(&mut sql_content)
             .with_context(|| format!("Failed to read restore file {}", restore_file.display()))?;
-
+        
         let drop_create_cmd = format!(
-            "DROP DATABASE IF EXISTS {0}; CREATE DATABASE {0};",
+            "DROP DATABASE IF EXISTS `{0}`; CREATE DATABASE `{0}`;",
             cfg.database
         );
 
