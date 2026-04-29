@@ -42,7 +42,8 @@ seed-firebird:
     docker exec -i db-firebird isql -user alice -password fake_password /var/lib/firebird/data/mirror.fdb < ./scripts/firebird/seed.sql
 
     echo "Verifying Firebird tables..."
-    docker exec -i db-firebird isql -user alice -password fake_password /var/lib/firebird/data/mirror.fdb -sql "SHOW TABLES;"
+    echo "SELECT RDB\$RELATION_NAME FROM RDB\$RELATIONS WHERE RDB\$SYSTEM_FLAG = 0 AND RDB\$VIEW_BLR IS NULL;" \
+    | docker exec -i db-firebird isql -user alice -password fake_password /var/lib/firebird/data/mirror.fdb
 
 seed-all:
     just seed-mongo
