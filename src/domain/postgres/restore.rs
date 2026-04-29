@@ -37,8 +37,8 @@ pub async fn run(
         info!("Connections terminated for database {}", cfg.name);
 
         let url = format!(
-            "postgresql://{}:{}@{}:{}/postgres",
-            cfg.username, cfg.password, cfg.host, cfg.port
+            "postgresql://{}:{}@{}:{}/{}",
+            cfg.username, cfg.password, cfg.host, cfg.port, cfg.database
         );
 
         debug!("Restore URL: {}", url);
@@ -51,7 +51,7 @@ pub async fn run(
                     .arg("--no-privileges")
                     .arg("--clean")
                     .arg("--if-exists")
-                    .arg("--create")
+                    // .arg("--create")
                     .arg("--dbname")
                     .arg(&url)
                     .arg("-v")
@@ -139,7 +139,7 @@ pub async fn run(
                     .arg("--no-privileges")
                     .arg("--clean")
                     .arg("--if-exists")
-                    .arg("--create")
+                    // .arg("--create")
                     .arg("--dbname")
                     .arg(&url)
                     .arg("-v")

@@ -17,7 +17,7 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
             .with_context(|| format!("Failed to read restore file {}", restore_file.display()))?;
 
         let drop_create_cmd = format!(
-            "DROP DATABASE IF EXISTS {0}; CREATE DATABASE {0};",
+            "DROP DATABASE IF EXISTS `{0}`; CREATE DATABASE `{0}`;",
             cfg.database
         );
 
@@ -47,6 +47,7 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
             .arg(cfg.port.to_string())
             .arg("--user")
             .arg(&cfg.username)
+            .arg("--database")
             .arg(&cfg.database)
             .env("MYSQL_PWD", &cfg.password)
             .stdin(std::process::Stdio::piped())

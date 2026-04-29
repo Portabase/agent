@@ -33,7 +33,6 @@ impl StatusService {
                 let db_engine = DatabaseFactory::create_for_backup(db.clone()).await;
 
                 let reachable = db_engine.ping().await?;
-
                 info!("Ping {} => {:?}",db.name, reachable);
 
                 Ok::<DatabasePayload, anyhow::Error>(DatabasePayload {
