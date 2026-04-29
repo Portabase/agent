@@ -28,3 +28,18 @@ pub fn get_mongo_uri(cfg: DatabaseConfig) -> Result<String> {
         ))
     }
 }
+
+
+pub fn extract_db_name(dry_output: &str) -> Option<String> {
+    let mut dbs = std::collections::HashSet::new();
+    for line in dry_output.lines() {
+        if let Some(pos) = line.find("archive prelude ") {
+            let rest = &line[pos + "archive prelude ".len()..];
+            if let Some(dot) = rest.find('.') {
+                let db = &rest[..dot];
+                dbs.insert(db.to_string());
+            }
+        }
+    }
+    dbs.into_iter().next()
+}

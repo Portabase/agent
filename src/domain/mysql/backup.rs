@@ -30,25 +30,23 @@ pub async fn run(
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
 
-        // let mysql_dump = select_mysql_path(&version).join("mysqldump");
-        // info!("MySQL dump found: {}", mysql_dump.display());
-
         let output = Command::new("mysqldump")
             .arg("--host")
-            .arg(cfg.host)
+            .arg(&cfg.host)
             .arg("--port")
             .arg(cfg.port.to_string())
             .arg("--user")
-            .arg(cfg.username)
+            .arg(&cfg.username)
             .arg("--routines")
             .arg("--events")
             .arg("--triggers")
-            .arg("--verbose")
             .arg("--single-transaction")
             .arg("--quick")
-            .arg("--add-drop-database")
-            .arg("--databases")
-            .arg(cfg.database)
+            .arg("--skip-lock-tables")
+            .arg("--skip-add-drop-table")
+            .arg("--no-create-db") // IMPORTANT
+            .arg("--default-character-set=utf8mb4")
+            .arg(&cfg.database) // IMPORTANT: NOT --databases
             .arg("-r")
             .arg(&file_path)
             .envs(env)
