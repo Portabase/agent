@@ -9,8 +9,7 @@ services:
       - .:/app
       - cargo-registry:/usr/local/cargo/registry
       - cargo-git:/usr/local/cargo/git
-      - /Users/charlesgauthereau/Desktop/test-portabase/databases.json:/config/config.json
-#      - ./databases.json:/config/config.json
+      - ./databases.json:/config/config.json
       #- ./databases.toml:/config/config.toml
       #- /var/run/docker.sock:/var/run/docker.sock
       #- cargo-target:/app/target
@@ -20,7 +19,7 @@ services:
       APP_ENV: development
       LOG: debug
       TZ: "Europe/Paris"
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiNjIyNWFlMzMtODQwMy00NmE3LWEyNDEtMjU4MTI2MjVlYTA4IiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiOTFlYmY4MmYtY2I4OC00N2M3LWE5MWUtMDUyMmU2NzNjZjE4IiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
       #CHUNK_SIZE_MB: "1"
       #POOLING: 1
       #DATABASES_CONFIG_FILE: "config.toml"
@@ -35,8 +34,6 @@ volumes:
   #cargo-target:
   databases_sqlite-data:
     external: true
-
-
 
 networks:
   portabase:
