@@ -22,6 +22,17 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+RUN wget -q https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
+        -O /tmp/packages-microsoft-prod.deb \
+    && dpkg -i /tmp/packages-microsoft-prod.deb \
+    && rm /tmp/packages-microsoft-prod.deb \
+    && apt-get update && apt-get install -y dotnet-sdk-8.0 \
+    && dotnet tool install --global microsoft.sqlpackage \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="$PATH:/root/.dotnet/tools"
+
 ARG TARGETARCH
 
 # =========================
@@ -101,6 +112,7 @@ RUN apt-get update && apt-get install -y \
     sqlite3 \
     redis-tools \
     valkey \
+    dotnet-runtime-8.0 \
     && rm -rf /var/lib/apt/lists/*
 
 
@@ -113,8 +125,9 @@ RUN chmod +x /entrypoint.sh
 
 COPY --from=base /usr/lib/postgresql/ /usr/lib/postgresql/
 COPY --from=base /usr/local/mongodb/bin/ /usr/local/mongodb/bin/
+COPY --from=base /root/.dotnet/tools/ /root/.dotnet/tools/
 
-
+ENV PATH="$PATH:/root/.dotnet/tools"
 ENV APP_ENV=production
 
 CMD ["/entrypoint.sh"]
