@@ -47,8 +47,7 @@ seed-firebird:
 
 seed-mssql:
     echo "Seeding MSSQL..."
-    docker exec -i "$MSSQL_CONTAINER" /opt/mssql-tools/bin/sqlcmd \
-        -S localhost -U sa -P "$MSSQL_SA_PASSWORD" < ./scripts/mssql/seed.sql
+    docker exec -i rust-dev sqlcmd -S "db-mssql,1433" -U sa -P "$MSSQL_SA_PASSWORD" -N disable -i /app/scripts/mssql/seed.sql
     echo "Done"
 
 seed-all:

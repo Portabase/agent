@@ -14,7 +14,7 @@ pub async fn run(
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
         let connection_string = format!(
-            "Server=tcp:{},{};Database={};User Id={};Password={};TrustServerCertificate=True;Encrypt=True",
+            "Server=tcp:{},{};Database={};User Id={};Password={};TrustServerCertificate=True;Encrypt=False",
             cfg.host, cfg.port, cfg.database, cfg.username, cfg.password
         );
 

@@ -31,6 +31,11 @@ RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
 
 ENV PATH="$PATH:/usr/local/dotnet:/root/.dotnet/tools"
 
+RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
+    && curl -sSL "https://github.com/microsoft/go-sqlcmd/releases/latest/download/sqlcmd-linux-${ARCH}.tar.bz2" \
+       | tar -xjf - -C /usr/local/bin sqlcmd \
+    && chmod +x /usr/local/bin/sqlcmd
+
 ARG TARGETARCH
 
 # =========================

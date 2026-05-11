@@ -166,13 +166,13 @@ services:
       - "1433:1433"
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "Databasement!Strong1"
+      MSSQL_SA_PASSWORD: "Portabase!Strong1"
+    volumes:
+      - mssql-data:/var/opt/mssql
     networks:
       - portabase
     healthcheck:
-      test: >-
-        /opt/mssql-tools/bin/sqlcmd -S localhost -U sa
-        -P "Databasement!Strong1" -Q "SELECT 1" || exit 0
+      test: ["CMD-SHELL", "cat /proc/net/tcp6 | grep -q '059901' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -189,6 +189,7 @@ volumes:
   valkey-data:
   valkey-data-auth:
   firebird-data:
+  mssql-data:
 
 networks:
   portabase:

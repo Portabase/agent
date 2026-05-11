@@ -9,7 +9,7 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
         debug!("Starting MSSQL restore for database {}", cfg.name);
 
         let connection_string = format!(
-            "Server=tcp:{},{};Database={};User Id={};Password={};TrustServerCertificate=True;Encrypt=True",
+            "Server=tcp:{},{};Database={};User Id={};Password={};TrustServerCertificate=True;Encrypt=False",
             cfg.host, cfg.port, cfg.database, cfg.username, cfg.password
         );
 
