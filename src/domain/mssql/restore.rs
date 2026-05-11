@@ -25,6 +25,7 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
             .arg(format!("/tp:{}", cfg.password))
             .arg(format!("/tdn:{}", cfg.database))
             .arg(format!("/sf:{}", restore_file.display()))
+            .arg("/TrustServerCertificate:true")
             .output()
             .with_context(|| format!("Failed to run sqlpackage restore for {}", cfg.name))?;
 

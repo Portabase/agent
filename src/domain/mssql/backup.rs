@@ -30,6 +30,7 @@ pub async fn run(
             .arg(format!("/sp:{}", cfg.password))
             .arg(format!("/sdn:{}", cfg.database))
             .arg(format!("/tf:{}", file_path.display()))
+            .arg("/TrustServerCertificate:true")
             .output()
             .with_context(|| format!("Failed to run sqlpackage for {}", cfg.name))?;
 
