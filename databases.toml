@@ -102,10 +102,10 @@ generated_id = "16706124-ff7e-4c97-8c83-0adeff214681"
 
 [[databases]]
 name = "Test database 13 - MSSQL"
-database = "master"
+database = "myappdb"
 type = "mssql"
 username = "sa"
-password = "Databasement!Strong1"
+password = "Portabase!Strong1"
 port = 1433
 host = "db-mssql"
 generated_id = "16706125-ff7e-4c97-8c83-0adeff214682"
