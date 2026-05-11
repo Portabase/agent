@@ -22,16 +22,14 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN wget -q https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
-        -O /tmp/packages-microsoft-prod.deb \
-    && dpkg -i /tmp/packages-microsoft-prod.deb \
-    && rm /tmp/packages-microsoft-prod.deb \
-    && apt-get update && apt-get install -y dotnet-sdk-8.0 \
-    && dotnet tool install --global microsoft.sqlpackage \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+ENV DOTNET_ROOT=/usr/local/dotnet
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+    && chmod +x /tmp/dotnet-install.sh \
+    && /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/local/dotnet \
+    && rm /tmp/dotnet-install.sh \
+    && /usr/local/dotnet/dotnet tool install --global microsoft.sqlpackage
 
-ENV PATH="$PATH:/root/.dotnet/tools"
+ENV PATH="$PATH:/usr/local/dotnet:/root/.dotnet/tools"
 
 ARG TARGETARCH
 
@@ -108,13 +106,18 @@ RUN apt-get update && apt-get install -y \
     libreadline8 \
     libncurses6 \
     zlib1g \
+    curl \
     mariadb-client \
     sqlite3 \
     redis-tools \
     valkey \
-    dotnet-runtime-8.0 \
     && rm -rf /var/lib/apt/lists/*
 
+ENV DOTNET_ROOT=/usr/local/dotnet
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+    && chmod +x /tmp/dotnet-install.sh \
+    && /tmp/dotnet-install.sh --channel 8.0 --runtime dotnet --install-dir /usr/local/dotnet \
+    && rm /tmp/dotnet-install.sh
 
 WORKDIR /app
 
@@ -127,7 +130,7 @@ COPY --from=base /usr/lib/postgresql/ /usr/lib/postgresql/
 COPY --from=base /usr/local/mongodb/bin/ /usr/local/mongodb/bin/
 COPY --from=base /root/.dotnet/tools/ /root/.dotnet/tools/
 
-ENV PATH="$PATH:/root/.dotnet/tools"
+ENV PATH="$PATH:/usr/local/dotnet:/root/.dotnet/tools"
 ENV APP_ENV=production
 
 CMD ["/entrypoint.sh"]
