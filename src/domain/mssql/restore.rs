@@ -8,7 +8,10 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
     tokio::task::spawn_blocking(move || -> Result<()> {
         debug!("Starting MSSQL restore for database {}", cfg.name);
 
-        let server = format!("tcp:{},{}", cfg.host, cfg.port);
+        let connection_string = format!(
+            "Server=tcp:{},{};Database={};User Id={};Password={};TrustServerCertificate=True;Encrypt=True",
+            cfg.host, cfg.port, cfg.database, cfg.username, cfg.password
+        );
 
         info!(
             "MSSQL restore: {} → {}:{}/{}",
@@ -20,12 +23,8 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
 
         let output = Command::new("sqlpackage")
             .arg("/a:Import")
-            .arg(format!("/tsn:{}", server))
-            .arg(format!("/tu:{}", cfg.username))
-            .arg(format!("/tp:{}", cfg.password))
-            .arg(format!("/tdn:{}", cfg.database))
+            .arg(format!("/tcs:{}", connection_string))
             .arg(format!("/sf:{}", restore_file.display()))
-            .arg("/TrustServerCertificate:true")
             .output()
             .with_context(|| format!("Failed to run sqlpackage restore for {}", cfg.name))?;
 

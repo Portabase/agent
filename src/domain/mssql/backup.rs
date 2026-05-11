@@ -13,7 +13,10 @@ pub async fn run(
         debug!("Starting MSSQL backup for database {}", cfg.name);
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
-        let server = format!("tcp:{},{}", cfg.host, cfg.port);
+        let connection_string = format!(
+            "Server=tcp:{},{};Database={};User Id={};Password={};TrustServerCertificate=True;Encrypt=True",
+            cfg.host, cfg.port, cfg.database, cfg.username, cfg.password
+        );
 
         info!(
             "MSSQL backup: {}:{}/{} → {}",
@@ -25,12 +28,8 @@ pub async fn run(
 
         let output = Command::new("sqlpackage")
             .arg("/a:Export")
-            .arg(format!("/ssn:{}", server))
-            .arg(format!("/su:{}", cfg.username))
-            .arg(format!("/sp:{}", cfg.password))
-            .arg(format!("/sdn:{}", cfg.database))
+            .arg(format!("/scs:{}", connection_string))
             .arg(format!("/tf:{}", file_path.display()))
-            .arg("/TrustServerCertificate:true")
             .output()
             .with_context(|| format!("Failed to run sqlpackage for {}", cfg.name))?;
 
