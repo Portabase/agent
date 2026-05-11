@@ -52,13 +52,16 @@ impl BackupService {
                 code: Some("backup_already_in_progress".into()),
             }),
 
-            Err(_) => Ok(BackupResult {
-                generated_id,
-                db_type,
-                status: "failed".into(),
-                backup_file: None,
-                code: None,
-            }),
+            Err(e) => {
+                error!("Backup failed for {}: {:?}", generated_id, e);
+                Ok(BackupResult {
+                    generated_id,
+                    db_type,
+                    status: "failed".into(),
+                    backup_file: None,
+                    code: None,
+                })
+            }
         }
     }
 }
