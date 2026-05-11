@@ -5,3 +5,4 @@ mod postgres;
 mod redis;
 mod valkey;
 mod firebird;
+mod mssql;

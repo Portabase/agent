@@ -45,6 +45,11 @@ seed-firebird:
     echo "SELECT RDB\$RELATION_NAME FROM RDB\$RELATIONS WHERE RDB\$SYSTEM_FLAG = 0 AND RDB\$VIEW_BLR IS NULL;" \
     | docker exec -i db-firebird isql -user alice -password fake_password /var/lib/firebird/data/mirror.fdb
 
+seed-mssql:
+    echo "Seeding MSSQL..."
+    docker exec -i rust-dev sqlcmd -S "db-mssql,1433" -U sa -P "$MSSQL_SA_PASSWORD" -N disable -i /app/scripts/mssql/seed.sql
+    echo "Done"
+
 seed-all:
     just seed-mongo
     just seed-mysql
@@ -53,3 +58,4 @@ seed-all:
     just seed-sqlite
     just seed-mongo
     just seed-firebird
+    just seed-mssql

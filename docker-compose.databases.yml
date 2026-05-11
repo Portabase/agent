@@ -159,6 +159,24 @@ services:
     networks:
       - portabase
 
+  db-mssql:
+    container_name: db-mssql
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Portabase!Strong1"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    networks:
+      - portabase
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/net/tcp6 | grep -q '059901' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
 volumes:
   postgres-data:
   mariadb-data:
@@ -171,6 +189,7 @@ volumes:
   valkey-data:
   valkey-data-auth:
   firebird-data:
+  mssql-data:
 
 networks:
   portabase:
