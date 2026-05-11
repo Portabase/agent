@@ -1,6 +1,6 @@
 [package]
 name = "portabase-agent"
-version = "1.10.1"
+version = "1.11.0"
 edition = "2024"
 
 [dependencies]
@@ -35,7 +35,8 @@ rand = "0.9.2"
 bytes = "1.11.0"
 async-stream = "0.3.6"
 uuid = { version = "1.20.0", features = ["v4"] }
-tokio-util = "0.7.18"
+tokio-util = { version = "0.7.18", features = ["compat"] }
+tiberius = { version = "0.12", default-features = false, features = ["rustls", "chrono"] }
 aws-config = "1.8.13"
 aws-sdk-s3 = { version = "1.122.0", features = ["behavior-version-latest"] }
 async-compression = { version = "0.4.37", features = ["tokio", "gzip"] }

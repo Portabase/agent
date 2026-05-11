@@ -22,6 +22,20 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+ENV DOTNET_ROOT=/usr/local/dotnet
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+    && chmod +x /tmp/dotnet-install.sh \
+    && /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/local/dotnet \
+    && rm /tmp/dotnet-install.sh \
+    && /usr/local/dotnet/dotnet tool install --global microsoft.sqlpackage
+
+ENV PATH="$PATH:/usr/local/dotnet:/root/.dotnet/tools"
+
+RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
+    && curl -sSL "https://github.com/microsoft/go-sqlcmd/releases/latest/download/sqlcmd-linux-${ARCH}.tar.bz2" \
+       | tar -xjf - -C /usr/local/bin sqlcmd \
+    && chmod +x /usr/local/bin/sqlcmd
+
 ARG TARGETARCH
 
 # =========================
@@ -97,12 +111,18 @@ RUN apt-get update && apt-get install -y \
     libreadline8 \
     libncurses6 \
     zlib1g \
+    curl \
     mariadb-client \
     sqlite3 \
     redis-tools \
     valkey \
     && rm -rf /var/lib/apt/lists/*
 
+ENV DOTNET_ROOT=/usr/local/dotnet
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+    && chmod +x /tmp/dotnet-install.sh \
+    && /tmp/dotnet-install.sh --channel 8.0 --runtime dotnet --install-dir /usr/local/dotnet \
+    && rm /tmp/dotnet-install.sh
 
 WORKDIR /app
 
@@ -113,8 +133,9 @@ RUN chmod +x /entrypoint.sh
 
 COPY --from=base /usr/lib/postgresql/ /usr/lib/postgresql/
 COPY --from=base /usr/local/mongodb/bin/ /usr/local/mongodb/bin/
+COPY --from=base /root/.dotnet/tools/ /root/.dotnet/tools/
 
-
+ENV PATH="$PATH:/usr/local/dotnet:/root/.dotnet/tools"
 ENV APP_ENV=production
 
 CMD ["/entrypoint.sh"]

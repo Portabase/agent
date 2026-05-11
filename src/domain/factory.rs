@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use crate::domain::firebird::database::FirebirdDatabase;
 use crate::domain::mariadb::database::MariaDBDatabase;
+use crate::domain::mssql::database::MssqlDatabase;
 
 #[async_trait::async_trait]
 pub trait Database: Send + Sync {
@@ -36,6 +37,7 @@ impl DatabaseFactory {
             DbType::Redis => Arc::new(RedisDatabase::new(cfg)),
             DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg)),
             DbType::Firebird => Arc::new(FirebirdDatabase::new(cfg)),
+            DbType::Mssql => Arc::new(MssqlDatabase::new(cfg)),
         }
     }
 
@@ -52,6 +54,7 @@ impl DatabaseFactory {
             DbType::Redis => Arc::new(RedisDatabase::new(cfg)),
             DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg)),
             DbType::Firebird => Arc::new(FirebirdDatabase::new(cfg)),
+            DbType::Mssql => Arc::new(MssqlDatabase::new(cfg)),
         }
     }
 }
