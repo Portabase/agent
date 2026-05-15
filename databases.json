@@ -103,7 +103,7 @@
       "generated_id": "16706124-ff7e-4c97-8c83-0adeff214681"
     },
     {
-      "name": "Test database 13 - MysSQL",
+      "name": "Test database 13 - MsSQL",
       "database": "myappdb",
       "type": "mssql",
       "username": "sa",
