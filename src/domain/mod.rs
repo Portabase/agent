@@ -7,3 +7,4 @@ mod sqlite;
 mod valkey;
 mod mariadb;
 mod firebird;
+pub mod mssql;

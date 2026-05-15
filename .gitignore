@@ -4,3 +4,6 @@
 
 .DS_Store
 .env
+
+.claude
+/docs

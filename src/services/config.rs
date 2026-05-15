@@ -21,7 +21,8 @@ pub enum DbType {
     Sqlite,
     Redis,
     Valkey,
-    Firebird
+    Firebird,
+    Mssql,
 }
 
 impl DbType {
@@ -35,6 +36,7 @@ impl DbType {
             DbType::Redis => "redis",
             DbType::Valkey => "valkey",
             DbType::Firebird => "firebird",
+            DbType::Mssql => "mssql",
         }
     }
 }
@@ -165,14 +167,14 @@ impl ConfigService {
             }
 
             let username = match db.db_type {
-                DbType::Postgresql | DbType::Mysql | DbType::Mariadb => {
+                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::Mssql => {
                     required(&db.username, &db.name, "username")?
                 }
                 _ => optional(&db.username),
             };
 
             let password = match db.db_type {
-                DbType::Postgresql | DbType::Mysql | DbType::Mariadb => {
+                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::Mssql => {
                     required(&db.password, &db.name, "password")?
                 }
                 _ => optional(&db.password),
@@ -185,7 +187,8 @@ impl ConfigService {
                 | DbType::MongoDB
                 | DbType::Redis
                 | DbType::Firebird
-                | DbType::Valkey => required(&db.host, &db.name, "host")?,
+                | DbType::Valkey
+                | DbType::Mssql => required(&db.host, &db.name, "host")?,
                 DbType::Sqlite => optional(&db.host),
             };
 
@@ -196,7 +199,8 @@ impl ConfigService {
                 | DbType::MongoDB
                 | DbType::Redis
                 | DbType::Firebird
-                | DbType::Valkey => required(&db.port, &db.name, "port")?,
+                | DbType::Valkey
+                | DbType::Mssql => required(&db.port, &db.name, "port")?,
                 DbType::Sqlite => db.port.unwrap_or(0),
             };
 
