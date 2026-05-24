@@ -116,6 +116,7 @@ RUN apt-get update && apt-get install -y \
     sqlite3 \
     redis-tools \
     valkey \
+    firebird3.0-utils \
     && rm -rf /var/lib/apt/lists/*
 
 ENV DOTNET_ROOT=/usr/local/dotnet
