@@ -22,8 +22,7 @@ pub struct BackupUpdateRequest {
     pub size: Option<u64>,
     #[serde(rename = "generatedId")]
     pub generated_id: String,
-    #[serde(rename = "jobLogs")]
-    pub job_logs: Vec<JobLogEntry>,
+    pub logs: Vec<JobLogEntry>,
 }
 
 impl ApiClient {
@@ -59,7 +58,7 @@ impl ApiClient {
             status: status.into(),
             size: file_size.into(),
             generated_id: generated_id.into(),
-            job_logs,
+            logs: job_logs,
         };
 
         let agent_id = agent_id.into();

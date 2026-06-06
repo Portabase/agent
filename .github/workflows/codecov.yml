@@ -38,7 +38,7 @@ jobs:
             -e RUSTFLAGS \
             -e LLVM_PROFILE_FILE \
             agent-test bash -c "
-              cargo clean &&
+              rm -rf /app/target/* &&
               cargo test --verbose &&
               sync
             "
@@ -73,6 +73,9 @@ jobs:
         run: |
           echo "lcov.info size:" $(wc -c ./lcov.info | awk '{print $1}')
           head -n 30 ./lcov.info || true
+
+      - name: Import Codecov GPG key
+        run: curl -s https://keybase.io/codecovsecurity/pgp_keys.asc | gpg --import
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
