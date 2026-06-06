@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, error, info};
 
 pub async fn run(
     cfg: DatabaseConfig,
@@ -20,9 +19,7 @@ pub async fn run(
         let db_path = format!("{}/{}:{}", cfg.host, cfg.port, cfg.database);
 
         logger.log("info", format!("Firebird target: {} → {}", db_path, file_path.display()));
-
-        let cmd_label = format!("gbak -b -v -user {} {}", cfg.username, db_path);
-
+        
         let start = Instant::now();
         let output = Command::new("gbak")
             .arg("-b")
@@ -45,11 +42,11 @@ pub async fn run(
         };
 
         if !output.status.success() {
-            logger.log_command(cmd_label, combined_output, Some(exit_code), Some(duration_ms));
+            logger.log_command("gbak", combined_output, Some(exit_code), Some(duration_ms));
             anyhow::bail!("Firebird backup failed for {}: {}", cfg.name, stderr);
         }
 
-        logger.log_command(cmd_label, combined_output, Some(0), Some(duration_ms));
+        logger.log_command("gbak", combined_output, Some(0), Some(duration_ms));
         logger.log("info", format!("Firebird backup completed for {}", cfg.name));
         Ok(file_path)
     })

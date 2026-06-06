@@ -4,7 +4,6 @@ use crate::utils::compress::compress_to_tar_gz_large;
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::info;
 
 impl BackupService {
     pub async fn compress_backup(&self, backup_file: Option<PathBuf>, logger: Arc<JobLogger>) -> Result<PathBuf> {

@@ -8,7 +8,7 @@ use crate::services::config::DatabaseConfig;
 use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::error;
 
 impl BackupService {
     pub async fn run(cfg: DatabaseConfig, tmp_path: &Path, logger: Arc<JobLogger>) -> Result<BackupResult> {

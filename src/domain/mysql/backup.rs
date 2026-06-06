@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{error, info};
 
 pub async fn run(
     cfg: DatabaseConfig,
@@ -19,7 +18,7 @@ pub async fn run(
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
         logger.log("debug", format!("Starting backup for database {}", cfg.name));
 
-        let version = match futures::executor::block_on(server_version(&cfg)) {
+        let _version = match futures::executor::block_on(server_version(&cfg)) {
             Ok(v) => {
                 logger.log("debug", format!("MySQL version detected: {}", v));
                 v
@@ -31,7 +30,6 @@ pub async fn run(
         };
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
-        let cmd_label = format!("mysqldump --host {} --port {} --user {} {}", cfg.host, cfg.port, cfg.username, cfg.database);
 
         logger.log("info", format!("Running mysqldump for {}", cfg.name));
 
@@ -58,18 +56,15 @@ pub async fn run(
         let duration_ms = start.elapsed().as_millis() as f64;
         let exit_code = output.status.code().unwrap_or(-1);
 
+        let _stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            info!("mysqldump stderr: {}", stderr);
-            logger.log_command(cmd_label, Some(stderr.clone()), Some(exit_code), Some(duration_ms));
+            logger.log_command("mysqldump", Some(stderr.clone()), Some(exit_code), Some(duration_ms));
             anyhow::bail!("MySQL backup failed for {}: {}", cfg.name, stderr);
         }
 
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-        info!("Output {}", stdout);
-        logger.log_command(cmd_label, if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
+        logger.log_command("mysqldump", if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
         logger.log("info", format!("mysqldump completed for {}", cfg.name));
 
         Ok(file_path)

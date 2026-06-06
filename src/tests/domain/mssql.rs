@@ -122,7 +122,7 @@ async fn mssql_backup_restore_test() {
     let file_path = db.backup(temp_dir.path(), std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
     assert!(file_path.is_file());
 
-    let compression = compress_to_tar_gz_large(&file_path, None).await.unwrap();
+    let compression = compress_to_tar_gz_large(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
     assert!(compression.compressed_path.is_file());
 
     let files = decompress_large_tar_gz(

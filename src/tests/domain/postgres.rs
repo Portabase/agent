@@ -70,7 +70,7 @@ async fn postgres_backup_restore_test() {
 
     assert!(file_path.is_file());
 
-    let compression = compress_to_tar_gz_large(&file_path, None).await.unwrap();
+    let compression = compress_to_tar_gz_large(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
 
     assert!(compression.compressed_path.is_file());
 

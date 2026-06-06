@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, error, info};
 
 pub async fn run(
     cfg: DatabaseConfig,
@@ -29,14 +28,11 @@ pub async fn run(
                 return Err(e.into());
             }
         };
-        
+
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
         let _mariadb_dump = select_mariadb_path(&version).join("mariadb-dump");
-        
-        logger.log("debug", format!("Using mariadb-dump at {}", _mariadb_dump.display()));
 
-        let cmd_label = format!("mariadb-dump --host {} --port {} --user {} {}", cfg.host, cfg.port, cfg.username, cfg.database);
-        
+        logger.log("debug", format!("Using mariadb-dump at {}", _mariadb_dump.display()));
         logger.log("info", format!("Running mariadb-dump for {}", cfg.name));
 
         let start = Instant::now();
@@ -67,12 +63,12 @@ pub async fn run(
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            logger.log_command(cmd_label, Some(stderr.clone()), Some(exit_code), Some(duration_ms));
+            logger.log_command("mariadb-dump", Some(stderr.clone()), Some(exit_code), Some(duration_ms));
             anyhow::bail!("Mariadb backup failed for {}: {}", cfg.name, stderr);
         }
 
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        logger.log_command(cmd_label, if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
+        logger.log_command("mariadb-dump", if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
         logger.log("info", format!("mariadb-dump completed for {}", cfg.name));
         Ok(file_path)
     })

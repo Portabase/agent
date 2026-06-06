@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{error, info};
+use tracing::error;
 
 pub async fn run(
     cfg: DatabaseConfig,
@@ -21,7 +21,6 @@ pub async fn run(
         let mongodump = select_mongo_path().join("mongodump");
         let uri = get_mongo_uri(cfg.clone())?;
 
-        let cmd_label = format!("mongodump --archive={} --gzip", file_path.display());
         logger.log("info", format!("Running mongodump for {}", cfg.name));
 
         let start = Instant::now();
@@ -39,11 +38,11 @@ pub async fn run(
 
         if !output.status.success() {
             error!("MongoDB backup failed for {}: {}", cfg.name, stderr);
-            logger.log_command(cmd_label, Some(stderr.clone()), Some(exit_code), Some(duration_ms));
+            logger.log_command("mongodump", Some(stderr.clone()), Some(exit_code), Some(duration_ms));
             anyhow::bail!("MongoDB backup failed for {}: {}", cfg.name, stderr);
         }
 
-        logger.log_command(cmd_label, if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
+        logger.log_command("mongodump", if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
         logger.log("info", format!("MongoDB backup completed for {}", cfg.name));
         Ok(file_path)
     })

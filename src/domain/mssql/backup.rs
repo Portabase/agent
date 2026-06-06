@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::error;
 
 pub async fn run(
     cfg: DatabaseConfig,
@@ -20,10 +19,6 @@ pub async fn run(
         let connection_string = format!(
             "Server=tcp:{},{};Database={};User Id={};Password={};TrustServerCertificate=True;Encrypt=False",
             cfg.host, cfg.port, cfg.database, cfg.username, cfg.password
-        );
-        let cmd_label = format!(
-            "sqlpackage /a:Export /scs:Server=tcp:{},{};Database={};User Id={};Password={} /tf:{}",
-            cfg.host, cfg.port, cfg.database, cfg.username, cfg.password, file_path.display()
         );
 
         logger.log("info", format!("MSSQL backup: {}:{}/{} → {}", cfg.host, cfg.port, cfg.database, file_path.display()));
@@ -42,9 +37,9 @@ pub async fn run(
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
         if !output.status.success() {
-            error!("MSSQL backup failed — stderr: {} stdout: {}", stderr, stdout);
+            logger.log("error", format!("MSSQL backup failed — stderr: {} stdout: {}", stderr, stdout));
             let out = format!("stderr: {} stdout: {}", stderr, stdout);
-            logger.log_command(cmd_label, Some(out), Some(exit_code), Some(duration_ms));
+            logger.log_command("sqlpackage", Some(out), Some(exit_code), Some(duration_ms));
             anyhow::bail!("MSSQL backup failed for {}: {}", cfg.name, stderr);
         }
 
@@ -53,7 +48,7 @@ pub async fn run(
         } else {
             Some(format!("{}{}", stdout, stderr).trim().to_string())
         };
-        logger.log_command(cmd_label, combined, Some(0), Some(duration_ms));
+        logger.log_command("sqlpackage", combined, Some(0), Some(duration_ms));
         logger.log("info", format!("MSSQL backup completed for {}", cfg.name));
         Ok(file_path)
     })
