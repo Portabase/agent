@@ -7,18 +7,12 @@ use std::time::Duration;
 use tempfile::TempDir;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
-use testcontainers::core::{AccessMode, IntoContainerPort};
+use testcontainers::core::IntoContainerPort;
 use tracing::{error, info};
-use testcontainers::core::{Mount};
 
 async fn create_config() -> (ContainerAsync<GenericImage>, DatabaseConfig) {
-
-    let mount = Mount::volume_mount("firebird-test-data", "/var/lib/firebird/data")
-        .with_access_mode(AccessMode::ReadWrite);
-
     let container = GenericImage::new("firebirdsql/firebird", "latest")
         .with_exposed_port(3050.tcp())
-        .with_mount(mount)
         .with_env_var("FIREBIRD_ROOT_PASSWORD", "fake_root_password")
         .with_env_var("FIREBIRD_USER", "alice")
         .with_env_var("FIREBIRD_PASSWORD", "fake_password")

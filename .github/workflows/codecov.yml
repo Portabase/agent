@@ -89,4 +89,4 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Stop and remove container
-        run: docker compose -f docker-compose.test.yml down
+        run: docker compose -f docker-compose.test.yml down --volumes
