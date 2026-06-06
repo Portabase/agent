@@ -5,19 +5,20 @@ use crate::domain::postgres::{detect_format_from_file, detect_format_from_size};
 use crate::domain::redis::database::RedisDatabase;
 use crate::domain::sqlite::database::SqliteDatabase;
 use crate::domain::valkey::database::ValkeyDatabase;
+use crate::domain::firebird::database::FirebirdDatabase;
+use crate::domain::mariadb::database::MariaDBDatabase;
+use crate::domain::mssql::database::MssqlDatabase;
+use crate::services::backup::logger::JobLogger;
 use crate::services::config::{DatabaseConfig, DbType};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use crate::domain::firebird::database::FirebirdDatabase;
-use crate::domain::mariadb::database::MariaDBDatabase;
-use crate::domain::mssql::database::MssqlDatabase;
 
 #[async_trait::async_trait]
 pub trait Database: Send + Sync {
     fn file_extension(&self) -> &'static str;
     async fn ping(&self) -> Result<bool>;
-    async fn backup(&self, backup_dir: &Path) -> Result<PathBuf>;
+    async fn backup(&self, backup_dir: &Path, logger: Arc<JobLogger>) -> Result<PathBuf>;
     async fn restore(&self, restore_file: &Path) -> Result<()>;
 }
 

@@ -1,10 +1,12 @@
 use super::{backup, ping, restore};
 use crate::domain::factory::Database;
+use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use crate::utils::locks::{DbOpLock, FileLock};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub struct FirebirdDatabase {
     cfg: DatabaseConfig,
@@ -27,12 +29,13 @@ impl Database for FirebirdDatabase {
         ping::run(self.cfg.clone()).await
     }
 
-    async fn backup(&self, dir: &Path) -> Result<PathBuf> {
+    async fn backup(&self, dir: &Path, logger: Arc<JobLogger>) -> Result<PathBuf> {
         FileLock::acquire(&self.cfg.generated_id, DbOpLock::Backup.as_str()).await?;
         let res = backup::run(
             self.cfg.clone(),
             dir.to_path_buf(),
             self.file_extension(),
+            logger,
         )
         .await;
         FileLock::release(&self.cfg.generated_id).await?;

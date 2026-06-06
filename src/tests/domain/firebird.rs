@@ -73,13 +73,13 @@ async fn firebird_backup_restore_test() {
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
 
-    let file_path = db.backup(backup_path).await.unwrap();
+    let file_path = db.backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
 
     tokio::time::sleep(Duration::from_secs(10)).await;
 
     assert!(file_path.is_file());
 
-    let compression = compress_to_tar_gz_large(&file_path).await.unwrap();
+    let compression = compress_to_tar_gz_large(&file_path, None).await.unwrap();
     assert!(compression.compressed_path.is_file());
 
     let files = decompress_large_tar_gz(

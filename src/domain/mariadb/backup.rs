@@ -1,9 +1,12 @@
 use crate::domain::mariadb::connection::{select_mariadb_path, server_version};
+use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
+use std::time::Instant;
 use tracing::{debug, error, info};
 
 pub async fn run(
@@ -11,17 +14,21 @@ pub async fn run(
     backup_dir: PathBuf,
     env: HashMap<String, String>,
     file_extension: &'static str,
+    logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
         debug!("Starting backup for database {}", cfg.name);
+        logger.log("debug", format!("Starting backup for database {}", cfg.name));
 
         let version = match futures::executor::block_on(server_version(&cfg)) {
             Ok(v) => {
                 debug!("Mariadb version detected: {}", v);
+                logger.log("debug", format!("MariaDB version detected: {}", v));
                 v
             }
             Err(e) => {
                 error!("Failed to get server version for {}: {:?}", cfg.name, e);
+                logger.log("error", format!("Failed to get server version: {}", e));
                 return Err(e.into());
             }
         };
@@ -29,11 +36,14 @@ pub async fn run(
         info!("Mariadb version found: {}", version);
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
+        let _mariadb_dump = select_mariadb_path(&version).join("mariadb-dump");
+        info!("Mariadb dump found: {}", _mariadb_dump.display());
+        logger.log("debug", format!("Using mariadb-dump at {}", _mariadb_dump.display()));
 
-        let mariadb_dump = select_mariadb_path(&version).join("mariadb-dump");
-        info!("Mariadb dump found: {}", mariadb_dump.display());
+        let cmd_label = format!("mariadb-dump --host {} --port {} --user {} {}", cfg.host, cfg.port, cfg.username, cfg.database);
+        logger.log("info", format!("Running mariadb-dump for {}", cfg.name));
 
-
+        let start = Instant::now();
         let output = Command::new("mariadb-dump")
             .arg("--host").arg(&cfg.host)
             .arg("--port").arg(cfg.port.to_string())
@@ -45,8 +55,9 @@ pub async fn run(
             .arg("--quick")
             .arg("--skip-lock-tables")
             .arg("--no-create-db")
-            .arg("--skip-add-drop-table") 
+            .arg("--skip-add-drop-table")
             .arg("--compress")
+            .arg("--verbose")
             .arg("--max-allowed-packet=512M")
             .arg("--net-buffer-length=16K")
             .arg("--default-character-set=utf8mb4")
@@ -55,12 +66,18 @@ pub async fn run(
             .envs(env)
             .output()
             .with_context(|| format!("Failed to run mariadb-dump for {}", cfg.name))?;
+        let duration_ms = start.elapsed().as_millis() as f64;
+        let exit_code = output.status.code().unwrap_or(-1);
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            logger.log_command(cmd_label, Some(stderr.clone()), Some(exit_code), Some(duration_ms));
             anyhow::bail!("Mariadb backup failed for {}: {}", cfg.name, stderr);
         }
 
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        logger.log_command(cmd_label, if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
+        logger.log("info", format!("mariadb-dump completed for {}", cfg.name));
         Ok(file_path)
     })
     .await?

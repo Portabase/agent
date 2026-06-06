@@ -1,63 +1,63 @@
+use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
+use std::time::Instant;
 use tracing::{debug, error, info};
 
 pub async fn run(
     cfg: DatabaseConfig,
     backup_dir: PathBuf,
     file_extension: &'static str,
+    logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
         debug!("Starting Valkey backup for database {}", cfg.name);
+        logger.log("debug", format!("Starting Valkey backup for database {}", cfg.name));
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
 
         let mut cmd = Command::new("valkey-cli");
-
-        cmd.arg("-h")
-            .arg(&cfg.host)
-            .arg("-p")
-            .arg(cfg.port.to_string());
+        cmd.arg("-h").arg(&cfg.host).arg("-p").arg(cfg.port.to_string());
 
         if !cfg.username.is_empty() {
             cmd.arg("--user").arg(&cfg.username);
         }
-
         if !cfg.password.is_empty() {
             cmd.arg("-a").arg(&cfg.password);
         }
-
         cmd.arg("--rdb").arg(&file_path);
 
+        let cmd_label = format!("{:?}", cmd);
         debug!("Command Backup: {:?}", cmd);
 
+        logger.log("info", format!("Running valkey-cli --rdb for {}", cfg.name));
+
+        let start = Instant::now();
         let output = cmd.output().context("Valkey backup command failed")?;
+        let duration_ms = start.elapsed().as_millis() as f64;
+        let exit_code = output.status.code().unwrap_or(-1);
 
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         if !output.status.success() {
             if stderr.contains("NOAUTH") {
-                error!(
-                    "Valkey backup failed for {}: Authentication required (NOAUTH)",
-                    cfg.name
-                );
-                anyhow::bail!(
-                    "Valkey backup failed for {}: Authentication required",
-                    cfg.name
-                );
+                error!("Valkey backup failed for {}: Authentication required (NOAUTH)", cfg.name);
+                logger.log_command(cmd_label, Some("Authentication required (NOAUTH)".into()), Some(exit_code), Some(duration_ms));
+                anyhow::bail!("Valkey backup failed for {}: Authentication required", cfg.name);
             } else {
                 error!("Valkey backup failed for {}: {}", cfg.name, stderr);
+                logger.log_command(cmd_label, Some(stderr.to_string()), Some(exit_code), Some(duration_ms));
                 anyhow::bail!("Valkey backup failed for {}: {}", cfg.name, stderr);
             }
         }
 
-        info!(
-            "Valkey backup completed for {}. Output: {}",
-            cfg.name, stdout
-        );
+        info!("Valkey backup completed for {}. Output: {}", cfg.name, stdout);
+        logger.log_command(cmd_label, if stdout.is_empty() { None } else { Some(stdout.to_string()) }, Some(0), Some(duration_ms));
+        logger.log("info", format!("Valkey backup completed for {}", cfg.name));
 
         Ok(file_path)
     })

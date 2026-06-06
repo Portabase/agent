@@ -58,11 +58,11 @@ async fn mariadb_backup_restore_test() {
     let backup_path = temp_dir.path();
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
-    let file_path = db.backup(backup_path).await.unwrap();
+    let file_path = db.backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
 
     assert!(file_path.is_file());
 
-    let compression = compress_to_tar_gz_large(&file_path).await.unwrap();
+    let compression = compress_to_tar_gz_large(&file_path, None).await.unwrap();
     assert!(compression.compressed_path.is_file());
 
     let files = decompress_large_tar_gz(compression.compressed_path.as_path(), temp_dir.path())

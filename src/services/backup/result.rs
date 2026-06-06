@@ -1,9 +1,10 @@
+use super::logger::JobLogEntry;
 use super::models::{BackupResult, UploadResult};
 use super::service::BackupService;
 use crate::services::api::ApiError;
 use crate::services::api::models::agent::backup::BackupResponse;
 use anyhow::Result;
-use tracing::error;
+use tracing::{error, info};
 
 impl BackupService {
     pub async fn send_result(
@@ -11,6 +12,7 @@ impl BackupService {
         result: BackupResult,
         upload_results: Vec<UploadResult>,
         backup_id: &String,
+        logs: Vec<JobLogEntry>,
     ) -> Result<Option<BackupResponse>, ApiError> {
         let status = if upload_results.iter().any(|r| r.success) {
             "success"
@@ -24,6 +26,8 @@ impl BackupService {
             .reduce(|a, b| a + b)
             .map(|sum| sum / upload_results.len() as u64);
 
+        info!("{:#?}",logs);
+
         self.ctx
             .api
             .backup_update(
@@ -32,6 +36,7 @@ impl BackupService {
                 status,
                 file_size,
                 &result.generated_id,
+                logs,
             )
             .await
             .map_err(|e| {

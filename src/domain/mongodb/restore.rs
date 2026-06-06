@@ -27,10 +27,12 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf) -> Result<()> {
             .output()?;
 
         let dry_output = String::from_utf8_lossy(&dry_run.stderr);
-        let source_db = extract_db_name(&dry_output)
-            .context("Could not detect source database name from archive")?;
+        let source_db = extract_db_name(&dry_output).unwrap_or_else(|| {
+            info!("Could not detect source database from archive, falling back to configured database: {}", cfg.database);
+            cfg.database.clone()
+        });
 
-        info!("Detected source database in archive: {}", source_db);
+        info!("Using source database in archive: {}", source_db);
 
         let output = Command::new(&mongorestore)
             .arg(format!("--uri={}", uri))
