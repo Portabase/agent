@@ -49,7 +49,6 @@ impl BackupService {
 
         logger.log("info", "Database backup job finished".to_string());
 
-
         let logs = Arc::try_unwrap(logger).unwrap_or_else(|_| JobLogger::new()).into_entries();
         self.send_result(result, uploads, &backup_id, logs).await?;
 

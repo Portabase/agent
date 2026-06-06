@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, error, info};
+use tracing::error;
 
 pub async fn run(
     cfg: DatabaseConfig,
@@ -14,7 +14,6 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        debug!("Starting MSSQL backup for database {}", cfg.name);
         logger.log("debug", format!("Starting MSSQL backup for database {}", cfg.name));
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
@@ -27,7 +26,6 @@ pub async fn run(
             cfg.host, cfg.port, cfg.database, cfg.username, cfg.password, file_path.display()
         );
 
-        info!("MSSQL backup: {}:{}/{} → {}", cfg.host, cfg.port, cfg.database, file_path.display());
         logger.log("info", format!("MSSQL backup: {}:{}/{} → {}", cfg.host, cfg.port, cfg.database, file_path.display()));
 
         let start = Instant::now();
@@ -50,7 +48,6 @@ pub async fn run(
             anyhow::bail!("MSSQL backup failed for {}: {}", cfg.name, stderr);
         }
 
-        info!("MSSQL backup completed: {}", file_path.display());
         let combined = if stdout.is_empty() && stderr.is_empty() {
             None
         } else {

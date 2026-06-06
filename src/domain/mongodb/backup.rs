@@ -43,7 +43,6 @@ pub async fn run(
             anyhow::bail!("MongoDB backup failed for {}: {}", cfg.name, stderr);
         }
 
-        info!("MongoDB backup completed for {}", cfg.name);
         logger.log_command(cmd_label, if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
         logger.log("info", format!("MongoDB backup completed for {}", cfg.name));
         Ok(file_path)

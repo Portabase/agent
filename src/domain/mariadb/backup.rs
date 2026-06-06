@@ -17,30 +17,26 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        debug!("Starting backup for database {}", cfg.name);
         logger.log("debug", format!("Starting backup for database {}", cfg.name));
 
         let version = match futures::executor::block_on(server_version(&cfg)) {
             Ok(v) => {
-                debug!("Mariadb version detected: {}", v);
                 logger.log("debug", format!("MariaDB version detected: {}", v));
                 v
             }
             Err(e) => {
-                error!("Failed to get server version for {}: {:?}", cfg.name, e);
                 logger.log("error", format!("Failed to get server version: {}", e));
                 return Err(e.into());
             }
         };
-
-        info!("Mariadb version found: {}", version);
-
+        
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
         let _mariadb_dump = select_mariadb_path(&version).join("mariadb-dump");
-        info!("Mariadb dump found: {}", _mariadb_dump.display());
+        
         logger.log("debug", format!("Using mariadb-dump at {}", _mariadb_dump.display()));
 
         let cmd_label = format!("mariadb-dump --host {} --port {} --user {} {}", cfg.host, cfg.port, cfg.username, cfg.database);
+        
         logger.log("info", format!("Running mariadb-dump for {}", cfg.name));
 
         let start = Instant::now();

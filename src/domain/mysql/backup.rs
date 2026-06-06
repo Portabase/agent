@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 pub async fn run(
     cfg: DatabaseConfig,
@@ -17,23 +17,18 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        debug!("Starting backup for database {}", cfg.name);
         logger.log("debug", format!("Starting backup for database {}", cfg.name));
 
         let version = match futures::executor::block_on(server_version(&cfg)) {
             Ok(v) => {
-                debug!("Mysql version detected: {}", v);
                 logger.log("debug", format!("MySQL version detected: {}", v));
                 v
             }
             Err(e) => {
-                error!("Failed to get server version for {}: {:?}", cfg.name, e);
                 logger.log("error", format!("Failed to get server version: {}", e));
                 return Err(e.into());
             }
         };
-
-        info!("Mysql version found: {}", version);
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
         let cmd_label = format!("mysqldump --host {} --port {} --user {} {}", cfg.host, cfg.port, cfg.username, cfg.database);
@@ -72,6 +67,7 @@ pub async fn run(
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
         info!("Output {}", stdout);
         logger.log_command(cmd_label, if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
         logger.log("info", format!("mysqldump completed for {}", cfg.name));

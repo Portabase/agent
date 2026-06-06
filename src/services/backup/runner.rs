@@ -26,7 +26,6 @@ impl BackupService {
             }
         };
 
-        info!("Reachable: {}", reachable);
         logger.log("info", format!("Database reachable: {}", reachable));
 
         if !reachable {
@@ -61,7 +60,6 @@ impl BackupService {
             }
 
             Err(e) => {
-                error!("Backup failed for {}: {:?}", generated_id, e);
                 logger.log("error", format!("Backup failed: {}", e));
                 Ok(BackupResult {
                     generated_id,

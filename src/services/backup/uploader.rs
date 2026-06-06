@@ -1,15 +1,13 @@
 use super::logger::JobLogger;
 use super::models::{BackupResult, UploadResult};
 use super::service::BackupService;
-
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::storage;
 use crate::utils::common::BackupMethod;
-
 use anyhow::{Result, bail};
 use futures::future::join_all;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::info;
 
 impl BackupService {
     pub async fn upload(
@@ -38,7 +36,6 @@ impl BackupService {
             let generated_id = result_clone.generated_id.clone();
 
             async move {
-                info!("Uploading storage -> {:?} for {:?}", storage.provider, storage_id);
                 logger_clone.log("info", format!("Uploading storage {:?} (id: {})", storage.provider, storage_id));
 
                 /*
@@ -56,7 +53,6 @@ impl BackupService {
                 {
                     Ok(v) => v,
                     Err(e) => {
-                        error!("backup_upload_init failed: {}", e);
                         logger_clone.log("error", format!("Upload init failed: {}", e));
 
                         return UploadResult {
@@ -87,7 +83,6 @@ impl BackupService {
                  PROVIDER CHECK
                 */
                 let Some(provider) = provider else {
-                    error!("Skipping storage due to missing provider");
                     logger_clone.log("error", format!("Missing provider for storage {}", storage_id));
 
                     return UploadResult {
@@ -123,7 +118,6 @@ impl BackupService {
                     return upload_result;
                 }
 
-                info!("Storage {} uploaded to remote path {:?}", storage_id, upload_result.remote_file_path);
                 logger_clone.log("info", format!(
                     "Storage {} uploaded to {:?} ({} bytes)",
                     storage_id,
@@ -168,7 +162,6 @@ impl BackupService {
                     Ok(_) => upload_result,
 
                     Err(err) => {
-                        error!("backup_upload_status failed (storage_id={}): {}", storage_id, err);
                         logger_clone.log("error", format!("Upload status update failed for {}: {}", storage_id, err));
 
                         UploadResult {

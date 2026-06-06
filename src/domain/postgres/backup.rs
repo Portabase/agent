@@ -17,12 +17,10 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        debug!("Starting backup for database {}", cfg.name);
         logger.log("debug", format!("Starting backup for database {}", cfg.name));
 
         let version = match futures::executor::block_on(server_version(&cfg)) {
             Ok(v) => {
-                debug!("Postgres version detected: {}", v);
                 logger.log("debug", format!("Postgres version detected: {}", v));
                 v
             }
@@ -34,12 +32,10 @@ pub async fn run(
         };
 
         let pg_dump = select_pg_path(&version).join("pg_dump");
-        debug!("Using pg_dump at {:?}", pg_dump);
         logger.log("debug", format!("Using pg_dump at {:?}", pg_dump));
 
         match format {
             PostgresDumpFormat::Fc => {
-                info!("Running FC backup for {}", cfg.name);
                 logger.log("info", format!("Running FC backup for {}", cfg.name));
 
                 let file_path = backup_dir.join(format!("{}.dump", cfg.generated_id));
@@ -149,7 +145,6 @@ pub async fn run(
                             error!("Failed to finish tar archive for {}: {:?}", cfg.name, e);
                             return Err(e.into());
                         }
-                        info!("FD backup archive created at {:?}", tar_file);
                         logger.log("info", format!("FD backup archive created at {:?}", tar_file));
                     }
                     Err(e) => {
@@ -157,7 +152,6 @@ pub async fn run(
                         return Err(e.into());
                     }
                 }
-                info!("Backup finished for database {}", cfg.name);
                 logger.log("info", format!("Backup finished for database {}", cfg.name));
                 Ok(tar_file)
             }

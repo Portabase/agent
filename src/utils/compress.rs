@@ -19,17 +19,14 @@ pub struct CompressionResult {
     pub compressed_path: PathBuf,
 }
 
-pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Option<Arc<JobLogger>>) -> Result<CompressionResult> {
+pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Arc<JobLogger>) -> Result<CompressionResult> {
     if file
         .file_name()
         .and_then(|n| n.to_str())
         .map(|n| n.ends_with(".tar.gz"))
         .unwrap_or(false)
     {
-        info!("File {:?} is already a tar.gz, skipping compression", file);
-        if let Some(l) = &logger {
-            l.log("info", format!("File {:?} is already a tar.gz, skipping compression", file));
-        }
+        logger.log("info", format!("File {:?} is already a tar.gz, skipping compression", file));
         return Ok(CompressionResult {
             compressed_path: file.clone(),
         });
@@ -40,7 +37,7 @@ pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Option<Arc<JobLogg
     let output_file = File::create(&tar_gz_path)
         .await
         .map_err(|e| {
-            if let Some(l) = &logger { l.log("error", format!("Failed to create output file {:?}: {}", tar_gz_path, e)); }
+            logger.log("error", format!("Failed to create output file {:?}: {}", tar_gz_path, e));
             anyhow::anyhow!("Failed to create output file {:?}: {}", tar_gz_path, e)
         })?;
 
@@ -50,7 +47,7 @@ pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Option<Arc<JobLogg
     let file_name = file
         .file_name()
         .ok_or_else(|| {
-            if let Some(l) = &logger { l.log("error", format!("Cannot get file name for {:?}", file)); }
+            logger.log("error", format!("Cannot get file name for {:?}", file));
             anyhow::anyhow!("Cannot get file name for {:?}", file)
         })?;
 
@@ -58,7 +55,7 @@ pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Option<Arc<JobLogg
         .append_path_with_name(file, file_name)
         .await
         .map_err(|e| {
-            if let Some(l) = &logger { l.log("error", format!("Failed to append path: {}", e)); }
+            logger.log("error", format!("Failed to append path: {}", e));
             anyhow::anyhow!("Failed to append path: {}", e)
         })?;
 
@@ -66,7 +63,7 @@ pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Option<Arc<JobLogg
         .finish()
         .await
         .map_err(|e| {
-            if let Some(l) = &logger { l.log("error", format!("Failed to finish tar: {}", e)); }
+            logger.log("error", format!("Failed to finish tar: {}", e));
             anyhow::anyhow!("Failed to finish tar: {}", e)
         })?;
 
@@ -74,22 +71,19 @@ pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Option<Arc<JobLogg
         .into_inner()
         .await
         .map_err(|e| {
-            if let Some(l) = &logger { l.log("error", format!("Failed to extract gzip encoder: {}", e)); }
+            logger.log("error", format!("Failed to extract gzip encoder: {}", e));
             anyhow::anyhow!("Failed to extract gzip encoder: {}", e)
         })?;
 
     gzip.shutdown()
         .await
         .map_err(|e| {
-            if let Some(l) = &logger { l.log("error", format!("Gzip shutdown failed: {}", e)); }
+            logger.log("error", format!("Gzip shutdown failed: {}", e));
             anyhow::anyhow!("Gzip shutdown failed: {}", e)
         })?;
 
-    info!("Compressing {:?} to {:?}", &file, &tar_gz_path);
 
-    if let Some(l) = &logger {
-        l.log("info", format!("Compressed {:?} to {:?}", &file, &tar_gz_path));
-    }
+    logger.log("info", format!("Compressed {:?} to {:?}", &file, &tar_gz_path));
 
     Ok(CompressionResult {
         compressed_path: tar_gz_path,
