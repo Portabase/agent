@@ -7,6 +7,7 @@ use crate::utils::locks::FileLock;
 
 use anyhow::Result;
 use std::sync::Arc;
+use std::time::Instant;
 use tempfile::TempDir;
 
 impl BackupService {
@@ -23,7 +24,7 @@ impl BackupService {
         if FileLock::is_locked(&generated_id).await? {
             anyhow::bail!("backup already running");
         }
-
+        let start = Instant::now();
         logger.log("info", "Database backup job started".to_string());
 
         let backup = self.create_backup_record(&generated_id, &method).await?;
@@ -35,8 +36,9 @@ impl BackupService {
         let mut result = Self::run(db_cfg, tmp_path, Arc::clone(&logger)).await?;
 
         if result.status == "failed" {
+            let duration_ms = start.elapsed().as_millis() as f64;
             let logs = Arc::try_unwrap(logger).unwrap_or_else(|_| JobLogger::new()).into_entries();
-            self.send_result(result, vec![], &backup_id, logs).await?;
+            self.send_result(result, vec![], &backup_id, logs, duration_ms).await?;
             return Ok(());
         }
 
@@ -49,8 +51,9 @@ impl BackupService {
 
         logger.log("info", "Database backup job finished".to_string());
 
+        let duration_ms = start.elapsed().as_millis() as f64;
         let logs = Arc::try_unwrap(logger).unwrap_or_else(|_| JobLogger::new()).into_entries();
-        self.send_result(result, uploads, &backup_id, logs).await?;
+        self.send_result(result, uploads, &backup_id, logs, duration_ms).await?;
 
         Ok(())
     }

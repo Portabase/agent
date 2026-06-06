@@ -23,6 +23,8 @@ pub struct BackupUpdateRequest {
     #[serde(rename = "generatedId")]
     pub generated_id: String,
     pub logs: Vec<JobLogEntry>,
+    #[serde(rename = "durationMs")]
+    pub duration_ms: f64,
 }
 
 impl ApiClient {
@@ -52,6 +54,7 @@ impl ApiClient {
         file_size: impl Into<Option<u64>>,
         generated_id: impl Into<String>,
         job_logs: Vec<JobLogEntry>,
+        duration_ms: f64,
     ) -> Result<Option<BackupResponse>, ApiError> {
         let body = BackupUpdateRequest {
             backup_id: backup_id.into(),
@@ -59,6 +62,7 @@ impl ApiClient {
             size: file_size.into(),
             generated_id: generated_id.into(),
             logs: job_logs,
+            duration_ms: duration_ms,
         };
 
         let agent_id = agent_id.into();
