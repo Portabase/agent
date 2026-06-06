@@ -83,6 +83,7 @@ jobs:
           verbose: true
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
+          use_pypi: true
 
       - name: Stop and remove container
         if: always()
