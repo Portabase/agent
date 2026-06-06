@@ -67,3 +67,5 @@ test:
     docker compose -f docker-compose.test.yml up -d agent-test
     echo "Run tests inside container"
     docker compose -f docker-compose.test.yml exec -e CARGO_INCREMENTAL -e RUSTFLAGS -e LLVM_PROFILE_FILE agent-test bash -c "cargo test --verbose && sync"
+    echo "Down volumes tests databases"
+    docker compose -f docker-compose.test.yml down --volumes

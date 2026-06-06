@@ -10,7 +10,6 @@ services:
       - .:/app
       - cargo-registry:/usr/local/cargo/registry
       - cargo-git:/usr/local/cargo/git
-      - cargo-target:/app/target
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       APP_ENV: test
@@ -21,4 +20,3 @@ services:
 volumes:
   cargo-registry:
   cargo-git:
-  cargo-target:
