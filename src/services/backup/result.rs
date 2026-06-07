@@ -4,7 +4,7 @@ use super::service::BackupService;
 use crate::services::api::ApiError;
 use crate::services::api::models::agent::backup::BackupResponse;
 use anyhow::Result;
-use tracing::{error, info};
+use tracing::error;
 
 impl BackupService {
     pub async fn send_result(
@@ -26,8 +26,6 @@ impl BackupService {
             .filter_map(|r| r.total_size)
             .reduce(|a, b| a + b)
             .map(|sum| sum / upload_results.len() as u64);
-
-        info!("{:#?}",logs);
 
         self.ctx
             .api
