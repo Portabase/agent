@@ -3,15 +3,19 @@ use super::service::RestoreService;
 use anyhow::Result;
 use reqwest::{Client, Url};
 use std::path::{Path, PathBuf};
-use tracing::info;
+use std::sync::Arc;
+use crate::services::backup::logger::JobLogger;
 
 impl RestoreService {
-    pub async fn download_backup(&self, file_url: &str, tmp_path: &Path) -> Result<PathBuf> {
+    pub async fn download_backup(&self, file_url: &str, tmp_path: &Path, logger: Arc<JobLogger>) -> Result<PathBuf> {
+        logger.log("info", "Start downloading backup archive".to_string());
+
         let client = Client::new();
 
         let response = client.get(file_url).send().await?;
 
         if !response.status().is_success() {
+            logger.log("error", "Failed to download".to_string());
             anyhow::bail!("download failed");
         }
 
@@ -39,8 +43,7 @@ impl RestoreService {
 
         tokio::fs::write(&path, &bytes).await?;
 
-        info!("Backup downloaded to {}", path.display());
-
+        logger.log("info", format!("Backup downloaded to {}", path.display()));
         Ok(path)
     }
 }

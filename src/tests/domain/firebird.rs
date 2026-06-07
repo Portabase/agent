@@ -95,7 +95,7 @@ async fn firebird_backup_restore_test() {
     info!("Reachable: {}", reachable);
     assert!(reachable);
 
-    match db.restore(&backup_file).await {
+    match db.restore(&backup_file, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await {
         Ok(_) => {
             info!("Restore succeeded for {}", config.generated_id);
             assert!(true)

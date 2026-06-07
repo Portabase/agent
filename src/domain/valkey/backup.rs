@@ -14,7 +14,7 @@ pub async fn run(
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
         logger.log(
-            "debug",
+            "info",
             format!("Starting Valkey backup for database {}", cfg.name),
         );
 

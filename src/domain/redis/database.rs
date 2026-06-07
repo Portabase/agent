@@ -36,7 +36,7 @@ impl Database for RedisDatabase {
         res
     }
 
-    async fn restore(&self, _file: &Path) -> Result<()> {
+    async fn restore(&self, _file: &Path, _logger: Arc<JobLogger>) -> Result<()> {
         bail!("Restore not supported for Redis databases")
     }
 }

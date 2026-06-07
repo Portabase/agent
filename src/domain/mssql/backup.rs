@@ -13,7 +13,7 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        logger.log("debug", format!("Starting MSSQL backup for database {}", cfg.name));
+        logger.log("info", format!("Starting MSSQL backup for database {}", cfg.name));
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
         let connection_string = format!(

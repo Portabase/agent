@@ -141,7 +141,7 @@ async fn mssql_backup_restore_test() {
     let restore_config = make_config(host, port, "restoreddb", "5a445eb4-c2c6-4bde-a423-ee1385dcf6d5");
     let db_restore = DatabaseFactory::create_for_restore(restore_config, &backup_file).await;
 
-    match db_restore.restore(&backup_file).await {
+    match db_restore.restore(&backup_file, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await {
         Ok(_) => info!("MSSQL restore succeeded"),
         Err(e) => {
             error!("MSSQL restore failed: {:?}", e);

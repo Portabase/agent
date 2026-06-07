@@ -19,7 +19,7 @@ pub trait Database: Send + Sync {
     fn file_extension(&self) -> &'static str;
     async fn ping(&self) -> Result<bool>;
     async fn backup(&self, backup_dir: &Path, logger: Arc<JobLogger>) -> Result<PathBuf>;
-    async fn restore(&self, restore_file: &Path) -> Result<()>;
+    async fn restore(&self, restore_file: &Path, logger: Arc<JobLogger>) -> Result<()>;
 }
 
 pub struct DatabaseFactory;

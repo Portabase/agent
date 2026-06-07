@@ -13,7 +13,7 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        logger.log("debug", format!("Starting SQLite backup for database {}", cfg.name));
+        logger.log("info", format!("Starting SQLite backup for database {}", cfg.name));
 
         let db_path_str = if cfg.path.is_empty() {
             anyhow::bail!("Database path not configured");

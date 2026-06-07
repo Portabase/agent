@@ -85,7 +85,7 @@ async fn mongodb_backup_restore_test() {
     info!("Reachable: {}", reachable);
     assert!(reachable);
 
-    match db.restore(&file_path).await {
+    match db.restore(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await {
         Ok(_) => {
             info!("Restore succeeded for {}", config.generated_id);
             assert!(true)

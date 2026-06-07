@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::error;
 
 pub async fn run(
     cfg: DatabaseConfig,
@@ -15,7 +14,7 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        logger.log("debug", format!("Starting MongoDB backup for database {}", cfg.name));
+        logger.log("info", format!("Starting MongoDB backup for database {}", cfg.name));
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
         let mongodump = select_mongo_path().join("mongodump");
@@ -37,7 +36,7 @@ pub async fn run(
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         if !output.status.success() {
-            error!("MongoDB backup failed for {}: {}", cfg.name, stderr);
+            logger.log("error", format!("MongoDB backup failed for {}: {}", cfg.name, stderr));
             logger.log_command("mongodump", Some(stderr.clone()), Some(exit_code), Some(duration_ms));
             anyhow::bail!("MongoDB backup failed for {}: {}", cfg.name, stderr);
         }

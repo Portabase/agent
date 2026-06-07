@@ -96,7 +96,7 @@ async fn postgres_backup_restore_test() {
 
     info!("Running pg_restore: {:?}", backup_file);
 
-    match db.restore(&backup_file).await {
+    match db.restore(&backup_file, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await {
         Ok(_) => {
             info!("Restore succeeded for {}", config.generated_id);
             assert!(true)

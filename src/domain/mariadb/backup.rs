@@ -16,11 +16,11 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        logger.log("debug", format!("Starting backup for database {}", cfg.name));
+        logger.log("info", format!("Starting backup for database {}", cfg.name));
 
         let version = match futures::executor::block_on(server_version(&cfg)) {
             Ok(v) => {
-                logger.log("debug", format!("MariaDB version detected: {}", v));
+                logger.log("info", format!("MariaDB version detected: {}", v));
                 v
             }
             Err(e) => {

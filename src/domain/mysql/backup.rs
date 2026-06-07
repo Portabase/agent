@@ -16,7 +16,7 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        logger.log("debug", format!("Starting backup for database {}", cfg.name));
+        logger.log("info", format!("Starting backup for database {}", cfg.name));
 
         let _version = match futures::executor::block_on(server_version(&cfg)) {
             Ok(v) => {

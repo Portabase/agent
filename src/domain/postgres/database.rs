@@ -40,9 +40,9 @@ impl Database for PostgresDatabase {
         res
     }
 
-    async fn restore(&self, file: &Path) -> Result<()> {
+    async fn restore(&self, file: &Path, logger: Arc<JobLogger>) -> Result<()> {
         FileLock::acquire(&self.cfg.generated_id, DbOpLock::Restore.as_str()).await?;
-        let res = restore::run(self.cfg.clone(), self.format, file.to_path_buf()).await;
+        let res = restore::run(self.cfg.clone(), self.format, file.to_path_buf(), logger).await;
         FileLock::release(&self.cfg.generated_id).await?;
         res
     }
