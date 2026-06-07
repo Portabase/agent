@@ -2,7 +2,6 @@ use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
 use std::fs::File;
-use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
@@ -12,11 +11,8 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogg
     let handle = tokio::task::spawn_blocking(move || -> Result<()> {
         logger.log("info", format!("Starting restore for database {}", cfg.name));
 
-        let mut sql_content = String::new();
         let mut file = File::open(&restore_file)
             .with_context(|| format!("Failed to open restore file {}", restore_file.display()))?;
-        file.read_to_string(&mut sql_content)
-            .with_context(|| format!("Failed to read restore file {}", restore_file.display()))?;
 
         let drop_create_cmd = format!(
             "DROP DATABASE IF EXISTS `{0}`; CREATE DATABASE `{0}`;",
@@ -66,10 +62,8 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogg
             .with_context(|| format!("Failed to start MariaDB restore for {}", cfg.name))?;
 
         let mut stdin = child.stdin.take().context("Failed to open child stdin")?;
-        stdin
-            .write_all(sql_content.as_bytes())
-            .context("Failed to write SQL content to MariaDB stdin")?;
-        stdin.flush()?;
+        std::io::copy(&mut file, &mut stdin)
+            .context("Failed to stream SQL content to MariaDB stdin")?;
         drop(stdin);
 
         let output = child

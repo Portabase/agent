@@ -28,6 +28,14 @@ services:
     networks:
       - portabase
 
+    cpus: "1.50"
+
+    mem_limit: 4g
+    memswap_limit: 4g
+
+    pids_limit: 512
+
+
 volumes:
   cargo-registry:
   cargo-git:
