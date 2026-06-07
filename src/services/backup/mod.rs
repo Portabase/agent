@@ -1,4 +1,5 @@
 pub mod compressor;
+pub mod logger;
 pub mod dispatcher;
 pub mod executor;
 pub mod helpers;

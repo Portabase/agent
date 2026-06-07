@@ -9,7 +9,7 @@ async fn compress_creates_tar_gz() -> Result<()> {
     let file_path = tmp.path().join("test.txt");
     write(&file_path, b"hello world").await?;
 
-    let result = compress_to_tar_gz_large(&file_path).await?;
+    let result = compress_to_tar_gz_large(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await?;
     assert!(result.compressed_path.exists());
     assert_eq!(result.compressed_path.extension().unwrap(), "gz");
 
@@ -22,8 +22,7 @@ async fn compress_skips_existing_tar_gz() -> Result<()> {
     let file_path = tmp.path().join("already.tar.gz");
     write(&file_path, b"compressed").await?;
 
-    let result = compress_to_tar_gz_large(&file_path).await?;
-    // Should return same path without creating a new file
+    let result = compress_to_tar_gz_large(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await?;
     assert_eq!(result.compressed_path, file_path);
 
     Ok(())
@@ -35,7 +34,7 @@ async fn decompress_restores_file() -> Result<()> {
     let file_path = tmp.path().join("file.txt");
     write(&file_path, b"data for decompress").await?;
 
-    let compress_result = compress_to_tar_gz_large(&file_path).await?;
+    let compress_result = compress_to_tar_gz_large(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await?;
     let output_dir = tmp.path().join("out");
     tokio::fs::create_dir_all(&output_dir).await?;
 
@@ -58,8 +57,8 @@ async fn decompress_multiple_files() -> Result<()> {
     write(&file2, b"file2").await?;
 
     // Compress both files individually (for simplicity in this test)
-    let compress1 = compress_to_tar_gz_large(&file1).await?;
-    let compress2 = compress_to_tar_gz_large(&file2).await?;
+    let compress1 = compress_to_tar_gz_large(&file1, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await?;
+    let compress2 = compress_to_tar_gz_large(&file2, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await?;
 
     let output_dir = tmp.path().join("out_multi");
     tokio::fs::create_dir_all(&output_dir).await?;

@@ -1,47 +1,53 @@
+use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::process::Command;
-use tracing::{debug, error, info};
+use std::sync::Arc;
+use std::time::Instant;
 
 pub async fn run(
     cfg: DatabaseConfig,
     backup_dir: PathBuf,
     file_extension: &'static str,
+    logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        debug!("Starting backup for database {}", cfg.name);
+        logger.log("info", format!("Starting Firebird backup for database: {}", cfg.name));
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
+        let db_path = format!("{}/{}:{}", cfg.host, cfg.port, cfg.database);
 
-        let db_path = format!(
-            "{}/{}:{}",
-            cfg.host,
-            cfg.port,
-            cfg.database
-        );
-
-        info!("Firebird database target: {}", db_path);
-        info!("Backup file: {}", file_path.display());
-
+        logger.log("info", format!("Firebird target: {} → {}", db_path, file_path.display()));
+        
+        let start = Instant::now();
         let output = Command::new("gbak")
             .arg("-b")
             .arg("-v")
             .arg("-user").arg(&cfg.username)
             .arg("-password").arg(&cfg.password)
-            .arg(db_path)
+            .arg(&db_path)
             .arg(&file_path)
             .output()
             .with_context(|| format!("Failed to run gbak for {}", cfg.name))?;
+        let duration_ms = start.elapsed().as_millis() as f64;
+        let exit_code = output.status.code().unwrap_or(-1);
+
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let combined_output = if stderr.is_empty() && stdout.is_empty() {
+            None
+        } else {
+            Some(format!("{}{}", stdout, stderr).trim().to_string())
+        };
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            error!("Firebird backup failed: {}", stderr);
+            logger.log_command("gbak", combined_output, Some(exit_code), Some(duration_ms));
             anyhow::bail!("Firebird backup failed for {}: {}", cfg.name, stderr);
         }
 
-        info!("Firebird backup completed: {}", file_path.display());
-
+        logger.log_command("gbak", combined_output, Some(0), Some(duration_ms));
+        logger.log("info", format!("Firebird backup completed for {}", cfg.name));
         Ok(file_path)
     })
     .await?
