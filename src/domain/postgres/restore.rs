@@ -1,52 +1,54 @@
 use anyhow::Result;
 use std::path::PathBuf;
 use std::process::Command;
-use tracing::{debug, error, info};
+use std::sync::Arc;
+use std::time::Instant;
 
 use super::connection::{select_pg_path, server_version, terminate_connections};
 use super::format::PostgresDumpFormat;
+use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 
 pub async fn run(
     cfg: DatabaseConfig,
     format: PostgresDumpFormat,
     restore_file: PathBuf,
+    logger: Arc<JobLogger>,
 ) -> Result<()> {
     tokio::task::spawn_blocking(move || -> Result<()> {
-        debug!("Starting restore for database {}", cfg.name);
+        logger.log("info", format!("Starting restore for database {}", cfg.name));
 
         let version = match futures::executor::block_on(server_version(&cfg)) {
             Ok(v) => {
-                debug!("Postgres version detected: {}", v);
+                logger.log("debug", format!("Postgres version detected: {}", v));
                 v
             }
             Err(e) => {
-                error!("Failed to get server version for {}: {:?}", cfg.name, e);
+                logger.log("error", format!("Failed to get server version for {}: {:?}", cfg.name, e));
                 return Err(e.into());
             }
         };
 
         let pg_restore = select_pg_path(&version).join("pg_restore");
 
-        debug!("Using pg_restore at {:?}", pg_restore);
+        logger.log("debug", format!("Using pg_restore at {:?}", pg_restore));
 
         if let Err(e) = futures::executor::block_on(terminate_connections(&cfg)) {
-            error!("Failed to terminate connections for {}: {:?}", cfg.name, e);
+            logger.log("error", format!("Failed to terminate connections for {}: {:?}", cfg.name, e));
             return Err(e.into());
         }
-        info!("Connections terminated for database {}", cfg.name);
+        logger.log("info", format!("Connections terminated for database {}", cfg.name));
 
         let url = format!(
             "postgresql://{}:{}@{}:{}/{}",
             cfg.username, cfg.password, cfg.host, cfg.port, cfg.database
         );
 
-        debug!("Restore URL: {}", url);
-
         match format {
             PostgresDumpFormat::Fc => {
-                info!("Running FC restore for {}", cfg.name);
-                let status = Command::new(&pg_restore)
+                logger.log("info", format!("Running FC restore for {}", cfg.name));
+                let start = Instant::now();
+                let output = Command::new(&pg_restore)
                     .arg("--no-owner")
                     .arg("--no-privileges")
                     .arg("--clean")
@@ -57,38 +59,49 @@ pub async fn run(
                     .arg("-v")
                     .arg(&restore_file)
                     .env("PGPASSWORD", &cfg.password)
-                    .status();
+                    .output();
 
-                match status {
-                    Ok(s) if s.success() => {
-                        info!("FC restore completed successfully for {}", cfg.name)
-                    }
-                    Ok(s) => {
-                        error!("FC restore failed with status {:?} for {}", s, cfg.name);
-                        anyhow::bail!("Postgres restore failed for {}", cfg.name);
+                let duration_ms = start.elapsed().as_millis() as f64;
+
+                match output {
+                    Ok(o) => {
+                        let stderr = String::from_utf8_lossy(&o.stderr).to_string();
+                        let stdout = String::from_utf8_lossy(&o.stdout).to_string();
+                        let combined = format!("{}{}", stdout, stderr);
+                        let exit_code = o.status.code().unwrap_or(-1);
+
+                        if o.status.success() {
+                            logger.log_command("pg_restore", if combined.is_empty() { None } else { Some(combined) }, Some(0), Some(duration_ms));
+                            logger.log("info", format!("FC restore completed successfully for {}", cfg.name))
+                        } else {
+                            logger.log_command("pg_restore", if combined.is_empty() { None } else { Some(combined) }, Some(exit_code), Some(duration_ms));
+                            logger.log("error", format!("FC restore failed with status {:?} for {}", o.status, cfg.name));
+                            anyhow::bail!("Postgres restore failed for {}", cfg.name);
+                        }
                     }
                     Err(e) => {
-                        error!("Error executing pg_restore for {}: {:?}", cfg.name, e);
+                        logger.log_command("pg_restore", Some(e.to_string()), Some(-1), Some(duration_ms));
+                        logger.log("error", format!("Error executing pg_restore for {}: {:?}", cfg.name, e));
                         return Err(e.into());
                     }
                 }
             }
 
             PostgresDumpFormat::Fd => {
-                info!("Running FD restore for {}", cfg.name);
+                logger.log("info", format!("Running FD restore for {}", cfg.name));
 
                 let tar_gz = match std::fs::File::open(&restore_file) {
                     Ok(f) => f,
                     Err(e) => {
-                        error!(
+                        logger.log("error", format!(
                             "Failed to open restore file {:?} for {}: {:?}",
                             restore_file, cfg.name, e
-                        );
+                        ));
                         return Err(e.into());
                     }
                 };
 
-                info!("tar_gz {:?}", tar_gz);
+                logger.log("info", format!("tar_gz {:?}", tar_gz));
 
                 let dec = flate2::read::GzDecoder::new(tar_gz);
                 let mut archive = tar::Archive::new(dec);
@@ -96,31 +109,31 @@ pub async fn run(
                 let tmp_dir = match tempfile::TempDir::new() {
                     Ok(d) => d,
                     Err(e) => {
-                        error!(
+                        logger.log("error", format!(
                             "Failed to create temporary directory for FD restore of {}: {:?}",
                             cfg.name, e
-                        );
+                        ));
                         return Err(e.into());
                     }
                 };
 
                 if let Err(e) = archive.unpack(tmp_dir.path()) {
-                    error!("Failed to unpack FD archive for {}: {:?}", cfg.name, e);
+                    logger.log("error", format!("Failed to unpack FD archive for {}: {:?}", cfg.name, e));
                     return Err(e.into());
                 }
 
-                debug!("Listing contents of temp dir: {}", tmp_dir.path().display());
+                logger.log("debug", format!("Listing contents of temp dir: {}", tmp_dir.path().display()));
 
                 for entry in std::fs::read_dir(tmp_dir.path())? {
                     if let Ok(entry) = entry {
                         let path = entry.path();
                         let file_type = entry.file_type()?;
-                        debug!(
+                        logger.log("debug", format!(
                             " - {} | is_dir: {} | is_file: {}",
                             path.display(),
                             file_type.is_dir(),
                             file_type.is_file()
-                        );
+                        ));
                     }
                 }
 
@@ -134,7 +147,8 @@ pub async fn run(
                         .ok_or_else(|| anyhow::anyhow!("Invalid FD archive: toc.dat not found"))?
                 };
 
-                let status = Command::new(&pg_restore)
+                let start = Instant::now();
+                let output = Command::new(&pg_restore)
                     .arg("--no-owner")
                     .arg("--no-privileges")
                     .arg("--clean")
@@ -147,25 +161,36 @@ pub async fn run(
                     .arg("4")
                     .arg(dump_dir)
                     .env("PGPASSWORD", &cfg.password)
-                    .status();
+                    .output();
 
-                match status {
-                    Ok(s) if s.success() => {
-                        info!("FD restore completed successfully for {}", cfg.name)
-                    }
-                    Ok(s) => {
-                        error!("FD restore failed with status {:?} for {}", s, cfg.name);
-                        anyhow::bail!("Postgres FD restore failed for {}", cfg.name);
+                let duration_ms = start.elapsed().as_millis() as f64;
+
+                match output {
+                    Ok(o) => {
+                        let stderr = String::from_utf8_lossy(&o.stderr).to_string();
+                        let stdout = String::from_utf8_lossy(&o.stdout).to_string();
+                        let combined = format!("{}{}", stdout, stderr);
+                        let exit_code = o.status.code().unwrap_or(-1);
+
+                        if o.status.success() {
+                            logger.log_command("pg_restore", if combined.is_empty() { None } else { Some(combined) }, Some(0), Some(duration_ms));
+                            logger.log("info", format!("FD restore completed successfully for {}", cfg.name))
+                        } else {
+                            logger.log_command("pg_restore", if combined.is_empty() { None } else { Some(combined) }, Some(exit_code), Some(duration_ms));
+                            logger.log("error", format!("FD restore failed with status {:?} for {}", o.status, cfg.name));
+                            anyhow::bail!("Postgres FD restore failed for {}", cfg.name);
+                        }
                     }
                     Err(e) => {
-                        error!("Error executing pg_restore for {}: {:?}", cfg.name, e);
+                        logger.log_command("pg_restore", Some(e.to_string()), Some(-1), Some(duration_ms));
+                        logger.log("error", format!("Error executing pg_restore for {}: {:?}", cfg.name, e));
                         return Err(e.into());
                     }
                 }
             }
         }
 
-        info!("Restore finished for database {}", cfg.name);
+        logger.log("info", format!("Restore finished for database {}", cfg.name));
 
         Ok(())
     })

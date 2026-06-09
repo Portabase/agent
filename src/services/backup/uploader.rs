@@ -1,13 +1,13 @@
+use super::logger::JobLogger;
 use super::models::{BackupResult, UploadResult};
 use super::service::BackupService;
-
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::storage;
 use crate::utils::common::BackupMethod;
-
 use anyhow::{Result, bail};
 use futures::future::join_all;
-use tracing::{error, info};
+use std::sync::Arc;
+use tracing::info;
 
 impl BackupService {
     pub async fn upload(
@@ -17,6 +17,7 @@ impl BackupService {
         storages: Vec<DatabaseStorage>,
         encrypt: bool,
         backup_id: &String,
+        logger: Arc<JobLogger>,
     ) -> Result<Vec<UploadResult>> {
         if result.code.as_deref() == Some("backup_already_in_progress") {
             info!("Skipping send: backup already in progress");
@@ -29,15 +30,13 @@ impl BackupService {
             let ctx_clone = ctx.clone();
             let result_clone = result.clone();
             let provider = storage::get_provider(&storage);
+            let logger_clone = Arc::clone(&logger);
 
             let storage_id = storage.id.clone();
             let generated_id = result_clone.generated_id.clone();
 
             async move {
-                info!(
-                    "Uploading storage -> {:?} for {:?}",
-                    storage.provider, storage_id
-                );
+                logger_clone.log("info", format!("Uploading storage {:?} (id: {})", storage.provider, storage_id));
 
                 /*
                  INIT STEP
@@ -54,7 +53,7 @@ impl BackupService {
                 {
                     Ok(v) => v,
                     Err(e) => {
-                        error!("backup_upload_init failed: {}", e);
+                        logger_clone.log("error", format!("Upload init failed: {}", e));
 
                         return UploadResult {
                             storage_id,
@@ -69,6 +68,7 @@ impl BackupService {
                 let backup_storage_id = match init {
                     Some(v) => v.backup_storage.id,
                     None => {
+                        logger_clone.log("error", "Upload init returned empty response");
                         return UploadResult {
                             storage_id,
                             success: false,
@@ -83,7 +83,7 @@ impl BackupService {
                  PROVIDER CHECK
                 */
                 let Some(provider) = provider else {
-                    error!("Skipping storage due to missing provider");
+                    logger_clone.log("error", format!("Missing provider for storage {}", storage_id));
 
                     return UploadResult {
                         storage_id,
@@ -107,20 +107,23 @@ impl BackupService {
                     )
                     .await;
 
-                let status = if upload_result.success {
-                    "success"
-                } else {
-                    "failed"
-                };
+                let status = if upload_result.success { "success" } else { "failed" };
 
                 if status != "success" {
+                    logger_clone.log("error", format!(
+                        "Upload failed for storage {}: {}",
+                        storage_id,
+                        upload_result.error.as_deref().unwrap_or("unknown error")
+                    ));
                     return upload_result;
                 }
 
-                info!(
-                    "Storage {} uploaded to remote path {:?}",
-                    storage_id, upload_result.remote_file_path
-                );
+                logger_clone.log("info", format!(
+                    "Storage {} uploaded to {:?} ({} bytes)",
+                    storage_id,
+                    upload_result.remote_file_path.clone().unwrap().to_string(),
+                    upload_result.total_size.unwrap_or(0)
+                ));
 
                 /*
                  METADATA VALIDATION
@@ -129,6 +132,7 @@ impl BackupService {
                     match (&upload_result.remote_file_path, upload_result.total_size) {
                         (Some(path), Some(size)) => (path.clone(), size),
                         _ => {
+                            logger_clone.log("error", format!("Missing remote_file_path or total_size for storage {}", storage_id));
                             return UploadResult {
                                 storage_id,
                                 success: false,
@@ -158,10 +162,7 @@ impl BackupService {
                     Ok(_) => upload_result,
 
                     Err(err) => {
-                        error!(
-                            "backup_upload_status failed (storage_id={}): {}",
-                            storage_id, err
-                        );
+                        logger_clone.log("error", format!("Upload status update failed for {}: {}", storage_id, err));
 
                         UploadResult {
                             storage_id,

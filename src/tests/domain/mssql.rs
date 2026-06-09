@@ -43,7 +43,7 @@ async fn create_user_database(host: &str, port: u16, db_name: &str) {
     client.simple_query(sql.as_str()).await.unwrap();
 }
 
-fn make_config(host: String, port: u16, database: &str) -> DatabaseConfig {
+fn make_config(host: String, port: u16, database: &str, generated_id: &str) -> DatabaseConfig {
     DatabaseConfig {
         name: "Test MSSQL".to_string(),
         database: database.to_string(),
@@ -52,7 +52,7 @@ fn make_config(host: String, port: u16, database: &str) -> DatabaseConfig {
         password: SA_PASSWORD.to_string(),
         port,
         host,
-        generated_id: "5a445eb4-c2c6-4bde-a423-ee1385dcf6d3".to_string(),
+        generated_id: generated_id.to_string(),
         path: "".to_string(),
     }
 }
@@ -66,7 +66,7 @@ async fn mssql_ping_test() {
 
     let host = container.get_host().await.unwrap().to_string();
     let port = container.get_host_port_ipv4(1433).await.unwrap();
-    let config = make_config(host, port, "master");
+    let config = make_config(host, port, "master", "5a445eb4-c2c6-4bde-a423-ee1385dcf6d3");
 
     let db = DatabaseFactory::create_for_backup(config).await;
     let reachable = db.ping().await.unwrap_or(false);
@@ -86,11 +86,11 @@ async fn mssql_backup_test() {
 
     create_user_database(&host, port, "backupdb").await;
 
-    let config = make_config(host, port, "backupdb");
+    let config = make_config(host, port, "backupdb", "5a445eb4-c2c6-4bde-a423-ee1385dcf6d4");
     let temp_dir = TempDir::new().unwrap();
 
     let db = DatabaseFactory::create_for_backup(config).await;
-    let file_path = db.backup(temp_dir.path()).await.unwrap();
+    let file_path = db.backup(temp_dir.path(), std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
 
     assert!(file_path.is_file(), "backup file should exist");
     assert!(
@@ -115,14 +115,14 @@ async fn mssql_backup_restore_test() {
 
     create_user_database(&host, port, "sourcedb").await;
 
-    let backup_config = make_config(host.clone(), port, "sourcedb");
+    let backup_config = make_config(host.clone(), port, "sourcedb", "5a445eb4-c2c6-4bde-a423-ee1385dcf6d5");
     let temp_dir = TempDir::new().unwrap();
 
     let db = DatabaseFactory::create_for_backup(backup_config).await;
-    let file_path = db.backup(temp_dir.path()).await.unwrap();
+    let file_path = db.backup(temp_dir.path(), std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
     assert!(file_path.is_file());
 
-    let compression = compress_to_tar_gz_large(&file_path).await.unwrap();
+    let compression = compress_to_tar_gz_large(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
     assert!(compression.compressed_path.is_file());
 
     let files = decompress_large_tar_gz(
@@ -138,10 +138,10 @@ async fn mssql_backup_restore_test() {
         panic!("Unexpected number of files after decompression: {}", files.len());
     };
 
-    let restore_config = make_config(host, port, "restoreddb");
+    let restore_config = make_config(host, port, "restoreddb", "5a445eb4-c2c6-4bde-a423-ee1385dcf6d5");
     let db_restore = DatabaseFactory::create_for_restore(restore_config, &backup_file).await;
 
-    match db_restore.restore(&backup_file).await {
+    match db_restore.restore(&backup_file, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await {
         Ok(_) => info!("MSSQL restore succeeded"),
         Err(e) => {
             error!("MSSQL restore failed: {:?}", e);

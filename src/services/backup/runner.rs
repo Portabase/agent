@@ -1,3 +1,4 @@
+use super::logger::JobLogger;
 use super::models::BackupResult;
 use super::service::BackupService;
 
@@ -6,10 +7,11 @@ use crate::services::config::DatabaseConfig;
 
 use anyhow::Result;
 use std::path::Path;
-use tracing::{error, info};
+use std::sync::Arc;
+use tracing::error;
 
 impl BackupService {
-    pub async fn run(cfg: DatabaseConfig, tmp_path: &Path) -> Result<BackupResult> {
+    pub async fn run(cfg: DatabaseConfig, tmp_path: &Path, logger: Arc<JobLogger>) -> Result<BackupResult> {
         let db = DatabaseFactory::create_for_backup(cfg.clone()).await;
 
         let generated_id = cfg.generated_id.clone();
@@ -19,13 +21,15 @@ impl BackupService {
             Ok(v) => v,
             Err(e) => {
                 error!("Ping failed: {}", e);
+                logger.log("error", format!("Ping failed: {}", e));
                 return Err(e.into());
             }
         };
 
-        info!("Reachable: {}", reachable);
+        logger.log("info", format!("Database reachable: {}", reachable));
 
         if !reachable {
+            logger.log("error", "Database unreachable, backup aborted");
             return Ok(BackupResult {
                 generated_id,
                 db_type,
@@ -35,7 +39,7 @@ impl BackupService {
             });
         }
 
-        match db.backup(tmp_path).await {
+        match db.backup(tmp_path, Arc::clone(&logger)).await {
             Ok(file) => Ok(BackupResult {
                 generated_id,
                 db_type,
@@ -44,16 +48,19 @@ impl BackupService {
                 code: None,
             }),
 
-            Err(e) if e.to_string() == "backup_already_in_progress" => Ok(BackupResult {
-                generated_id,
-                db_type,
-                status: "failed".into(),
-                backup_file: None,
-                code: Some("backup_already_in_progress".into()),
-            }),
+            Err(e) if e.to_string() == "backup_already_in_progress" => {
+                logger.log("warn", "Backup already in progress");
+                Ok(BackupResult {
+                    generated_id,
+                    db_type,
+                    status: "failed".into(),
+                    backup_file: None,
+                    code: Some("backup_already_in_progress".into()),
+                })
+            }
 
             Err(e) => {
-                error!("Backup failed for {}: {:?}", generated_id, e);
+                logger.log("error", format!("Backup failed: {}", e));
                 Ok(BackupResult {
                     generated_id,
                     db_type,

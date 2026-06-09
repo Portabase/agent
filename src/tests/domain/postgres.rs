@@ -66,11 +66,11 @@ async fn postgres_backup_restore_test() {
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
 
-    let file_path = db.backup(backup_path).await.unwrap();
+    let file_path = db.backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
 
     assert!(file_path.is_file());
 
-    let compression = compress_to_tar_gz_large(&file_path).await.unwrap();
+    let compression = compress_to_tar_gz_large(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
 
     assert!(compression.compressed_path.is_file());
 
@@ -96,7 +96,7 @@ async fn postgres_backup_restore_test() {
 
     info!("Running pg_restore: {:?}", backup_file);
 
-    match db.restore(&backup_file).await {
+    match db.restore(&backup_file, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await {
         Ok(_) => {
             info!("Restore succeeded for {}", config.generated_id);
             assert!(true)
