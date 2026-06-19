@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
@@ -13,6 +14,7 @@ pub async fn run(
     cfg: DatabaseConfig,
     format: PostgresDumpFormat,
     restore_file: PathBuf,
+    env: HashMap<String, String>,
     logger: Arc<JobLogger>,
 ) -> Result<()> {
     tokio::task::spawn_blocking(move || -> Result<()> {
@@ -39,11 +41,6 @@ pub async fn run(
         }
         logger.log("info", format!("Connections terminated for database {}", cfg.name));
 
-        let url = format!(
-            "postgresql://{}:{}@{}:{}/{}",
-            cfg.username, cfg.password, cfg.host, cfg.port, cfg.database
-        );
-
         match format {
             PostgresDumpFormat::Fc => {
                 logger.log("info", format!("Running FC restore for {}", cfg.name));
@@ -54,11 +51,13 @@ pub async fn run(
                     .arg("--clean")
                     .arg("--if-exists")
                     // .arg("--create")
-                    .arg("--dbname")
-                    .arg(&url)
+                    .arg("--host").arg(&cfg.host)
+                    .arg("--port").arg(cfg.port.to_string())
+                    .arg("--username").arg(&cfg.username)
+                    .arg("--dbname").arg(&cfg.database)
                     .arg("-v")
                     .arg(&restore_file)
-                    .env("PGPASSWORD", &cfg.password)
+                    .envs(env)
                     .output();
 
                 let duration_ms = start.elapsed().as_millis() as f64;
@@ -154,13 +153,15 @@ pub async fn run(
                     .arg("--clean")
                     .arg("--if-exists")
                     // .arg("--create")
-                    .arg("--dbname")
-                    .arg(&url)
+                    .arg("--host").arg(&cfg.host)
+                    .arg("--port").arg(cfg.port.to_string())
+                    .arg("--username").arg(&cfg.username)
+                    .arg("--dbname").arg(&cfg.database)
                     .arg("-v")
                     .arg("-j")
                     .arg("4")
                     .arg(dump_dir)
-                    .env("PGPASSWORD", &cfg.password)
+                    .envs(env)
                     .output();
 
                 let duration_ms = start.elapsed().as_millis() as f64;

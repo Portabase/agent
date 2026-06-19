@@ -2,17 +2,21 @@ use crate::domain::postgres::format::PostgresDumpFormat;
 use crate::services::config::DatabaseConfig;
 use anyhow::Result;
 use std::path::Path;
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::{Client, Config, NoTls};
 use tracing::{error, info};
 
 pub async fn connect(cfg: &DatabaseConfig) -> Result<Client> {
     info!("Connecting to postgres database {}:{}", cfg.host, cfg.port);
-    let dsn = format!(
-        "host={} port={} user={} password={} dbname={}",
-        cfg.host, cfg.port, cfg.username, cfg.password, cfg.database
-    );
 
-    let (client, connection) = tokio_postgres::connect(&dsn, NoTls).await?;
+    let mut config = Config::new();
+    config
+        .host(&cfg.host)
+        .port(cfg.port)
+        .user(&cfg.username)
+        .password(&cfg.password)
+        .dbname(&cfg.database);
+
+    let (client, connection) = config.connect(NoTls).await?;
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             error!("Postgres connection error: {}", e);
