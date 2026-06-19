@@ -151,7 +151,7 @@ mod select_pg_path_tests {
     // Tests below intentionally avoid asserting on whether a *real*
     // PostgreSQL install is or isn't found on the machine running the
     // tests (CI runners and developer machines may or may not have one,
-    // at any version) — that would make the tests environment-dependent
+    // at any version) â€” that would make the tests environment-dependent
     // and flaky. Instead, `PG_BIN_DIR` is always set to a deterministic
     // value so behavior doesn't depend on the local system.
 
@@ -178,7 +178,7 @@ mod select_pg_path_tests {
     #[test]
     fn pg_bin_dir_override_ignores_requested_version() {
         // The override is taken as-is, regardless of which version was
-        // requested — this documents/locks in that behavior.
+        // requested â€” this documents/locks in that behavior.
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let custom = if cfg!(target_os = "windows") {
             r"C:\custom\pg\bin"
