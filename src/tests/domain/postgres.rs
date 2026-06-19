@@ -107,3 +107,43 @@ async fn postgres_backup_restore_test() {
         }
     }
 }
+
+#[tokio::test]
+async fn postgres_password_with_slash_test() {
+    init_tracing_for_test();
+
+    let special_password = "ch/ange:me@1";
+
+    let container = Postgres::default()
+        .with_env_var("POSTGRES_DB", "testdb")
+        .with_env_var("POSTGRES_USER", "testuser")
+        .with_env_var("POSTGRES_PASSWORD", special_password)
+        .with_tag("17")
+        .start()
+        .await
+        .unwrap();
+
+    let host = container
+        .get_host()
+        .await
+        .unwrap_or(Host::parse("127.0.0.1").unwrap());
+
+    let port = container.get_host_port_ipv4(5432).await.unwrap_or(5432);
+
+    let config = DatabaseConfig {
+        name: "My test Postgres Database with slash password".to_string(),
+        database: "testdb".to_string(),
+        db_type: DbType::Postgresql,
+        username: "testuser".to_string(),
+        password: special_password.to_string(),
+        port,
+        host: host.to_string(),
+        generated_id: "5a1f0e3c-9b8a-4a8e-9b1b-0a1c2d3e4f5a".to_string(),
+        path: "".to_string(),
+    };
+
+    let db = DatabaseFactory::create_for_backup(config.clone()).await;
+    let reachable = db.ping().await.unwrap_or(false);
+
+    assert_eq!(reachable, true);
+}

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
@@ -13,6 +14,7 @@ pub async fn run(
     cfg: DatabaseConfig,
     format: PostgresDumpFormat,
     backup_dir: PathBuf,
+    env: HashMap<String, String>,
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
@@ -37,18 +39,18 @@ pub async fn run(
                 logger.log("info", format!("Running FC backup for {}", cfg.name));
 
                 let file_path = backup_dir.join(format!("{}.dump", cfg.generated_id));
-                let url = format!(
-                    "postgresql://{}:{}@{}:{}/{}",
-                    cfg.username, cfg.password, cfg.host, cfg.port, cfg.database
-                );
 
                 let start = Instant::now();
                 let output = Command::new(&pg_dump)
-                    .arg("--dbname").arg(&url)
+                    .arg("--host").arg(&cfg.host)
+                    .arg("--port").arg(cfg.port.to_string())
+                    .arg("--username").arg(&cfg.username)
+                    .arg("--dbname").arg(&cfg.database)
                     .arg("-Fc")
                     .arg("-f").arg(&file_path)
                     .arg("-v")
                     .arg("--compress=3")
+                    .envs(env)
                     .output();
                 let duration_ms = start.elapsed().as_millis() as f64;
 
@@ -87,19 +89,19 @@ pub async fn run(
                     return Err(e.into());
                 }
 
-                let url = format!(
-                    "postgresql://{}:{}@{}:{}/{}",
-                    cfg.username, cfg.password, cfg.host, cfg.port, cfg.database
-                );
-                let cmd_label = format!("pg_dump -Fd {}", url);
+                let cmd_label = format!("pg_dump -Fd {}@{}:{}/{}", cfg.username, cfg.host, cfg.port, cfg.database);
 
                 let start = Instant::now();
                 let output = Command::new(&pg_dump)
-                    .arg("--dbname").arg(&url)
+                    .arg("--host").arg(&cfg.host)
+                    .arg("--port").arg(cfg.port.to_string())
+                    .arg("--username").arg(&cfg.username)
+                    .arg("--dbname").arg(&cfg.database)
                     .arg("-Fd")
                     .arg("-j").arg("4")
                     .arg("-f").arg(&dump_dir)
                     .arg("-v")
+                    .envs(env)
                     .output();
                 let duration_ms = start.elapsed().as_millis() as f64;
 
