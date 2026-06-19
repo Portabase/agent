@@ -50,7 +50,7 @@ pub async fn run(
             .arg("--skip-add-drop-table")
             .arg("--compress")
             .arg("--verbose")
-            .arg("--max-allowed-packet=512M")
+            .arg(format!("--max-allowed-packet={}", cfg.max_allowed_packet))
             .arg("--net-buffer-length=16K")
             .arg("--default-character-set=utf8mb4")
             .arg(&cfg.database)
