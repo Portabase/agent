@@ -11,6 +11,7 @@ pub struct Settings {
     pub edge_key: String,
     pub databases_config_file: String,
     pub data_path: String,
+    pub pg_bin_dir: String,
     pub pooling: usize,
     pub timezone: String,
     pub log: String,
@@ -59,6 +60,7 @@ impl Settings {
             databases_config_file: env::var("DATABASES_CONFIG_FILE")
                 .unwrap_or_else(|_| "config.json".into()),
             data_path: env::var("DATA_PATH").unwrap_or_else(|_| "/config".into()),
+            pg_bin_dir: env::var("PG_BIN_DIR").unwrap_or_default(),
             pooling: pooling_seconds,
             timezone: tz,
             log: env::var("LOG").unwrap_or_else(|_| "info".into()),

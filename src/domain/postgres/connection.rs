@@ -1,5 +1,6 @@
 use crate::domain::postgres::format::PostgresDumpFormat;
 use crate::services::config::DatabaseConfig;
+use crate::settings::CONFIG;
 use anyhow::Result;
 use std::path::Path;
 use tokio_postgres::{Client, Config, NoTls};
@@ -47,11 +48,22 @@ pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
 /// 4. The historical Debian/Ubuntu path as a last-resort fallback, so the
 ///    function keeps returning a `PathBuf` (never panics) even when nothing
 ///    was found, preserving the previous behavior for callers.
+///
+/// The override is sourced from `CONFIG.pg_bin_dir` (the `PG_BIN_DIR`
+/// environment variable). An empty value means "unset" and falls through to
+/// detection.
 pub fn select_pg_path(version: &str) -> std::path::PathBuf {
+    select_pg_path_with(version, &CONFIG.pg_bin_dir)
+}
+
+/// Inner resolver behind [`select_pg_path`], parameterized over the
+/// `PG_BIN_DIR` override. Kept pure (no env / no `CONFIG` access) so it is
+/// unit-testable without mutating process-global state.
+pub(crate) fn select_pg_path_with(version: &str, pg_bin_dir: &str) -> std::path::PathBuf {
     let major = version.split('.').next().unwrap_or("17");
 
-    if let Ok(dir) = std::env::var("PG_BIN_DIR") {
-        return dir.into();
+    if !pg_bin_dir.is_empty() {
+        return pg_bin_dir.into();
     }
 
     let candidates: Vec<std::path::PathBuf> = if cfg!(target_os = "windows") {
@@ -89,7 +101,7 @@ pub fn select_pg_path(version: &str) -> std::path::PathBuf {
     format!("/usr/lib/postgresql/{}/bin", major).into()
 }
 
-fn pg_dump_binary_name() -> &'static str {
+pub(crate) fn pg_dump_binary_name() -> &'static str {
     if cfg!(target_os = "windows") {
         "pg_dump.exe"
     } else {
@@ -97,7 +109,7 @@ fn pg_dump_binary_name() -> &'static str {
     }
 }
 
-fn pg_dump_exists_in(dir: &std::path::Path) -> bool {
+pub(crate) fn pg_dump_exists_in(dir: &std::path::Path) -> bool {
     dir.join(pg_dump_binary_name()).is_file()
 }
 
@@ -133,84 +145,6 @@ pub fn detect_format_from_file(restore_file: &Path) -> PostgresDumpFormat {
         Some("gz") => PostgresDumpFormat::Fd,
         // Some("tar.gz") => PostgresDumpFormat::Fd,
         _ => PostgresDumpFormat::Fc,
-    }
-}
-
-#[cfg(test)]
-mod select_pg_path_tests {
-    use super::*;
-    use std::sync::Mutex;
-
-    // `std::env::set_var`/`remove_var` are process-global and, as of the
-    // 2024 edition, marked `unsafe` because mutating them concurrently
-    // from multiple threads is undefined behavior. Rust runs tests in
-    // parallel by default, so without serializing access here, these
-    // tests could race against each other over `PG_BIN_DIR`.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    // Tests below intentionally avoid asserting on whether a *real*
-    // PostgreSQL install is or isn't found on the machine running the
-    // tests (CI runners and developer machines may or may not have one,
-    // at any version) — that would make the tests environment-dependent
-    // and flaky. Instead, `PG_BIN_DIR` is always set to a deterministic
-    // value so behavior doesn't depend on the local system.
-
-    #[test]
-    fn respects_pg_bin_dir_override() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let custom = if cfg!(target_os = "windows") {
-            r"C:\custom\pg\bin"
-        } else {
-            "/custom/pg/bin"
-        };
-        // SAFETY: serialized via ENV_LOCK.
-        unsafe {
-            std::env::set_var("PG_BIN_DIR", custom);
-        }
-        let path = select_pg_path("16.4");
-        // SAFETY: serialized via ENV_LOCK.
-        unsafe {
-            std::env::remove_var("PG_BIN_DIR");
-        }
-        assert_eq!(path, std::path::PathBuf::from(custom));
-    }
-
-    #[test]
-    fn pg_bin_dir_override_ignores_requested_version() {
-        // The override is taken as-is, regardless of which version was
-        // requested — this documents/locks in that behavior.
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let custom = if cfg!(target_os = "windows") {
-            r"C:\custom\pg\bin"
-        } else {
-            "/custom/pg/bin"
-        };
-        // SAFETY: serialized via ENV_LOCK.
-        unsafe {
-            std::env::set_var("PG_BIN_DIR", custom);
-        }
-        let path = select_pg_path("not-a-version");
-        // SAFETY: serialized via ENV_LOCK.
-        unsafe {
-            std::env::remove_var("PG_BIN_DIR");
-        }
-        assert_eq!(path, std::path::PathBuf::from(custom));
-    }
-
-    #[test]
-    fn pg_dump_binary_name_is_platform_specific() {
-        let name = pg_dump_binary_name();
-        if cfg!(target_os = "windows") {
-            assert_eq!(name, "pg_dump.exe");
-        } else {
-            assert_eq!(name, "pg_dump");
-        }
-    }
-
-    #[test]
-    fn pg_dump_exists_in_is_false_for_nonexistent_dir() {
-        let dir = std::path::Path::new("this/path/almost-certainly/does-not-exist-12345");
-        assert!(!pg_dump_exists_in(dir));
     }
 }
 
