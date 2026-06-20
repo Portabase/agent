@@ -115,6 +115,28 @@ impl BackupService {
                         storage_id,
                         upload_result.error.as_deref().unwrap_or("unknown error")
                     ));
+
+                    // `backup_upload_init` opened a per-storage record; close it as "failed"
+                    // so the server is notified of the failure (no path/size on this path).
+                    if let Err(err) = ctx_clone
+                        .api
+                        .backup_upload_status(
+                            ctx_clone.edge_key.agent_id.clone(),
+                            generated_id.clone(),
+                            backup_storage_id.clone(),
+                            status,
+                            String::new(),
+                            0u64,
+                            backup_id,
+                        )
+                        .await
+                    {
+                        logger_clone.log("error", format!(
+                            "Failed-status update failed for {}: {}",
+                            storage_id, err
+                        ));
+                    }
+
                     return upload_result;
                 }
 
