@@ -1,0 +1,96 @@
+name: Build Windows release
+
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+    branches:
+      - main
+      - master
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain (MSVC)
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable-x86_64-pc-windows-msvc
+          profile: minimal
+          override: true
+
+      - name: Install vcpkg and OpenSSL (x64)
+        shell: pwsh
+        run: |
+          # Install vcpkg and the prebuilt OpenSSL package
+          git clone https://github.com/microsoft/vcpkg C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg install openssl:x64-windows
+          # Export variables for subsequent steps
+          'VCPKG_ROOT=C:\vcpkg' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          'OPENSSL_DIR=C:\vcpkg\installed\x64-windows' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build (cargo release)
+        shell: pwsh
+        env:
+          # Cargo / openssl-sys will pick up OPENSSL_DIR from the environment
+          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
+        run: |
+          # Ensure the environment variable is present for this step
+          if (-Not $env:OPENSSL_DIR) { Write-Host "OPENSSL_DIR not set, printing env for debugging"; Get-ChildItem Env: | ForEach-Object { Write-Host $_ } }
+          # Build the declared bin target explicitly (Cargo.toml [[bin]] name = "app")
+          cargo build --release --bin app
+
+      - name: Prepare artifact zip
+        id: prepare_artifact
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          if (-not $tag) { $tag = $env:GITHUB_SHA }
+
+          # Package the declared bin target deterministically (Cargo.toml [[bin]] name = "app")
+          $exe = "target\release\app.exe"
+          if (-not (Test-Path $exe)) { Write-Error "Built binary $exe not found in target/release"; exit 1 }
+
+          $outDir = "artifact"
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+          # Ship under the package name, not the internal bin name "app"
+          Copy-Item -Path $exe -Destination "$outDir\portabase-agent.exe"
+
+          $zipName = "windows-release-$tag.zip"
+          if (Test-Path $zipName) { Remove-Item $zipName }
+          Compress-Archive -Path "$outDir\*" -DestinationPath $zipName -Force
+          Write-Host "ZIP=$zipName"
+          Write-Output "zip=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: windows-release-*.zip
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: windows-release-${{ github.ref_name }}.zip
+          asset_name: windows-release-${{ github.ref_name }}.zip
+          asset_content_type: application/zip

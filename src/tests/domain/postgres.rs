@@ -147,3 +147,64 @@ async fn postgres_password_with_slash_test() {
 
     assert_eq!(reachable, true);
 }
+
+mod select_pg_path_tests {
+    use crate::domain::postgres::connection::{
+        pg_dump_binary_name, pg_dump_exists_in, select_pg_path_with,
+    };
+
+    // `select_pg_path_with` takes the `PG_BIN_DIR` override as a plain
+    // argument, so these tests never touch process-global env state or the
+    // cached `CONFIG`. They stay deterministic regardless of whether — or at
+    // which version — a real PostgreSQL install exists on the host.
+
+    #[test]
+    fn respects_pg_bin_dir_override() {
+        let custom = if cfg!(target_os = "windows") {
+            r"C:\custom\pg\bin"
+        } else {
+            "/custom/pg/bin"
+        };
+        let path = select_pg_path_with("16.4", custom);
+        assert_eq!(path, std::path::PathBuf::from(custom));
+    }
+
+    #[test]
+    fn pg_bin_dir_override_ignores_requested_version() {
+        // The override is taken as-is, regardless of which version was
+        // requested — this documents/locks in that behavior.
+        let custom = if cfg!(target_os = "windows") {
+            r"C:\custom\pg\bin"
+        } else {
+            "/custom/pg/bin"
+        };
+        let path = select_pg_path_with("not-a-version", custom);
+        assert_eq!(path, std::path::PathBuf::from(custom));
+    }
+
+    #[test]
+    fn empty_pg_bin_dir_falls_through_to_detection() {
+        // An empty override means "unset" (matches `CONFIG.pg_bin_dir` when
+        // `PG_BIN_DIR` is absent). It must not be returned as a literal empty
+        // path — resolution falls through to platform defaults / PATH lookup
+        // and yields a non-empty path.
+        let path = select_pg_path_with("17", "");
+        assert_ne!(path, std::path::PathBuf::from(""));
+    }
+
+    #[test]
+    fn pg_dump_binary_name_is_platform_specific() {
+        let name = pg_dump_binary_name();
+        if cfg!(target_os = "windows") {
+            assert_eq!(name, "pg_dump.exe");
+        } else {
+            assert_eq!(name, "pg_dump");
+        }
+    }
+
+    #[test]
+    fn pg_dump_exists_in_is_false_for_nonexistent_dir() {
+        let dir = std::path::Path::new("this/path/almost-certainly/does-not-exist-12345");
+        assert!(!pg_dump_exists_in(dir));
+    }
+}
