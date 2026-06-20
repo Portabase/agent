@@ -44,7 +44,8 @@ jobs:
         run: |
           # Ensure the environment variable is present for this step
           if (-Not $env:OPENSSL_DIR) { Write-Host "OPENSSL_DIR not set, printing env for debugging"; Get-ChildItem Env: | ForEach-Object { Write-Host $_ } }
-          cargo build --release
+          # Build the declared bin target explicitly (Cargo.toml [[bin]] name = "app")
+          cargo build --release --bin app
 
       - name: Prepare artifact zip
         id: prepare_artifact
@@ -55,18 +56,14 @@ jobs:
           $tag = $env:RELEASE_TAG
           if (-not $tag) { $tag = $env:GITHUB_SHA }
 
-          # Find the built executable. Prefer an explicit portabase-agent.exe, fall back to first exe in target/release
-          $exe = "target\release\portabase-agent.exe"
-          if (-not (Test-Path $exe)) {
-            $first = Get-ChildItem -Path target\release -Filter *.exe | Select-Object -First 1
-            if ($first) { $exe = $first.FullName }
-          }
-
-          if (-not (Test-Path $exe)) { Write-Error "Built binary not found in target/release"; exit 1 }
+          # Package the declared bin target deterministically (Cargo.toml [[bin]] name = "app")
+          $exe = "target\release\app.exe"
+          if (-not (Test-Path $exe)) { Write-Error "Built binary $exe not found in target/release"; exit 1 }
 
           $outDir = "artifact"
           New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-          Copy-Item -Path $exe -Destination $outDir\
+          # Ship under the package name, not the internal bin name "app"
+          Copy-Item -Path $exe -Destination "$outDir\portabase-agent.exe"
 
           $zipName = "windows-release-$tag.zip"
           if (Test-Path $zipName) { Remove-Item $zipName }

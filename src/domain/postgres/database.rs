@@ -23,7 +23,6 @@ impl PostgresDatabase {
     fn build_env(&self) -> HashMap<String, String> {
         let mut envs = std::env::vars().collect::<HashMap<_, _>>();
         envs.insert("PGPASSWORD".to_string(), self.cfg.password.to_string());
-        info!("envs: {:?}", envs);
         envs
     }
 }
