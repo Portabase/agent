@@ -47,6 +47,8 @@ pub async fn run(
             .arg("--triggers")
             .arg("--verbose")
             .arg("--single-transaction")
+            .arg("--set-gtid-purged=OFF")
+            .arg("--no-tablespaces")
             .arg("--quick")
             .arg("--skip-lock-tables")
             .arg("--skip-add-drop-table")

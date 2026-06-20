@@ -216,6 +216,13 @@ impl ConfigService {
                 _ => optional(&db.path),
             };
 
+            let max_packet_size = match db.db_type {
+                DbType::Mysql | DbType::Mariadb => {
+                    db.max_packet_size.unwrap_or_else(|| "512M".to_string())
+                }
+                _ => String::new(),
+            };
+
             databases.push(DatabaseConfig {
                 name: db.name,
                 database: database_name,
@@ -226,7 +233,7 @@ impl ConfigService {
                 port,
                 generated_id: db.generated_id,
                 path: path_val,
-                max_packet_size: db.max_packet_size.unwrap_or_else(|| "512M".to_string()),
+                max_packet_size,
             });
         }
 

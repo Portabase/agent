@@ -3,7 +3,6 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::info;
 use super::{backup, format::PostgresDumpFormat, ping, restore};
 use crate::domain::factory::Database;
 use crate::services::backup::logger::JobLogger;
