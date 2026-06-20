@@ -33,6 +33,11 @@ pub async fn run(
         let _mariadb_dump = select_mariadb_path(&version).join("mariadb-dump");
 
         logger.log("debug", format!("Using mariadb-dump at {}", _mariadb_dump.display()));
+
+        if let Ok(out) = Command::new("mariadb-dump").arg("--version").output() {
+            logger.log("debug", format!("mariadb-dump client: {}", String::from_utf8_lossy(&out.stdout).trim()));
+        }
+
         logger.log("info", format!("Running mariadb-dump for {}", cfg.name));
 
         let start = Instant::now();
@@ -50,7 +55,7 @@ pub async fn run(
             .arg("--skip-add-drop-table")
             .arg("--compress")
             .arg("--verbose")
-            .arg("--max-allowed-packet=512M")
+            .arg(format!("--max-allowed-packet={}", cfg.max_packet_size))
             .arg("--net-buffer-length=16K")
             .arg("--default-character-set=utf8mb4")
             .arg(&cfg.database)

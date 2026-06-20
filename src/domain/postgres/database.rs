@@ -3,7 +3,6 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::info;
 use super::{backup, format::PostgresDumpFormat, ping, restore};
 use crate::domain::factory::Database;
 use crate::services::backup::logger::JobLogger;
@@ -23,7 +22,6 @@ impl PostgresDatabase {
     fn build_env(&self) -> HashMap<String, String> {
         let mut envs = std::env::vars().collect::<HashMap<_, _>>();
         envs.insert("PGPASSWORD".to_string(), self.cfg.password.to_string());
-        info!("envs: {:?}", envs);
         envs
     }
 }

@@ -1,5 +1,5 @@
 pub mod backup;
-mod connection;
+pub(crate) mod connection;
 pub mod database;
 mod format;
 mod ping;
