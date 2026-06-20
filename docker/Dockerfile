@@ -1,9 +1,5 @@
 # =========================
 # MySQL client tools
-# Extracts the real mysqldump binary (with --network-timeout) and its shared
-# library. MariaDB's mariadb-client symlinks mysqldump -> mariadb-dump, which
-# lacks this flag. Placing the real binary in /usr/local/bin/ gives it PATH
-# precedence over /usr/bin/mysqldump.
 # =========================
 FROM mysql:8.4 AS mysql-client-tools
 RUN mkdir -p /mysql-exports/bin /mysql-exports/lib \
