@@ -1,4 +1,16 @@
 # =========================
+# MySQL client tools
+# Extracts the real mysqldump binary (with --network-timeout) and its shared
+# library. MariaDB's mariadb-client symlinks mysqldump -> mariadb-dump, which
+# lacks this flag. Placing the real binary in /usr/local/bin/ gives it PATH
+# precedence over /usr/bin/mysqldump.
+# =========================
+FROM mysql:8.4 AS mysql-client-tools
+RUN mkdir -p /mysql-exports/bin /mysql-exports/lib \
+    && cp /usr/bin/mysqldump /mysql-exports/bin/ \
+    && find /usr/lib -name "libmysqlclient.so.21*" -exec cp {} /mysql-exports/lib/ \;
+
+# =========================
 # Base image (shared)
 # =========================
 FROM rust:1.94.0 AS base
@@ -68,6 +80,13 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
 COPY assets/tools/${TARGETARCH}/mongodb/ /usr/local/mongodb/
 RUN chmod +x /usr/local/mongodb/bin/*
 
+# =========================
+# MySQL real mysqldump binary
+# =========================
+COPY --from=mysql-client-tools /mysql-exports/bin/mysqldump /usr/local/bin/mysqldump
+COPY --from=mysql-client-tools /mysql-exports/lib/ /usr/local/lib/
+RUN chmod +x /usr/local/bin/mysqldump && ldconfig
+
 WORKDIR /app
 
 # =========================
@@ -135,6 +154,9 @@ RUN chmod +x /entrypoint.sh
 COPY --from=base /usr/lib/postgresql/ /usr/lib/postgresql/
 COPY --from=base /usr/local/mongodb/bin/ /usr/local/mongodb/bin/
 COPY --from=base /root/.dotnet/tools/ /root/.dotnet/tools/
+COPY --from=mysql-client-tools /mysql-exports/bin/mysqldump /usr/local/bin/mysqldump
+COPY --from=mysql-client-tools /mysql-exports/lib/ /usr/local/lib/
+RUN chmod +x /usr/local/bin/mysqldump && ldconfig
 
 ENV PATH="$PATH:/usr/local/dotnet:/root/.dotnet/tools"
 ENV APP_ENV=production
