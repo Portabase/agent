@@ -31,6 +31,10 @@ pub async fn run(
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
 
+        if let Ok(out) = Command::new("mysqldump").arg("--version").output() {
+            logger.log("debug", format!("mysqldump client: {}", String::from_utf8_lossy(&out.stdout).trim()));
+        }
+
         logger.log("info", format!("Running mysqldump for {}", cfg.name));
 
         let start = Instant::now();
@@ -48,9 +52,8 @@ pub async fn run(
             .arg("--skip-add-drop-table")
             .arg("--no-create-db")
             .arg("--default-character-set=utf8mb4")
-            .arg(format!("--net-read-timeout={}", cfg.net_read_timeout))
-            .arg(format!("--net-write-timeout={}", cfg.net_write_timeout))
-            .arg(format!("--max-allowed-packet={}", cfg.max_allowed_packet))
+            .arg("--network-timeout")
+            .arg(format!("--max-allowed-packet={}", cfg.max_packet_size))
             .arg(&cfg.database)
             .arg("-r").arg(&file_path)
             .envs(env)

@@ -54,9 +54,7 @@ pub struct DatabaseConfig {
     pub host: String,
     pub generated_id: String,
     pub path: String,
-    pub net_read_timeout: u32,
-    pub net_write_timeout: u32,
-    pub max_allowed_packet: String,
+    pub max_packet_size: String,
 }
 
 #[allow(dead_code)]
@@ -78,9 +76,7 @@ pub struct InputDatabaseConfig {
     pub host: Option<String>,
     pub generated_id: String,
     pub path: Option<String>,
-    pub net_read_timeout: Option<u32>,
-    pub net_write_timeout: Option<u32>,
-    pub max_allowed_packet: Option<String>,
+    pub max_packet_size: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -230,9 +226,7 @@ impl ConfigService {
                 port,
                 generated_id: db.generated_id,
                 path: path_val,
-                net_read_timeout: db.net_read_timeout.unwrap_or(3600),
-                net_write_timeout: db.net_write_timeout.unwrap_or(3600),
-                max_allowed_packet: db.max_allowed_packet.unwrap_or_else(|| "512M".to_string()),
+                max_packet_size: db.max_packet_size.unwrap_or_else(|| "512M".to_string()),
             });
         }
 
