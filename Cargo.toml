@@ -39,6 +39,8 @@ tokio-util = { version = "0.7.18", features = ["compat"] }
 tiberius = { version = "0.12", default-features = false, features = ["rustls", "chrono"] }
 aws-config = "1.8.13"
 aws-sdk-s3 = { version = "1.122.0", features = ["behavior-version-latest"] }
+azure_core = "1.0.0"
+azure_storage_blob = "1.0.0"
 async-compression = { version = "0.4.37", features = ["tokio", "gzip"] }
 tokio-tar = "0.3.1"
 oauth2 = "5.0.0"
