@@ -97,11 +97,16 @@ async fn start_azurite() -> (testcontainers::ContainerAsync<GenericImage>, Resol
         // versions unless we tell it to skip that check.
         .with_cmd(["azurite-blob", "--blobHost", "0.0.0.0", "--skipApiVersionCheck"])
         .start().await.unwrap();
+    // Use the testcontainers-resolved host (not a hardcoded 127.0.0.1): under
+    // docker-out-of-docker / remote daemons the published port is not on the test
+    // process's loopback. All other container tests (mssql, valkey, postgres, ...)
+    // already do this; azure_blob was the only one hardcoding the host.
+    let host = container.get_host().await.unwrap().to_string();
     let port = container.get_host_port_ipv4(10000).await.unwrap();
     let resolved = ResolvedAzure {
         account_name: AZURITE_ACCOUNT.to_string(),
         account_key: AZURITE_KEY.to_string(),
-        blob_endpoint: format!("http://127.0.0.1:{port}/{AZURITE_ACCOUNT}"),
+        blob_endpoint: format!("http://{host}:{port}/{AZURITE_ACCOUNT}"),
     };
     (container, resolved)
 }
