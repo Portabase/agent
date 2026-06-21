@@ -4,4 +4,4 @@ pub mod config;
 pub mod cron;
 pub mod restore;
 pub mod status;
-mod storage;
+pub mod storage;

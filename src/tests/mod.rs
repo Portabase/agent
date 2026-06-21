@@ -1,5 +1,6 @@
 mod domain;
 mod services;
+mod storage;
 mod utils;
 
 use once_cell::sync::Lazy;
