@@ -59,8 +59,6 @@ impl RestoreService {
 
         let path = tmp_path.join(&filename);
 
-        // Progress total comes from the restore metadata (RestoreInfo.size, bytes as
-        // a string); the storage URL often returns no Content-Length.
         let total = expected_size
             .as_deref()
             .and_then(|s| s.trim().parse::<u64>().ok())
@@ -92,10 +90,8 @@ impl RestoreService {
                     logger.log(
                         "info",
                         format!(
-                            "Download progress: {}% ({} / {})",
-                            next_pct,
-                            human_size(downloaded),
-                            human_size(total)
+                            "Download progress: {}% ({} / {} bytes)",
+                            next_pct, downloaded, total
                         ),
                     );
                     next_pct += 10;
