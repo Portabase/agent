@@ -85,16 +85,20 @@ impl RestoreService {
             downloaded += chunk.len() as u64;
 
             if let Some(total) = total {
-                let pct = downloaded.saturating_mul(100) / total;
-                while pct >= next_pct && next_pct <= 100 {
+                // Log only the highest 10% milestone crossed by this chunk, once.
+                // Small files arrive in a single chunk, so this emits one line
+                // (e.g. 100%) instead of repeating every milestone identically.
+                let pct = (downloaded.saturating_mul(100) / total).min(100);
+                let milestone = pct / 10 * 10;
+                if milestone >= next_pct {
                     logger.log(
                         "info",
                         format!(
                             "Download progress: {}% ({} / {} bytes)",
-                            next_pct, downloaded, total
+                            milestone, downloaded, total
                         ),
                     );
-                    next_pct += 10;
+                    next_pct = milestone + 10;
                 }
             }
         }
@@ -111,9 +115,8 @@ impl RestoreService {
         logger.log(
             "info",
             format!(
-                "Backup downloaded to {} ({} / {} bytes in {:.1}s)",
+                "Backup downloaded to {} ( {} bytes in {:.1}s)",
                 path.display(),
-                human_size(downloaded),
                 downloaded,
                 start.elapsed().as_secs_f64()
             ),
