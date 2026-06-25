@@ -9,73 +9,7 @@ use std::time::Instant;
 use tokio::io::AsyncWriteExt;
 use crate::services::backup::logger::JobLogger;
 
-/// Fallback progress cadence when the server sends no Content-Length.
-pub(crate) const BYTE_STEP: u64 = 512 * 1024 * 1024; // 512 MB
-
-/// Tracks streamed download progress and emits milestone log lines.
-/// Pure arithmetic, no I/O — unit-tested in
-/// `src/tests/services/restore_downloader_tests.rs`.
-pub(crate) struct ProgressTracker {
-    total: Option<u64>,
-    downloaded: u64,
-    next_pct: u64,
-    next_bytes: u64,
-}
-
-impl ProgressTracker {
-    pub(crate) fn new(total: Option<u64>) -> Self {
-        Self {
-            total,
-            downloaded: 0,
-            next_pct: 10,
-            next_bytes: BYTE_STEP,
-        }
-    }
-
-    /// Record `n` more downloaded bytes; return any milestone messages crossed
-    /// (normally 0 or 1; more only if one chunk spans several milestones).
-    pub(crate) fn advance(&mut self, n: usize) -> Vec<String> {
-        self.downloaded += n as u64;
-        let mut msgs = Vec::new();
-
-        match self.total {
-            Some(total) if total > 0 => {
-                let pct = self.downloaded.saturating_mul(100) / total;
-                while pct >= self.next_pct && self.next_pct <= 100 {
-                    msgs.push(format!(
-                        "Download progress: {}% ({}/{} MB)",
-                        self.next_pct,
-                        mb(self.downloaded),
-                        mb(total),
-                    ));
-                    self.next_pct += 10;
-                }
-            }
-            _ => {
-                while self.downloaded >= self.next_bytes {
-                    msgs.push(format!("Downloaded {} MB", mb(self.downloaded)));
-                    self.next_bytes += BYTE_STEP;
-                }
-            }
-        }
-
-        msgs
-    }
-
-    /// Human-readable total for the start log line.
-    pub(crate) fn fmt_total(total: Option<u64>) -> String {
-        match total {
-            Some(t) if t > 0 => format!("{} MB", mb(t)),
-            _ => "unknown size".to_string(),
-        }
-    }
-}
-
-fn mb(bytes: u64) -> u64 {
-    bytes / 1024 / 1024
-}
-
-/// Human-readable byte count for end-of-download log (avoids "0 MB" for small files).
+/// Human-readable byte count for the end-of-download log (avoids "0 MB" for small files).
 fn human_size(bytes: u64) -> String {
     if bytes >= 1024 * 1024 {
         format!("{} MB", bytes / 1024 / 1024)
@@ -120,54 +54,21 @@ impl RestoreService {
 
         let path = tmp_path.join(&filename);
 
-        let total = response.content_length();
-        let mut tracker = ProgressTracker::new(total);
-
-        // Diagnostic: explains a missing Content-Length ("unknown size") — chunked
-        // transfer or reqwest transparently decoding a Content-Encoding both drop it.
-        let content_encoding = response
-            .headers()
-            .get(reqwest::header::CONTENT_ENCODING)
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
-        let transfer_encoding = response
-            .headers()
-            .get(reqwest::header::TRANSFER_ENCODING)
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
-
-        logger.log(
-            "debug",
-            format!(
-                "Download response: status={}, content-length={:?}, content-encoding={:?}, transfer-encoding={:?}",
-                status, total, content_encoding, transfer_encoding
-            ),
-        );
-
-        logger.log(
-            "info",
-            format!(
-                "Downloading backup '{}' ({})",
-                filename,
-                ProgressTracker::fmt_total(total)
-            ),
-        );
-
+        // Stream the body to disk in constant memory (was: response.bytes() buffered
+        // the whole file in RAM, hanging on >5GB downloads).
         let start = Instant::now();
         let mut file = tokio::fs::File::create(&path).await?;
         let mut stream = response.bytes_stream();
+        let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
             file.write_all(&chunk).await?;
-            for msg in tracker.advance(chunk.len()) {
-                logger.log("info", msg);
-            }
+            downloaded += chunk.len() as u64;
         }
 
         file.flush().await?;
 
-        let downloaded = tracker.downloaded;
         if downloaded == 0 {
             logger.log(
                 "warn",
