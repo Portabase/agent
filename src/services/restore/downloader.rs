@@ -9,7 +9,6 @@ use std::time::Instant;
 use tokio::io::AsyncWriteExt;
 use crate::services::backup::logger::JobLogger;
 
-/// Human-readable byte count for the end-of-download log (avoids "0 MB" for small files).
 fn human_size(bytes: u64) -> String {
     if bytes >= 1024 * 1024 {
         format!("{} MB", bytes / 1024 / 1024)
@@ -21,7 +20,13 @@ fn human_size(bytes: u64) -> String {
 }
 
 impl RestoreService {
-    pub async fn download_backup(&self, file_url: &str, tmp_path: &Path, logger: Arc<JobLogger>) -> Result<PathBuf> {
+    pub async fn download_backup(
+        &self,
+        file_url: &str,
+        tmp_path: &Path,
+        logger: Arc<JobLogger>,
+        expected_size: Option<String>,
+    ) -> Result<PathBuf> {
         logger.log("info", "Start downloading backup archive".to_string());
 
         let client = Client::new();
@@ -54,17 +59,48 @@ impl RestoreService {
 
         let path = tmp_path.join(&filename);
 
-        // Stream the body to disk in constant memory (was: response.bytes() buffered
-        // the whole file in RAM, hanging on >5GB downloads).
+        // Progress total comes from the restore metadata (RestoreInfo.size, bytes as
+        // a string); the storage URL often returns no Content-Length.
+        let total = expected_size
+            .as_deref()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .filter(|&n| n > 0);
+
+        logger.log(
+            "info",
+            format!(
+                "Downloading backup '{}' ({})",
+                filename,
+                total.map(human_size).unwrap_or_else(|| "unknown size".to_string())
+            ),
+        );
+
         let start = Instant::now();
         let mut file = tokio::fs::File::create(&path).await?;
         let mut stream = response.bytes_stream();
         let mut downloaded: u64 = 0;
+        let mut next_pct: u64 = 10;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
             file.write_all(&chunk).await?;
             downloaded += chunk.len() as u64;
+
+            if let Some(total) = total {
+                let pct = downloaded.saturating_mul(100) / total;
+                while pct >= next_pct && next_pct <= 100 {
+                    logger.log(
+                        "info",
+                        format!(
+                            "Download progress: {}% ({} / {})",
+                            next_pct,
+                            human_size(downloaded),
+                            human_size(total)
+                        ),
+                    );
+                    next_pct += 10;
+                }
+            }
         }
 
         file.flush().await?;

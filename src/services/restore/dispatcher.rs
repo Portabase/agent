@@ -20,6 +20,8 @@ impl RestoreService {
             return;
         };
 
+        let expected_size = db.data.restore.size.clone();
+
         let service = Self {
             ctx: self.ctx.clone(),
         };
@@ -27,7 +29,10 @@ impl RestoreService {
         let db_cfg = cfg.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = service.execute_restore(db_cfg, file_to_restore).await {
+            if let Err(e) = service
+                .execute_restore(db_cfg, file_to_restore, expected_size)
+                .await
+            {
                 error!("Restore failed: {}", e);
             }
         });
