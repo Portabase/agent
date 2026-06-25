@@ -85,9 +85,6 @@ impl RestoreService {
             downloaded += chunk.len() as u64;
 
             if let Some(total) = total {
-                // Log only the highest 10% milestone crossed by this chunk, once.
-                // Small files arrive in a single chunk, so this emits one line
-                // (e.g. 100%) instead of repeating every milestone identically.
                 let pct = (downloaded.saturating_mul(100) / total).min(100);
                 let milestone = pct / 10 * 10;
                 if milestone >= next_pct {
