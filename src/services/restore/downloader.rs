@@ -75,6 +75,17 @@ fn mb(bytes: u64) -> u64 {
     bytes / 1024 / 1024
 }
 
+/// Human-readable byte count for end-of-download log (avoids "0 MB" for small files).
+fn human_size(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 {
+        format!("{} MB", bytes / 1024 / 1024)
+    } else if bytes >= 1024 {
+        format!("{} KB", bytes / 1024)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
 impl RestoreService {
     pub async fn download_backup(&self, file_url: &str, tmp_path: &Path, logger: Arc<JobLogger>) -> Result<PathBuf> {
         logger.log("info", "Start downloading backup archive".to_string());
@@ -82,8 +93,9 @@ impl RestoreService {
         let client = Client::new();
 
         let response = client.get(file_url).send().await?;
+        let status = response.status();
 
-        if !response.status().is_success() {
+        if !status.is_success() {
             logger.log("error", "Failed to download".to_string());
             anyhow::bail!("download failed");
         }
@@ -111,6 +123,27 @@ impl RestoreService {
         let total = response.content_length();
         let mut tracker = ProgressTracker::new(total);
 
+        // Diagnostic: explains a missing Content-Length ("unknown size") — chunked
+        // transfer or reqwest transparently decoding a Content-Encoding both drop it.
+        let content_encoding = response
+            .headers()
+            .get(reqwest::header::CONTENT_ENCODING)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+        let transfer_encoding = response
+            .headers()
+            .get(reqwest::header::TRANSFER_ENCODING)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        logger.log(
+            "debug",
+            format!(
+                "Download response: status={}, content-length={:?}, content-encoding={:?}, transfer-encoding={:?}",
+                status, total, content_encoding, transfer_encoding
+            ),
+        );
+
         logger.log(
             "info",
             format!(
@@ -134,13 +167,22 @@ impl RestoreService {
 
         file.flush().await?;
 
+        let downloaded = tracker.downloaded;
+        if downloaded == 0 {
+            logger.log(
+                "warn",
+                format!("Downloaded 0 bytes (status {status}); backup body was empty"),
+            );
+        }
+
         logger.log(
             "info",
             format!(
-                "Backup downloaded to {} ({} MB in {}s)",
+                "Backup downloaded to {} ({} / {} bytes in {:.1}s)",
                 path.display(),
-                mb(tracker.downloaded),
-                start.elapsed().as_secs()
+                human_size(downloaded),
+                downloaded,
+                start.elapsed().as_secs_f64()
             ),
         );
 
