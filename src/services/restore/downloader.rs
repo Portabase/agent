@@ -1,9 +1,12 @@
 use super::service::RestoreService;
 
 use anyhow::Result;
+use futures::StreamExt;
 use reqwest::{Client, Url};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
+use tokio::io::AsyncWriteExt;
 use crate::services::backup::logger::JobLogger;
 
 /// Fallback progress cadence when the server sends no Content-Length.
@@ -105,11 +108,42 @@ impl RestoreService {
 
         let path = tmp_path.join(&filename);
 
-        let bytes = response.bytes().await?;
+        let total = response.content_length();
+        let mut tracker = ProgressTracker::new(total);
 
-        tokio::fs::write(&path, &bytes).await?;
+        logger.log(
+            "info",
+            format!(
+                "Downloading backup '{}' ({})",
+                filename,
+                ProgressTracker::fmt_total(total)
+            ),
+        );
 
-        logger.log("info", format!("Backup downloaded to {}", path.display()));
+        let start = Instant::now();
+        let mut file = tokio::fs::File::create(&path).await?;
+        let mut stream = response.bytes_stream();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            file.write_all(&chunk).await?;
+            for msg in tracker.advance(chunk.len()) {
+                logger.log("info", msg);
+            }
+        }
+
+        file.flush().await?;
+
+        logger.log(
+            "info",
+            format!(
+                "Backup downloaded to {} ({} MB in {}s)",
+                path.display(),
+                mb(tracker.downloaded),
+                start.elapsed().as_secs()
+            ),
+        );
+
         Ok(path)
     }
 }
