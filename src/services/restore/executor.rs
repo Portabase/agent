@@ -7,7 +7,12 @@ use std::time::Instant;
 use tempfile::TempDir;
 
 impl RestoreService {
-    pub async fn execute_restore(&self, cfg: DatabaseConfig, file_url: String) -> Result<()> {
+    pub async fn execute_restore(
+        &self,
+        cfg: DatabaseConfig,
+        file_url: String,
+        expected_size: Option<String>,
+    ) -> Result<()> {
         let logger = Arc::new(JobLogger::new());
         let start = Instant::now();
 
@@ -18,7 +23,9 @@ impl RestoreService {
 
         logger.log("info", format!("Created temp directory {}", tmp_path.display()));
 
-        let downloaded = self.download_backup(&file_url, tmp_path, Arc::clone(&logger)).await?;
+        let downloaded = self
+            .download_backup(&file_url, tmp_path, Arc::clone(&logger), expected_size)
+            .await?;
 
         let backup_file = self.prepare_archive(downloaded, tmp_path, Arc::clone(&logger)).await?;
 

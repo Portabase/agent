@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::utils::deserializer::deserialize_snake_case;
+use crate::utils::deserializer::{deserialize_snake_case, string_or_number_to_string};
 use serde::{Deserialize, Serialize};
 use toml::Value;
 
@@ -54,4 +54,6 @@ pub struct RestoreInfo {
     pub file: Option<String>,
     #[serde(rename = "metaFile")]
     pub meta_file: Option<String>,
+    #[serde(default, deserialize_with = "string_or_number_to_string")]
+    pub size: Option<String>,
 }
