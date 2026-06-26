@@ -31,6 +31,7 @@ impl DatabaseFactory {
                 let format = detect_format_from_size(&cfg).await;
                 Arc::new(PostgresDatabase::new(cfg, format))
             }
+            DbType::PostgresqlCluster => unimplemented!("postgresql-cluster wired in Task 5"),
             DbType::Mysql => Arc::new(MySQLDatabase::new(cfg)),
             DbType::Mariadb => Arc::new(MariaDBDatabase::new(cfg)),
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
@@ -48,6 +49,7 @@ impl DatabaseFactory {
                 let format = detect_format_from_file(restore_file);
                 Arc::new(PostgresDatabase::new(cfg, format))
             }
+            DbType::PostgresqlCluster => unimplemented!("postgresql-cluster wired in Task 5"),
             DbType::Mysql => Arc::new(MySQLDatabase::new(cfg)),
             DbType::Mariadb => Arc::new(MariaDBDatabase::new(cfg)),
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),

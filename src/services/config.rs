@@ -17,6 +17,8 @@ pub enum DbType {
     Mysql,
     Mariadb,
     Postgresql,
+    #[serde(rename = "postgresql-cluster")]
+    PostgresqlCluster,
     MongoDB,
     Sqlite,
     Redis,
@@ -31,6 +33,7 @@ impl DbType {
             DbType::Mysql => "mysql",
             DbType::Mariadb => "mariadb",
             DbType::Postgresql => "postgresql",
+            DbType::PostgresqlCluster => "postgresql-cluster",
             DbType::MongoDB => "mongodb",
             DbType::Sqlite => "sqlite",
             DbType::Redis => "redis",
@@ -169,21 +172,26 @@ impl ConfigService {
             }
 
             let username = match db.db_type {
-                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::Mssql => {
-                    required(&db.username, &db.name, "username")?
-                }
+                DbType::Postgresql
+                | DbType::PostgresqlCluster
+                | DbType::Mysql
+                | DbType::Mariadb
+                | DbType::Mssql => required(&db.username, &db.name, "username")?,
                 _ => optional(&db.username),
             };
 
             let password = match db.db_type {
-                DbType::Postgresql | DbType::Mysql | DbType::Mariadb | DbType::Mssql => {
-                    required(&db.password, &db.name, "password")?
-                }
+                DbType::Postgresql
+                | DbType::PostgresqlCluster
+                | DbType::Mysql
+                | DbType::Mariadb
+                | DbType::Mssql => required(&db.password, &db.name, "password")?,
                 _ => optional(&db.password),
             };
 
             let host = match db.db_type {
                 DbType::Postgresql
+                | DbType::PostgresqlCluster
                 | DbType::Mysql
                 | DbType::Mariadb
                 | DbType::MongoDB
@@ -196,6 +204,7 @@ impl ConfigService {
 
             let port = match db.db_type {
                 DbType::Postgresql
+                | DbType::PostgresqlCluster
                 | DbType::Mysql
                 | DbType::Mariadb
                 | DbType::MongoDB
@@ -208,6 +217,10 @@ impl ConfigService {
 
             let database_name = match db.db_type {
                 DbType::Sqlite | DbType::Redis | DbType::Valkey => optional(&db.database),
+                DbType::PostgresqlCluster => db
+                    .database
+                    .clone()
+                    .unwrap_or_else(|| "postgres".to_string()),
                 _ => required(&db.database, &db.name, "database")?,
             };
 
