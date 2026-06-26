@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use super::connection::{select_pg_path, server_version};
 use super::format::PostgresDumpFormat;
+use super::bundle;
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 
@@ -50,7 +51,7 @@ pub async fn run(
                     .arg("-f").arg(&file_path)
                     .arg("-v")
                     .arg("--compress=3")
-                    .envs(env)
+                    .envs(env.clone())
                     .output();
                 let duration_ms = start.elapsed().as_millis() as f64;
 
@@ -74,6 +75,13 @@ pub async fn run(
                         return Err(e.into());
                     }
                 }
+                if cfg.include_globals {
+                    logger.log("info", format!("Building globals bundle for {}", cfg.name));
+                    let bundled = bundle::build(&cfg, format, &file_path, &backup_dir, &version, &env, Arc::clone(&logger))?;
+                    logger.log("info", format!("Backup finished for database {}", cfg.name));
+                    return Ok(bundled);
+                }
+
                 logger.log("info", format!("Backup finished for database {}", cfg.name));
                 Ok(file_path)
             }
@@ -101,7 +109,7 @@ pub async fn run(
                     .arg("-j").arg("4")
                     .arg("-f").arg(&dump_dir)
                     .arg("-v")
-                    .envs(env)
+                    .envs(env.clone())
                     .output();
                 let duration_ms = start.elapsed().as_millis() as f64;
 
@@ -123,6 +131,13 @@ pub async fn run(
                         logger.log_command(cmd_label, Some(e.to_string()), Some(-1), Some(duration_ms));
                         return Err(e.into());
                     }
+                }
+
+                if cfg.include_globals {
+                    logger.log("info", format!("Building globals bundle for {}", cfg.name));
+                    let bundled = bundle::build(&cfg, format, &dump_dir, &backup_dir, &version, &env, Arc::clone(&logger))?;
+                    logger.log("info", format!("Backup finished for database {}", cfg.name));
+                    return Ok(bundled);
                 }
 
                 match std::fs::File::create(&tar_file) {

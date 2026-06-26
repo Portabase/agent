@@ -111,6 +111,59 @@ async fn postgres_backup_restore_test() {
 }
 
 #[tokio::test]
+async fn backup_with_include_globals_produces_a_manifest_bundle() {
+    init_tracing_for_test();
+
+    let (_container, mut config) = create_config().await;
+    config.include_globals = true;
+
+    let temp_dir = TempDir::new().unwrap();
+    let backup_path = temp_dir.path();
+
+    let db = DatabaseFactory::create_for_backup(config.clone()).await;
+    let file_path = db
+        .backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()))
+        .await
+        .unwrap();
+
+    assert!(file_path.to_string_lossy().ends_with(".tar.gz"));
+
+    let extract_dir = TempDir::new().unwrap();
+    let files = decompress_large_tar_gz(&file_path, extract_dir.path()).await.unwrap();
+    assert!(files.len() >= 3, "expected dump + globals.sql + manifest.json, got {:?}", files);
+
+    let manifest = crate::domain::postgres::bundle::BundleManifest::read(extract_dir.path())
+        .unwrap()
+        .expect("manifest.json must be present when include_globals is true");
+    assert_eq!(manifest.has_globals, true);
+    assert_eq!(manifest.format, "fc");
+
+    assert!(extract_dir.path().join("globals.sql").is_file());
+    assert!(extract_dir.path().join(&manifest.dump_path).exists());
+}
+
+#[tokio::test]
+async fn backup_without_include_globals_is_unaffected() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+    assert_eq!(config.include_globals, false);
+
+    let temp_dir = TempDir::new().unwrap();
+    let backup_path = temp_dir.path();
+
+    let db = DatabaseFactory::create_for_backup(config.clone()).await;
+    let file_path = db
+        .backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()))
+        .await
+        .unwrap();
+
+    // Same artifact shape as before this feature existed: a bare `.dump`
+    // file, not a bundle.
+    assert!(file_path.to_string_lossy().ends_with(".dump"));
+}
+
+#[tokio::test]
 async fn globals_dump_then_apply_round_trips() {
     init_tracing_for_test();
 
