@@ -11,8 +11,6 @@ use super::super::connection::{
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 
-/// Backs up an entire PostgreSQL cluster (roles + all databases + ownership +
-/// privileges) with `pg_dumpall` into a single `.sql`. Requires a superuser.
 pub async fn run(
     cfg: DatabaseConfig,
     backup_dir: PathBuf,
@@ -52,6 +50,7 @@ pub async fn run(
             .arg("--host").arg(&cfg.host)
             .arg("--port").arg(cfg.port.to_string())
             .arg("--username").arg(&cfg.username)
+            .arg("-v")
             .arg("-f").arg(&file_path)
             .envs(env)
             .output();

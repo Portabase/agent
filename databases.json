@@ -115,10 +115,10 @@
     {
       "name": "Test database - PostgreSQL cluster",
       "type": "postgresql-cluster",
-      "username": "postgres",
-      "password": "changeme",
+      "username": "nextclouddbuser",
+      "password": "50AL2Oh5IXajbOAxfJ",
       "port": 5432,
-      "host": "db-postgres",
+      "host": "nextcloud-db",
       "generated_id": "16678199-ff7e-4c97-8c83-0adeff214681"
     }
   ]

@@ -9,9 +9,6 @@ use testcontainers::{ContainerAsync, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 use url::Host;
 
-/// Starts a fresh Postgres 17 cluster whose bootstrap superuser is `user`, and
-/// returns the container guard plus a `postgresql-cluster` config pointing at it.
-/// Shared by the `backup` and `restore` integration tests.
 async fn start_cluster(user: &str) -> (ContainerAsync<Postgres>, DatabaseConfig) {
     let container = Postgres::default()
         .with_env_var("POSTGRES_DB", "postgres")

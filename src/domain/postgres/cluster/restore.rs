@@ -9,9 +9,6 @@ use super::super::connection::{is_superuser, psql_binary_name, select_pg_path, s
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 
-/// Restores a cluster `.sql` produced by the cluster backup via `psql` against
-/// a fresh target cluster. Requires a superuser. psql runs continue-on-error
-/// (its default); a non-zero process exit is treated as failure.
 pub async fn run(
     cfg: DatabaseConfig,
     restore_file: PathBuf,

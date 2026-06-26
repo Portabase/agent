@@ -33,10 +33,6 @@ pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
     Ok(version)
 }
 
-/// Whether the role used by `cfg` is a cluster superuser. Cluster backup
-/// (`pg_dumpall`, needs to read role passwords) and cluster restore (`CREATE
-/// ROLE`, `ALTER ... OWNER`) both require a superuser; callers pre-check this
-/// and fail fast with a clear error.
 pub async fn is_superuser(cfg: &DatabaseConfig) -> Result<bool> {
     let client = connect(cfg).await?;
     let is_super: bool = client
@@ -47,32 +43,11 @@ pub async fn is_superuser(cfg: &DatabaseConfig) -> Result<bool> {
     Ok(is_super)
 }
 
-/// Resolves the `bin` directory of a PostgreSQL installation for the given
-/// major version, in a cross-platform way.
-///
-/// Resolution order:
-/// 1. The `PG_BIN_DIR` environment variable, if set, is used as-is. This
-///    allows users/CI to override detection for non-standard installs
-///    (e.g. portable PostgreSQL distributions, custom install locations).
-/// 2. Platform-specific default install locations (Debian/Ubuntu packages,
-///    the official Windows installer, Homebrew/Postgres.app on macOS, and
-///    common RPM-based layouts on other Linux distros).
-/// 3. A `PATH` lookup for `pg_dump` (`pg_dump.exe` on Windows), returning
-///    its parent directory.
-/// 4. The historical Debian/Ubuntu path as a last-resort fallback, so the
-///    function keeps returning a `PathBuf` (never panics) even when nothing
-///    was found, preserving the previous behavior for callers.
-///
-/// The override is sourced from `CONFIG.pg_bin_dir` (the `PG_BIN_DIR`
-/// environment variable). An empty value means "unset" and falls through to
-/// detection.
+
 pub fn select_pg_path(version: &str) -> std::path::PathBuf {
     select_pg_path_with(version, &CONFIG.pg_bin_dir)
 }
 
-/// Inner resolver behind [`select_pg_path`], parameterized over the
-/// `PG_BIN_DIR` override. Kept pure (no env / no `CONFIG` access) so it is
-/// unit-testable without mutating process-global state.
 pub(crate) fn select_pg_path_with(version: &str, pg_bin_dir: &str) -> std::path::PathBuf {
     let major = version.split('.').next().unwrap_or("17");
 

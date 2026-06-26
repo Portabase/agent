@@ -2,8 +2,6 @@ use crate::domain::factory::DatabaseFactory;
 use crate::services::config::{DatabaseConfig, DbType};
 use std::path::Path;
 
-// A `postgresql-cluster` config. The factory constructs `PostgresClusterDatabase`
-// without opening a connection, so these tests need no container.
 fn cluster_config() -> DatabaseConfig {
     DatabaseConfig {
         name: "cluster".to_string(),
