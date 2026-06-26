@@ -111,6 +111,43 @@ async fn postgres_backup_restore_test() {
 }
 
 #[tokio::test]
+async fn backup_and_restore_round_trip_with_globals() {
+    init_tracing_for_test();
+
+    let (_container, mut config) = create_config().await;
+    config.include_globals = true;
+
+    let temp_dir = TempDir::new().unwrap();
+    let backup_path = temp_dir.path();
+
+    let db = DatabaseFactory::create_for_backup(config.clone()).await;
+    let file_path = db
+        .backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()))
+        .await
+        .unwrap();
+
+    // backup.rs already hands back a `.tar.gz` when include_globals is set,
+    // so compress_backup's own "already compressed" short-circuit applies —
+    // this mirrors what executor.rs does in production.
+    let compression = compress_to_tar_gz_large(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()))
+        .await
+        .unwrap();
+    assert_eq!(compression.compressed_path, file_path);
+
+    let db = DatabaseFactory::create_for_restore(config.clone(), &compression.compressed_path).await;
+    let reachable = db.ping().await.unwrap_or(false);
+    assert!(reachable);
+
+    match db.restore(&compression.compressed_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await {
+        Ok(_) => info!("Restore with globals succeeded for {}", config.generated_id),
+        Err(e) => {
+            error!("Restore with globals failed for {}: {:?}", config.generated_id, e);
+            assert!(false);
+        }
+    }
+}
+
+#[tokio::test]
 async fn backup_with_include_globals_produces_a_manifest_bundle() {
     init_tracing_for_test();
 

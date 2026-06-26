@@ -7,6 +7,8 @@ use std::time::Instant;
 
 use super::connection::{select_pg_path, server_version, terminate_connections};
 use super::format::PostgresDumpFormat;
+use super::bundle;
+use super::globals;
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 
@@ -35,6 +37,19 @@ pub async fn run(
 
         logger.log("debug", format!("Using pg_restore at {:?}", pg_restore));
 
+        let resolved = match bundle::resolve(&restore_file) {
+            Ok(r) => r,
+            Err(e) => {
+                logger.log("error", format!("Failed to inspect restore archive for {}: {:?}", cfg.name, e));
+                return Err(e);
+            }
+        };
+        let format = resolved.format_override.unwrap_or(format);
+
+        if resolved.globals_path.is_some() {
+            logger.log("info", format!("Globals found in backup archive for {}", cfg.name));
+        }
+
         if let Err(e) = futures::executor::block_on(terminate_connections(&cfg)) {
             logger.log("error", format!("Failed to terminate connections for {}: {:?}", cfg.name, e));
             return Err(e.into());
@@ -44,6 +59,11 @@ pub async fn run(
         match format {
             PostgresDumpFormat::Fc => {
                 logger.log("info", format!("Running FC restore for {}", cfg.name));
+
+                if let Some(globals_sql) = &resolved.globals_path {
+                    globals::apply(&cfg, &version, globals_sql, &env, &logger);
+                }
+
                 let start = Instant::now();
                 let output = Command::new(&pg_restore)
                     .arg("--no-owner")
@@ -56,7 +76,7 @@ pub async fn run(
                     .arg("--username").arg(&cfg.username)
                     .arg("--dbname").arg(&cfg.database)
                     .arg("-v")
-                    .arg(&restore_file)
+                    .arg(&resolved.dump_path)
                     .envs(env)
                     .output();
 
@@ -89,62 +109,72 @@ pub async fn run(
             PostgresDumpFormat::Fd => {
                 logger.log("info", format!("Running FD restore for {}", cfg.name));
 
-                let tar_gz = match std::fs::File::open(&restore_file) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        logger.log("error", format!(
-                            "Failed to open restore file {:?} for {}: {:?}",
-                            restore_file, cfg.name, e
-                        ));
-                        return Err(e.into());
+                // Must outlive the pg_restore call below: dropping it before
+                // then would delete the files pg_restore is about to read.
+                let mut legacy_tmp_dir: Option<tempfile::TempDir> = None;
+
+                let dump_dir = if resolved.dump_path.is_dir() {
+                    // bundle::resolve already unpacked this for us.
+                    if resolved.dump_path.join("toc.dat").exists() {
+                        resolved.dump_path.clone()
+                    } else {
+                        std::fs::read_dir(&resolved.dump_path)?
+                            .filter_map(|e| e.ok())
+                            .find(|entry| entry.path().join("toc.dat").exists())
+                            .map(|e| e.path())
+                            .ok_or_else(|| anyhow::anyhow!("Invalid bundle: toc.dat not found under {:?}", resolved.dump_path))?
                     }
-                };
-
-                logger.log("info", format!("tar_gz {:?}", tar_gz));
-
-                let dec = flate2::read::GzDecoder::new(tar_gz);
-                let mut archive = tar::Archive::new(dec);
-
-                let tmp_dir = match tempfile::TempDir::new() {
-                    Ok(d) => d,
-                    Err(e) => {
-                        logger.log("error", format!(
-                            "Failed to create temporary directory for FD restore of {}: {:?}",
-                            cfg.name, e
-                        ));
-                        return Err(e.into());
-                    }
-                };
-
-                if let Err(e) = archive.unpack(tmp_dir.path()) {
-                    logger.log("error", format!("Failed to unpack FD archive for {}: {:?}", cfg.name, e));
-                    return Err(e.into());
-                }
-
-                logger.log("debug", format!("Listing contents of temp dir: {}", tmp_dir.path().display()));
-
-                for entry in std::fs::read_dir(tmp_dir.path())? {
-                    if let Ok(entry) = entry {
-                        let path = entry.path();
-                        let file_type = entry.file_type()?;
-                        logger.log("debug", format!(
-                            " - {} | is_dir: {} | is_file: {}",
-                            path.display(),
-                            file_type.is_dir(),
-                            file_type.is_file()
-                        ));
-                    }
-                }
-
-                let dump_dir = if tmp_dir.path().join("toc.dat").exists() {
-                    tmp_dir.path().to_path_buf()
                 } else {
-                    std::fs::read_dir(tmp_dir.path())?
-                        .filter_map(|e| e.ok())
-                        .find(|entry| entry.path().join("toc.dat").exists())
-                        .map(|e| e.path())
-                        .ok_or_else(|| anyhow::anyhow!("Invalid FD archive: toc.dat not found"))?
+                    // Legacy path: resolved.dump_path is the tar.gz itself
+                    // (no manifest.json was found by bundle::resolve), unpack
+                    // it exactly as before this feature existed.
+                    let tar_gz = match std::fs::File::open(&resolved.dump_path) {
+                        Ok(f) => f,
+                        Err(e) => {
+                            logger.log("error", format!(
+                                "Failed to open restore file {:?} for {}: {:?}",
+                                resolved.dump_path, cfg.name, e
+                            ));
+                            return Err(e.into());
+                        }
+                    };
+
+                    let dec = flate2::read::GzDecoder::new(tar_gz);
+                    let mut archive = tar::Archive::new(dec);
+
+                    let tmp_dir = match tempfile::TempDir::new() {
+                        Ok(d) => d,
+                        Err(e) => {
+                            logger.log("error", format!(
+                                "Failed to create temporary directory for FD restore of {}: {:?}",
+                                cfg.name, e
+                            ));
+                            return Err(e.into());
+                        }
+                    };
+
+                    if let Err(e) = archive.unpack(tmp_dir.path()) {
+                        logger.log("error", format!("Failed to unpack FD archive for {}: {:?}", cfg.name, e));
+                        return Err(e.into());
+                    }
+
+                    let found = if tmp_dir.path().join("toc.dat").exists() {
+                        tmp_dir.path().to_path_buf()
+                    } else {
+                        std::fs::read_dir(tmp_dir.path())?
+                            .filter_map(|e| e.ok())
+                            .find(|entry| entry.path().join("toc.dat").exists())
+                            .map(|e| e.path())
+                            .ok_or_else(|| anyhow::anyhow!("Invalid FD archive: toc.dat not found"))?
+                    };
+
+                    legacy_tmp_dir = Some(tmp_dir);
+                    found
                 };
+
+                if let Some(globals_sql) = &resolved.globals_path {
+                    globals::apply(&cfg, &version, globals_sql, &env, &logger);
+                }
 
                 let start = Instant::now();
                 let output = Command::new(&pg_restore)
@@ -160,7 +190,7 @@ pub async fn run(
                     .arg("-v")
                     .arg("-j")
                     .arg("4")
-                    .arg(dump_dir)
+                    .arg(&dump_dir)
                     .envs(env)
                     .output();
 
