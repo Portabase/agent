@@ -1,5 +1,6 @@
 use crate::domain::mongodb::database::MongoDatabase;
 use crate::domain::mysql::database::MySQLDatabase;
+use crate::domain::postgres::cluster_database::PostgresClusterDatabase;
 use crate::domain::postgres::database::PostgresDatabase;
 use crate::domain::postgres::{detect_format_from_file, detect_format_from_size};
 use crate::domain::redis::database::RedisDatabase;
@@ -31,7 +32,7 @@ impl DatabaseFactory {
                 let format = detect_format_from_size(&cfg).await;
                 Arc::new(PostgresDatabase::new(cfg, format))
             }
-            DbType::PostgresqlCluster => unimplemented!("postgresql-cluster wired in Task 5"),
+            DbType::PostgresqlCluster => Arc::new(PostgresClusterDatabase::new(cfg)),
             DbType::Mysql => Arc::new(MySQLDatabase::new(cfg)),
             DbType::Mariadb => Arc::new(MariaDBDatabase::new(cfg)),
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
@@ -49,7 +50,7 @@ impl DatabaseFactory {
                 let format = detect_format_from_file(restore_file);
                 Arc::new(PostgresDatabase::new(cfg, format))
             }
-            DbType::PostgresqlCluster => unimplemented!("postgresql-cluster wired in Task 5"),
+            DbType::PostgresqlCluster => Arc::new(PostgresClusterDatabase::new(cfg)),
             DbType::Mysql => Arc::new(MySQLDatabase::new(cfg)),
             DbType::Mariadb => Arc::new(MariaDBDatabase::new(cfg)),
             DbType::MongoDB => Arc::new(MongoDatabase::new(cfg)),
