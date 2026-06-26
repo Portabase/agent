@@ -109,13 +109,12 @@ pub async fn run(
             PostgresDumpFormat::Fd => {
                 logger.log("info", format!("Running FD restore for {}", cfg.name));
 
-                // Must outlive the pg_restore call below: dropping it before
-                // then would delete the files pg_restore is about to read.
-                let mut legacy_tmp_dir: Option<tempfile::TempDir> = None;
-
-                let dump_dir = if resolved.dump_path.is_dir() {
+                // `_tmp_guard` must outlive the pg_restore call below: dropping
+                // the TempDir before then would delete the files pg_restore is
+                // about to read. It is bound only for its RAII drop, never read.
+                let (dump_dir, _tmp_guard): (std::path::PathBuf, Option<tempfile::TempDir>) = if resolved.dump_path.is_dir() {
                     // bundle::resolve already unpacked this for us.
-                    if resolved.dump_path.join("toc.dat").exists() {
+                    let dir = if resolved.dump_path.join("toc.dat").exists() {
                         resolved.dump_path.clone()
                     } else {
                         std::fs::read_dir(&resolved.dump_path)?
@@ -123,7 +122,8 @@ pub async fn run(
                             .find(|entry| entry.path().join("toc.dat").exists())
                             .map(|e| e.path())
                             .ok_or_else(|| anyhow::anyhow!("Invalid bundle: toc.dat not found under {:?}", resolved.dump_path))?
-                    }
+                    };
+                    (dir, None)
                 } else {
                     // Legacy path: resolved.dump_path is the tar.gz itself
                     // (no manifest.json was found by bundle::resolve), unpack
@@ -168,8 +168,7 @@ pub async fn run(
                             .ok_or_else(|| anyhow::anyhow!("Invalid FD archive: toc.dat not found"))?
                     };
 
-                    legacy_tmp_dir = Some(tmp_dir);
-                    found
+                    (found, Some(tmp_dir))
                 };
 
                 if let Some(globals_sql) = &resolved.globals_path {
