@@ -1,4 +1,5 @@
 pub mod backup;
+pub(crate) mod cluster;
 pub(crate) mod connection;
 pub mod database;
 mod format;
