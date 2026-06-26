@@ -152,7 +152,8 @@ async fn postgres_password_with_slash_test() {
 
 mod select_pg_path_tests {
     use crate::domain::postgres::connection::{
-        pg_dump_binary_name, pg_dump_exists_in, select_pg_path_with,
+        pg_dump_binary_name, pg_dump_exists_in, pg_dumpall_binary_name, psql_binary_name,
+        select_pg_path_with,
     };
 
     // `select_pg_path_with` takes the `PG_BIN_DIR` override as a plain
@@ -208,5 +209,25 @@ mod select_pg_path_tests {
     fn pg_dump_exists_in_is_false_for_nonexistent_dir() {
         let dir = std::path::Path::new("this/path/almost-certainly/does-not-exist-12345");
         assert!(!pg_dump_exists_in(dir));
+    }
+
+    #[test]
+    fn pg_dumpall_binary_name_is_platform_specific() {
+        let name = pg_dumpall_binary_name();
+        if cfg!(target_os = "windows") {
+            assert_eq!(name, "pg_dumpall.exe");
+        } else {
+            assert_eq!(name, "pg_dumpall");
+        }
+    }
+
+    #[test]
+    fn psql_binary_name_is_platform_specific() {
+        let name = psql_binary_name();
+        if cfg!(target_os = "windows") {
+            assert_eq!(name, "psql.exe");
+        } else {
+            assert_eq!(name, "psql");
+        }
     }
 }

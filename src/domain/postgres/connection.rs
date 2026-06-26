@@ -109,6 +109,22 @@ pub(crate) fn pg_dump_binary_name() -> &'static str {
     }
 }
 
+pub(crate) fn pg_dumpall_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "pg_dumpall.exe"
+    } else {
+        "pg_dumpall"
+    }
+}
+
+pub(crate) fn psql_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "psql.exe"
+    } else {
+        "psql"
+    }
+}
+
 pub(crate) fn pg_dump_exists_in(dir: &std::path::Path) -> bool {
     dir.join(pg_dump_binary_name()).is_file()
 }
