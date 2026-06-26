@@ -33,6 +33,20 @@ pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
     Ok(version)
 }
 
+/// Whether the role used by `cfg` is a cluster superuser. Cluster backup
+/// (`pg_dumpall`, needs to read role passwords) and cluster restore (`CREATE
+/// ROLE`, `ALTER ... OWNER`) both require a superuser; callers pre-check this
+/// and fail fast with a clear error.
+pub async fn is_superuser(cfg: &DatabaseConfig) -> Result<bool> {
+    let client = connect(cfg).await?;
+    let is_super: bool = client
+        .query_one("SELECT current_setting('is_superuser') = 'on';", &[])
+        .await?
+        .get(0);
+
+    Ok(is_super)
+}
+
 /// Resolves the `bin` directory of a PostgreSQL installation for the given
 /// major version, in a cross-platform way.
 ///
@@ -106,6 +120,22 @@ pub(crate) fn pg_dump_binary_name() -> &'static str {
         "pg_dump.exe"
     } else {
         "pg_dump"
+    }
+}
+
+pub(crate) fn pg_dumpall_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "pg_dumpall.exe"
+    } else {
+        "pg_dumpall"
+    }
+}
+
+pub(crate) fn psql_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "psql.exe"
+    } else {
+        "psql"
     }
 }
 
