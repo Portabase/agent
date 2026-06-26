@@ -2,7 +2,6 @@ mod mariadb;
 mod mongodb;
 mod mysql;
 mod postgres;
-mod postgres_bundle;
 mod redis;
 mod valkey;
 mod firebird;

@@ -39,7 +39,6 @@ async fn create_config() -> (ContainerAsync<Postgres>, DatabaseConfig) {
         generated_id: "40875631-e3d2-4dfe-a26b-2a347ecc64fd".to_string(),
         path: "".to_string(),
         max_packet_size: "".to_string(),
-        include_globals: false,
     };
 
     (container, config)
@@ -111,131 +110,6 @@ async fn postgres_backup_restore_test() {
 }
 
 #[tokio::test]
-async fn backup_and_restore_round_trip_with_globals() {
-    init_tracing_for_test();
-
-    let (_container, mut config) = create_config().await;
-    config.include_globals = true;
-
-    let temp_dir = TempDir::new().unwrap();
-    let backup_path = temp_dir.path();
-
-    let db = DatabaseFactory::create_for_backup(config.clone()).await;
-    let file_path = db
-        .backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()))
-        .await
-        .unwrap();
-
-    // backup.rs already hands back a `.tar.gz` when include_globals is set,
-    // so compress_backup's own "already compressed" short-circuit applies —
-    // this mirrors what executor.rs does in production.
-    let compression = compress_to_tar_gz_large(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()))
-        .await
-        .unwrap();
-    assert_eq!(compression.compressed_path, file_path);
-
-    let db = DatabaseFactory::create_for_restore(config.clone(), &compression.compressed_path).await;
-    let reachable = db.ping().await.unwrap_or(false);
-    assert!(reachable);
-
-    match db.restore(&compression.compressed_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await {
-        Ok(_) => info!("Restore with globals succeeded for {}", config.generated_id),
-        Err(e) => {
-            error!("Restore with globals failed for {}: {:?}", config.generated_id, e);
-            assert!(false);
-        }
-    }
-}
-
-#[tokio::test]
-async fn backup_with_include_globals_produces_a_manifest_bundle() {
-    init_tracing_for_test();
-
-    let (_container, mut config) = create_config().await;
-    config.include_globals = true;
-
-    let temp_dir = TempDir::new().unwrap();
-    let backup_path = temp_dir.path();
-
-    let db = DatabaseFactory::create_for_backup(config.clone()).await;
-    let file_path = db
-        .backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()))
-        .await
-        .unwrap();
-
-    assert!(file_path.to_string_lossy().ends_with(".tar.gz"));
-
-    let extract_dir = TempDir::new().unwrap();
-    let files = decompress_large_tar_gz(&file_path, extract_dir.path()).await.unwrap();
-    assert!(files.len() >= 3, "expected dump + globals.sql + manifest.json, got {:?}", files);
-
-    let manifest = crate::domain::postgres::bundle::BundleManifest::read(extract_dir.path())
-        .unwrap()
-        .expect("manifest.json must be present when include_globals is true");
-    assert_eq!(manifest.has_globals, true);
-    assert_eq!(manifest.format, "fc");
-
-    assert!(extract_dir.path().join("globals.sql").is_file());
-    assert!(extract_dir.path().join(&manifest.dump_path).exists());
-}
-
-#[tokio::test]
-async fn backup_without_include_globals_is_unaffected() {
-    init_tracing_for_test();
-
-    let (_container, config) = create_config().await;
-    assert_eq!(config.include_globals, false);
-
-    let temp_dir = TempDir::new().unwrap();
-    let backup_path = temp_dir.path();
-
-    let db = DatabaseFactory::create_for_backup(config.clone()).await;
-    let file_path = db
-        .backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()))
-        .await
-        .unwrap();
-
-    // Same artifact shape as before this feature existed: a bare `.dump`
-    // file, not a bundle.
-    assert!(file_path.to_string_lossy().ends_with(".dump"));
-}
-
-#[tokio::test]
-async fn globals_dump_then_apply_round_trips() {
-    init_tracing_for_test();
-
-    let (_container, config) = create_config().await;
-    let temp_dir = TempDir::new().unwrap();
-
-    let version = crate::domain::postgres::connection::server_version(&config)
-        .await
-        .unwrap();
-
-    let mut env = std::env::vars().collect::<std::collections::HashMap<_, _>>();
-    env.insert("PGPASSWORD".to_string(), config.password.clone());
-
-    let logger = std::sync::Arc::new(crate::services::backup::logger::JobLogger::new());
-
-    let globals_path = crate::domain::postgres::globals::dump(
-        &config,
-        &version,
-        temp_dir.path(),
-        &env,
-        &logger,
-    )
-    .unwrap();
-
-    assert!(globals_path.is_file());
-    let contents = std::fs::read_to_string(&globals_path).unwrap();
-    assert!(contents.contains("ROLE"), "expected role statements in globals.sql, got: {contents}");
-
-    // Re-applying an already-applied globals.sql must not error out the
-    // caller: roles/tablespaces already existing on the cluster are expected
-    // and must be swallowed as warnings, not failures.
-    crate::domain::postgres::globals::apply(&config, &version, &globals_path, &env, &logger);
-}
-
-#[tokio::test]
 async fn postgres_password_with_slash_test() {
     init_tracing_for_test();
 
@@ -268,7 +142,6 @@ async fn postgres_password_with_slash_test() {
         generated_id: "5a1f0e3c-9b8a-4a8e-9b1b-0a1c2d3e4f5a".to_string(),
         path: "".to_string(),
         max_packet_size: "".to_string(),
-        include_globals: false,
     };
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
@@ -279,8 +152,7 @@ async fn postgres_password_with_slash_test() {
 
 mod select_pg_path_tests {
     use crate::domain::postgres::connection::{
-        pg_dump_binary_name, pg_dump_exists_in, pg_dumpall_binary_name, psql_binary_name,
-        select_pg_path_with,
+        pg_dump_binary_name, pg_dump_exists_in, select_pg_path_with,
     };
 
     // `select_pg_path_with` takes the `PG_BIN_DIR` override as a plain
@@ -336,25 +208,5 @@ mod select_pg_path_tests {
     fn pg_dump_exists_in_is_false_for_nonexistent_dir() {
         let dir = std::path::Path::new("this/path/almost-certainly/does-not-exist-12345");
         assert!(!pg_dump_exists_in(dir));
-    }
-
-    #[test]
-    fn pg_dumpall_binary_name_is_platform_specific() {
-        let name = pg_dumpall_binary_name();
-        if cfg!(target_os = "windows") {
-            assert_eq!(name, "pg_dumpall.exe");
-        } else {
-            assert_eq!(name, "pg_dumpall");
-        }
-    }
-
-    #[test]
-    fn psql_binary_name_is_platform_specific() {
-        let name = psql_binary_name();
-        if cfg!(target_os = "windows") {
-            assert_eq!(name, "psql.exe");
-        } else {
-            assert_eq!(name, "psql");
-        }
     }
 }

@@ -8,8 +8,7 @@
       "password": "changeme",
       "port": 5432,
       "host": "db-postgres",
-      "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681",
-      "include_globals": true
+      "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681"
     },
     {
       "name": "Test database 2 - MariaDB",

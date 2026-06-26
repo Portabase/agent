@@ -40,7 +40,6 @@ async fn create_config() -> (ContainerAsync<GenericImage>, DatabaseConfig) {
         generated_id: "3c445eb4-c2c6-4bde-a423-ee1385dcf6d2".to_string(),
         path: "".to_string(),
         max_packet_size: "".to_string(),
-        include_globals: false,
     };
 
     (container, config)

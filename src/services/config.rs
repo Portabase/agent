@@ -55,7 +55,6 @@ pub struct DatabaseConfig {
     pub generated_id: String,
     pub path: String,
     pub max_packet_size: String,
-    pub include_globals: bool,
 }
 
 #[allow(dead_code)]
@@ -78,8 +77,6 @@ pub struct InputDatabaseConfig {
     pub generated_id: String,
     pub path: Option<String>,
     pub max_packet_size: Option<String>,
-    #[serde(default, alias = "includeGlobals")]
-    pub include_globals: Option<bool>,
 }
 
 #[allow(dead_code)]
@@ -226,11 +223,6 @@ impl ConfigService {
                 _ => String::new(),
             };
 
-            let include_globals = match db.db_type {
-                DbType::Postgresql => optional(&db.include_globals),
-                _ => false,
-            };
-
             databases.push(DatabaseConfig {
                 name: db.name,
                 database: database_name,
@@ -242,7 +234,6 @@ impl ConfigService {
                 generated_id: db.generated_id,
                 path: path_val,
                 max_packet_size,
-                include_globals,
             });
         }
 
