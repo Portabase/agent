@@ -111,6 +111,41 @@ async fn postgres_backup_restore_test() {
 }
 
 #[tokio::test]
+async fn globals_dump_then_apply_round_trips() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+    let temp_dir = TempDir::new().unwrap();
+
+    let version = crate::domain::postgres::connection::server_version(&config)
+        .await
+        .unwrap();
+
+    let mut env = std::env::vars().collect::<std::collections::HashMap<_, _>>();
+    env.insert("PGPASSWORD".to_string(), config.password.clone());
+
+    let logger = std::sync::Arc::new(crate::services::backup::logger::JobLogger::new());
+
+    let globals_path = crate::domain::postgres::globals::dump(
+        &config,
+        &version,
+        temp_dir.path(),
+        &env,
+        &logger,
+    )
+    .unwrap();
+
+    assert!(globals_path.is_file());
+    let contents = std::fs::read_to_string(&globals_path).unwrap();
+    assert!(contents.contains("ROLE"), "expected role statements in globals.sql, got: {contents}");
+
+    // Re-applying an already-applied globals.sql must not error out the
+    // caller: roles/tablespaces already existing on the cluster are expected
+    // and must be swallowed as warnings, not failures.
+    crate::domain::postgres::globals::apply(&config, &version, &globals_path, &env, &logger);
+}
+
+#[tokio::test]
 async fn postgres_password_with_slash_test() {
     init_tracing_for_test();
 
