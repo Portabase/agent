@@ -30,6 +30,7 @@ async fn create_config() -> (ContainerAsync<Mongo>, DatabaseConfig) {
         generated_id: "96d30a9f-ff4b-47c9-aaab-f3147bb34f16".to_string(),
         path: "".to_string(),
         max_packet_size: "".to_string(),
+        include_globals: false,
     };
 
     (container, config)

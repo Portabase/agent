@@ -55,6 +55,7 @@ fn make_config(host: String, port: u16, database: &str, generated_id: &str) -> D
         generated_id: generated_id.to_string(),
         path: "".to_string(),
         max_packet_size: "".to_string(),
+        include_globals: false,
     }
 }
 
