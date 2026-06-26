@@ -2,7 +2,6 @@ pub mod backup;
 pub(crate) mod cluster;
 pub(crate) mod connection;
 pub mod database;
-pub mod cluster_database;
 mod format;
 mod ping;
 mod restore;

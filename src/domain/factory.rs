@@ -1,6 +1,6 @@
 use crate::domain::mongodb::database::MongoDatabase;
 use crate::domain::mysql::database::MySQLDatabase;
-use crate::domain::postgres::cluster_database::PostgresClusterDatabase;
+use crate::domain::postgres::cluster::database::PostgresClusterDatabase;
 use crate::domain::postgres::database::PostgresDatabase;
 use crate::domain::postgres::{detect_format_from_file, detect_format_from_size};
 use crate::domain::redis::database::RedisDatabase;

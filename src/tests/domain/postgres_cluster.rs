@@ -54,7 +54,7 @@ async fn cluster_backup_produces_sql_with_roles_and_databases() {
 
     let dir = TempDir::new().unwrap();
     let logger = Arc::new(JobLogger::new());
-    let sql = cluster::backup(cfg.clone(), dir.path().to_path_buf(), env_for(&cfg), logger)
+    let sql = cluster::backup::run(cfg.clone(), dir.path().to_path_buf(), env_for(&cfg), logger)
         .await
         .unwrap();
 
@@ -82,7 +82,7 @@ async fn cluster_backup_requires_superuser() {
 
     let dir = TempDir::new().unwrap();
     let logger = Arc::new(JobLogger::new());
-    let err = cluster::backup(weak.clone(), dir.path().to_path_buf(), env_for(&weak), logger)
+    let err = cluster::backup::run(weak.clone(), dir.path().to_path_buf(), env_for(&weak), logger)
         .await
         .unwrap_err();
 
@@ -109,14 +109,14 @@ async fn cluster_backup_restore_round_trip() {
         .unwrap();
 
     let dir = TempDir::new().unwrap();
-    let sql = cluster::backup(src.clone(), dir.path().to_path_buf(), env_for(&src), Arc::new(JobLogger::new()))
+    let sql = cluster::backup::run(src.clone(), dir.path().to_path_buf(), env_for(&src), Arc::new(JobLogger::new()))
         .await
         .unwrap();
 
     // Target cluster B: fresh, same bootstrap user.
     let (_b, mut dst) = start_cluster("testuser").await;
 
-    cluster::restore(dst.clone(), sql.clone(), env_for(&dst), Arc::new(JobLogger::new()))
+    cluster::restore::run(dst.clone(), sql.clone(), env_for(&dst), Arc::new(JobLogger::new()))
         .await
         .unwrap();
 
