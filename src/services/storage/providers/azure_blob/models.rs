@@ -1,12 +1,17 @@
 use crate::services::storage::providers::azure_blob::helpers::ResolvedAzure;
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AzureBlobProviderConfig {
+    #[serde(default)]
     pub account_name: String,
+    #[serde(default)]
     pub account_key: String,
     pub container_name: String,
+    #[serde(default)]
+    pub auth_mode: Option<String>,
     #[serde(default)]
     pub connection_string: String,
     #[serde(default)]
@@ -25,9 +30,36 @@ fn parse_connection_string(cs: &str) -> std::collections::HashMap<String, String
         .collect()
 }
 
+
+pub(crate) fn ensure_account_in_endpoint(endpoint: &str, account: &str) -> String {
+    let trimmed = endpoint.trim_end_matches('/');
+    if account.is_empty() {
+        return trimmed.to_string();
+    }
+    if let Ok(url) = Url::parse(trimmed) {
+        let host = url.host_str().unwrap_or("");
+        if host.contains(account) {
+            return trimmed.to_string();
+        }
+        let path = url.path().trim_matches('/');
+        if path == account || path.starts_with(&format!("{account}/")) {
+            return trimmed.to_string();
+        }
+    }
+    format!("{trimmed}/{account}")
+}
+
 impl AzureBlobProviderConfig {
     pub fn resolve(&self) -> Result<ResolvedAzure> {
-        if !self.connection_string.trim().is_empty() {
+        let mode = self.auth_mode.as_deref().unwrap_or("").trim();
+        let has_connection_string = !self.connection_string.trim().is_empty();
+
+        if mode == "connectionString" || (mode.is_empty() && has_connection_string) {
+            if !has_connection_string {
+                return Err(anyhow!(
+                    "authMode is connectionString but connectionString is empty"
+                ));
+            }
             let map = parse_connection_string(&self.connection_string);
             let account_name = map
                 .get("AccountName")
@@ -48,11 +80,22 @@ impl AzureBlobProviderConfig {
             });
         }
 
-        let blob_endpoint = self
+        if self.account_name.trim().is_empty() {
+            return Err(anyhow!("accountName required for accountKey auth"));
+        }
+        if self.account_key.trim().is_empty() {
+            return Err(anyhow!("accountKey required for accountKey auth"));
+        }
+
+        let blob_endpoint = match self
             .endpoint_url
-            .clone()
-            .filter(|s| !s.trim().is_empty())
-            .ok_or_else(|| anyhow!("endpointUrl required when connectionString is empty"))?;
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(endpoint) => ensure_account_in_endpoint(endpoint, &self.account_name),
+            None => format!("https://{}.blob.core.windows.net", self.account_name),
+        };
 
         Ok(ResolvedAzure {
             account_name: self.account_name.clone(),
