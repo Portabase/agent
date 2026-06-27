@@ -1,12 +1,14 @@
 pub mod helpers;
-pub(crate) mod models;
+mod models;
 
 use crate::core::context::Context;
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::backup::models::{BackupResult, UploadResult};
 use crate::services::storage::StorageProvider;
-use crate::services::storage::providers::azure_blob::helpers::{BLOCK_SIZE, upload_stream_to_azure};
-use crate::services::storage::providers::azure_blob::models::AzureBlobProviderConfig;
+use crate::services::storage::providers::google_cloud_storage::helpers::{
+    StreamSource, build_client, upload_with_client,
+};
+use crate::services::storage::providers::google_cloud_storage::models::GoogleCloudStorageProviderConfig;
 use crate::utils::common::BackupMethod;
 use crate::utils::file::{full_file_name, full_file_path};
 use crate::utils::stream::build_stream;
@@ -15,10 +17,10 @@ use std::sync::Arc;
 use tokio::fs;
 use tracing::{error, info};
 
-pub struct AzureBlobProvider {}
+pub struct GoogleCloudStorageProvider {}
 
 #[async_trait]
-impl StorageProvider for AzureBlobProvider {
+impl StorageProvider for GoogleCloudStorageProvider {
     async fn upload(
         &self,
         ctx: Arc<Context>,
@@ -67,7 +69,7 @@ impl StorageProvider for AzureBlobProvider {
             }
         };
 
-        let config: AzureBlobProviderConfig = match storage.clone().config.try_into() {
+        let config: GoogleCloudStorageProviderConfig = match storage.clone().config.try_into() {
             Ok(c) => c,
             Err(e) => {
                 return UploadResult {
@@ -80,9 +82,14 @@ impl StorageProvider for AzureBlobProvider {
             }
         };
 
-        let resolved = match config.resolve() {
-            Ok(r) => r,
+        let file_name = full_file_name(encrypt);
+        info!("Uploading file {}", file_name);
+        let remote_file_path = full_file_path(&file_name);
+
+        let client = match build_client(&config).await {
+            Ok(c) => c,
             Err(e) => {
+                error!("GCS client build failed: {:?}", e);
                 return UploadResult {
                     storage_id: storage.id.clone(),
                     success: false,
@@ -93,24 +100,31 @@ impl StorageProvider for AzureBlobProvider {
             }
         };
 
-        let file_name = full_file_name(encrypt);
-        let remote_file_path = full_file_path(&file_name);
+        let source = StreamSource::from_stream(upload.stream, total_size);
+
+        // A custom apiEndpoint (self-hosted / emulator) on a non-443 port trips an
+        // upstream SDK bug in the resumable-upload path; force single-shot for it.
+        let force_single_shot = config
+            .api_endpoint
+            .as_deref()
+            .is_some_and(|s| !s.trim().is_empty());
+
         info!(
-            "Starting block upload to azure blob {}/{}",
-            config.container_name, remote_file_path
+            "Starting GCS upload to {}/{} (single_shot={})",
+            config.bucket_name, remote_file_path, force_single_shot
         );
 
-        match upload_stream_to_azure(
-            &resolved,
-            &config.container_name,
+        match upload_with_client(
+            &client,
+            &config.bucket_name,
             &remote_file_path,
-            upload.stream,
-            BLOCK_SIZE,
+            source,
+            force_single_shot,
         )
         .await
         {
             Ok(_) => {
-                info!("Azure blob upload successful: {}", remote_file_path);
+                info!("GCS upload successful: {}", remote_file_path);
                 UploadResult {
                     storage_id: storage.id.clone(),
                     success: true,
@@ -120,13 +134,13 @@ impl StorageProvider for AzureBlobProvider {
                 }
             }
             Err(e) => {
-                error!("Azure blob upload failed: {:?}", e);
+                error!("GCS upload failed: {:?}", e);
                 UploadResult {
                     storage_id: storage.id.clone(),
                     success: false,
                     error: Some(e.to_string()),
                     remote_file_path: None,
-                    total_size: None,
+                    total_size: Some(total_size),
                 }
             }
         }
