@@ -85,8 +85,13 @@ pub async fn upload_with_client(
     object: &str,
     source: StreamSource,
 ) -> Result<()> {
+    // `write_object` uses gRPC-style resource names: the bucket must be passed as
+    // `projects/_/buckets/<name>`, not the bare bucket id (the SDK rejects the bare
+    // form with "malformed bucket name"). Callers pass the bare name; format it
+    // here so every call site — production and tests — goes through one correct path.
+    let bucket_resource = format!("projects/_/buckets/{bucket}");
     client
-        .write_object(bucket, object, source)
+        .write_object(bucket_resource, object, source)
         .send_buffered()
         .await
         .context("GCS write_object failed")?;

@@ -94,13 +94,10 @@ async fn upload_stream_roundtrip_against_fake_gcs() {
     let source = StreamSource::from_stream(Box::pin(stream::iter(chunks)));
 
     let client = anon_client(&endpoint).await;
-    // `write_object` (gRPC-style resource semantics, even when routed over the JSON
-    // transport to the emulator) requires the bucket parameter in
-    // `projects/_/buckets/<name>` form, not the bare bucket name. The JSON REST calls
-    // below (bucket creation, media readback) use the bare name as the emulator's
-    // plain JSON API expects.
-    let bucket_resource = format!("projects/_/buckets/{BUCKET}");
-    upload_with_client(&client, &bucket_resource, object, source).await.unwrap();
+    // Pass the bare bucket name, exactly as the production provider does;
+    // `upload_with_client` formats it into the `projects/_/buckets/<name>` resource
+    // name `write_object` requires. This keeps the test on the same code path as prod.
+    upload_with_client(&client, BUCKET, object, source).await.unwrap();
 
     // Read the object back via the emulator's media download endpoint and assert
     // it reassembles to the exact source bytes.
