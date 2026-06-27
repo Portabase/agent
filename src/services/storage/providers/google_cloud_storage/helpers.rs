@@ -119,6 +119,10 @@ mod tests {
     async fn build_credentials_accepts_valid_service_account_key() {
         let cfg = test_cfg();
         let creds = build_credentials(&cfg);
-        assert!(creds.is_ok(), "expected creds to build, got {:?}", creds.err());
+        assert!(
+            creds.is_ok(),
+            "expected creds to build, got {:?}",
+            creds.err()
+        );
     }
 }

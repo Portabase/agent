@@ -74,7 +74,11 @@ async fn create_bucket(endpoint: &str) {
         .send()
         .await
         .unwrap();
-    assert!(res.status().is_success(), "bucket create failed: {}", res.status());
+    assert!(
+        res.status().is_success(),
+        "bucket create failed: {}",
+        res.status()
+    );
 }
 
 #[tokio::test]
@@ -97,12 +101,21 @@ async fn upload_stream_roundtrip_against_fake_gcs() {
     // Pass the bare bucket name, exactly as the production provider does;
     // `upload_with_client` formats it into the `projects/_/buckets/<name>` resource
     // name `write_object` requires. This keeps the test on the same code path as prod.
-    upload_with_client(&client, BUCKET, object, source).await.unwrap();
+    upload_with_client(&client, BUCKET, object, source)
+        .await
+        .unwrap();
 
     // Read the object back via the emulator's media download endpoint and assert
     // it reassembles to the exact source bytes.
-    let read_url =
-        format!("{endpoint}/storage/v1/b/{BUCKET}/o/{}?alt=media", object.replace('/', "%2F"));
-    let got = reqwest::get(&read_url).await.unwrap().bytes().await.unwrap();
+    let read_url = format!(
+        "{endpoint}/storage/v1/b/{BUCKET}/o/{}?alt=media",
+        object.replace('/', "%2F")
+    );
+    let got = reqwest::get(&read_url)
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
     assert_eq!(got.as_ref(), data.as_slice());
 }
