@@ -111,15 +111,6 @@
       "port": 1433,
       "host": "db-mssql",
       "generated_id": "16706125-ff7e-4c97-8c83-0adeff214682"
-    },
-    {
-      "name": "Test database - PostgreSQL cluster",
-      "type": "postgresql-cluster",
-      "username": "nextclouddbuser",
-      "password": "50AL2Oh5IXajbOAxfJ",
-      "port": 5432,
-      "host": "nextcloud-db",
-      "generated_id": "16678199-ff7e-4c97-8c83-0adeff214681"
     }
   ]
 }

@@ -44,8 +44,6 @@ pub(crate) fn hmac_sha256_b64(key: &[u8], data: &str) -> Result<String> {
     Ok(STANDARD.encode(sig))
 }
 
-/// Build Service SAS query pairs (raw, un-encoded) for `canonical_resource`
-/// e.g. `/blob/{account}/{container}/{blob}`.
 pub fn build_service_sas(
     resolved: &ResolvedAzure,
     canonical_resource: &str,
@@ -81,7 +79,6 @@ pub fn build_service_sas(
     ])
 }
 
-/// Build a SAS-scoped URL for a blob (or container when `blob` is empty).
 pub fn build_sas_url(
     resolved: &ResolvedAzure,
     container: &str,
@@ -110,12 +107,10 @@ pub fn build_sas_url(
     Ok(url)
 }
 
-/// Default block size for the provider path (mirrors the S3 provider's PART_SIZE).
 pub const BLOCK_SIZE: usize = 100 * 1024 * 1024;
 
 type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>;
 
-/// Stage one block under a zero-padded sequential id; records the RAW id bytes.
 async fn stage_block(
     bbc: &BlockBlobClient,
     index: u32,
@@ -132,13 +127,6 @@ async fn stage_block(
     Ok(())
 }
 
-/// Stream `body` to `{container}/{blob}` using Azure block upload. Never buffers the
-/// full payload: at most one `block_size` block plus one inbound chunk is resident
-/// (mirrors the S3 provider's per-part guarantee).
-///
-/// Assumes the container already exists — S3-faithful, no container creation. Uncommitted
-/// blocks are garbage-collected by Azure if `commit_block_list` is never reached, so no
-/// explicit abort is needed on the error path (unlike S3 multipart).
 pub async fn upload_stream_to_azure(
     resolved: &ResolvedAzure,
     container: &str,
