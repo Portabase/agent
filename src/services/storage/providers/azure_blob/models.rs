@@ -26,7 +26,6 @@ fn parse_connection_string(cs: &str) -> std::collections::HashMap<String, String
 }
 
 impl AzureBlobProviderConfig {
-    /// Resolve effective connection params, preferring the connection string when non-empty.
     pub fn resolve(&self) -> Result<ResolvedAzure> {
         if !self.connection_string.trim().is_empty() {
             let map = parse_connection_string(&self.connection_string);
