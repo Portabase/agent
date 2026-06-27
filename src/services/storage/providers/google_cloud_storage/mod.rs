@@ -100,14 +100,29 @@ impl StorageProvider for GoogleCloudStorageProvider {
             }
         };
 
-        let source = StreamSource::from_stream(upload.stream);
+        let source = StreamSource::from_stream(upload.stream, total_size);
+
+        // A custom apiEndpoint (self-hosted / emulator) on a non-443 port trips an
+        // upstream SDK bug in the resumable-upload path; force single-shot for it.
+        let force_single_shot = config
+            .api_endpoint
+            .as_deref()
+            .is_some_and(|s| !s.trim().is_empty());
 
         info!(
-            "Starting GCS upload to {}/{}",
-            config.bucket_name, remote_file_path
+            "Starting GCS upload to {}/{} (single_shot={})",
+            config.bucket_name, remote_file_path, force_single_shot
         );
 
-        match upload_with_client(&client, &config.bucket_name, &remote_file_path, source).await {
+        match upload_with_client(
+            &client,
+            &config.bucket_name,
+            &remote_file_path,
+            source,
+            force_single_shot,
+        )
+        .await
+        {
             Ok(_) => {
                 info!("GCS upload successful: {}", remote_file_path);
                 UploadResult {

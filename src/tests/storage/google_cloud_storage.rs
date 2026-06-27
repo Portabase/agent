@@ -12,36 +12,14 @@ use testcontainers::{GenericImage, ImageExt};
 
 const BUCKET: &str = "portabase";
 
-/// Start fake-gcs-server (the standard GCS emulator) over plain HTTP and return
-/// (container, endpoint_base_url).
-///
-/// We pin the host-side port to 80 (the implicit default port for `http://`)
-/// rather than letting Docker assign a random one. This works around a real
-/// defect in `google-cloud-gax-internal` (the transport crate underpinning
-/// the `google-cloud-storage` SDK): `crate::host::header()` computes the
-/// `Host:` header it sends on every request from `Uri::authority().host()`,
-/// which **always discards the port**, for *any* custom (non-`googleapis.com`)
-/// endpoint - see
-/// `google-cloud-gax-internal-0.7.14/src/host.rs::origin_and_header`. So with
-/// `with_endpoint("http://localhost:<random-port>")` the SDK actually sends
-/// `Host: localhost` (no port) on the wire. fake-gcs-server builds the
-/// resumable-upload `Location` header by reflecting that inbound `Host`
-/// header verbatim (ignoring `-external-url` when a `Host` header is
-/// present), so the session URL it hands back is `http://localhost/...`
-/// with no port. The SDK then follows that URL for every chunk PUT and
-/// connects to the implicit default port 80, where nothing is listening,
-/// and retries forever. Confirmed by hand with curl: sending
-/// `Host: localhost` (no port) to the emulator reproduces a portless
-/// `Location` header byte-for-byte.
-///
-/// Pinning the container's published port to 80 makes the *coincidentally*
-/// correct: "no port" on the wire now legitimately means port 80, which is
-/// where the emulator actually is.
 async fn start_fake_gcs() -> (testcontainers::ContainerAsync<GenericImage>, String) {
+    // Natural random host port (no port-80 pin). The provider forces a single-shot
+    // upload for custom endpoints, which issues one request to this endpoint and never
+    // follows a server-built `Location` — so it works on any port, unlike the resumable
+    // path that the SDK's Host-header port-drop bug breaks on non-443 ports.
     let container = GenericImage::new("fsouza/fake-gcs-server", "latest")
         .with_exposed_port(4443.tcp())
         .with_wait_for(WaitFor::message_on_stderr("server started at"))
-        .with_mapped_port(80, 4443.tcp())
         .with_cmd(["-scheme", "http", "-backend", "memory", "-port", "4443"])
         .start()
         .await
@@ -53,8 +31,6 @@ async fn start_fake_gcs() -> (testcontainers::ContainerAsync<GenericImage>, Stri
     (container, endpoint)
 }
 
-/// fake-gcs-server ignores auth, so anonymous credentials exercise the real
-/// streaming upload path without contacting Google.
 async fn anon_client(endpoint: &str) -> Storage {
     let creds = google_cloud_auth::credentials::anonymous::Builder::new().build();
     Storage::builder()
@@ -65,7 +41,6 @@ async fn anon_client(endpoint: &str) -> Storage {
         .unwrap()
 }
 
-/// Create the target bucket via the emulator's JSON API.
 async fn create_bucket(endpoint: &str) {
     let url = format!("{endpoint}/storage/v1/b?project=test-project");
     let res = reqwest::Client::new()
@@ -95,18 +70,21 @@ async fn upload_stream_roundtrip_against_fake_gcs() {
         .chunks(1024)
         .map(|c| Ok(Bytes::copy_from_slice(c)))
         .collect();
-    let source = StreamSource::from_stream(Box::pin(stream::iter(chunks)));
+    let source = StreamSource::from_stream(Box::pin(stream::iter(chunks)), data.len() as u64);
 
     let client = anon_client(&endpoint).await;
-    // Pass the bare bucket name, exactly as the production provider does;
-    // `upload_with_client` formats it into the `projects/_/buckets/<name>` resource
-    // name `write_object` requires. This keeps the test on the same code path as prod.
-    upload_with_client(&client, BUCKET, object, source)
-        .await
-        .unwrap();
 
-    // Read the object back via the emulator's media download endpoint and assert
-    // it reassembles to the exact source bytes.
+    // force_single_shot = true (custom endpoint). Guard with a timeout so a regression
+    // into the resumable path (which would hang forever on this non-443 port) fails the
+    // test instead of stalling it.
+    tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        upload_with_client(&client, BUCKET, object, source, true),
+    )
+    .await
+    .expect("upload hung (regressed to resumable path on a non-443 endpoint?)")
+    .unwrap();
+
     let read_url = format!(
         "{endpoint}/storage/v1/b/{BUCKET}/o/{}?alt=media",
         object.replace('/', "%2F")
