@@ -170,3 +170,32 @@ fn postgresql_options_non_bool_keep_ownership_falls_back_to_false() {
 
     assert!(!keep);
 }
+
+#[test]
+fn keep_ownership_extraction_logic() {
+    use serde_json::Value;
+    use std::collections::HashMap;
+
+    // true → keep ownership
+    let mut opts: HashMap<String, Value> = HashMap::new();
+    opts.insert("keep_ownership".to_string(), Value::Bool(true));
+    let keep = opts.get("keep_ownership").and_then(|v| v.as_bool()).unwrap_or(false);
+    assert!(keep, "should keep ownership when flag is true");
+
+    // false → strip
+    let mut opts2: HashMap<String, Value> = HashMap::new();
+    opts2.insert("keep_ownership".to_string(), Value::Bool(false));
+    let keep2 = opts2.get("keep_ownership").and_then(|v| v.as_bool()).unwrap_or(false);
+    assert!(!keep2, "should strip when flag is false");
+
+    // missing → strip
+    let opts3: HashMap<String, Value> = HashMap::new();
+    let keep3 = opts3.get("keep_ownership").and_then(|v| v.as_bool()).unwrap_or(false);
+    assert!(!keep3, "should strip when key absent");
+
+    // wrong type → strip
+    let mut opts4: HashMap<String, Value> = HashMap::new();
+    opts4.insert("keep_ownership".to_string(), Value::String("yes".to_string()));
+    let keep4 = opts4.get("keep_ownership").and_then(|v| v.as_bool()).unwrap_or(false);
+    assert!(!keep4, "should strip when value is not bool");
+}

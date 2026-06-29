@@ -41,13 +41,20 @@ pub async fn run(
         }
         logger.log("info", format!("Connections terminated for database {}", cfg.name));
 
+        let keep_ownership = cfg.options
+            .get("keep_ownership")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         match format {
             PostgresDumpFormat::Fc => {
                 logger.log("info", format!("Running FC restore for {}", cfg.name));
                 let start = Instant::now();
-                let output = Command::new(&pg_restore)
-                    .arg("--no-owner")
-                    .arg("--no-privileges")
+                let mut cmd = Command::new(&pg_restore);
+                if !keep_ownership {
+                    cmd.arg("--no-owner").arg("--no-privileges");
+                }
+                let output = cmd
                     .arg("--clean")
                     .arg("--if-exists")
                     // .arg("--create")
@@ -147,9 +154,11 @@ pub async fn run(
                 };
 
                 let start = Instant::now();
-                let output = Command::new(&pg_restore)
-                    .arg("--no-owner")
-                    .arg("--no-privileges")
+                let mut cmd = Command::new(&pg_restore);
+                if !keep_ownership {
+                    cmd.arg("--no-owner").arg("--no-privileges");
+                }
+                let output = cmd
                     .arg("--clean")
                     .arg("--if-exists")
                     // .arg("--create")
