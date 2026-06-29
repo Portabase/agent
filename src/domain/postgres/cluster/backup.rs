@@ -50,6 +50,8 @@ pub async fn run(
             .arg("--host").arg(&cfg.host)
             .arg("--port").arg(cfg.port.to_string())
             .arg("--username").arg(&cfg.username)
+            .arg("--clean")
+            .arg("--if-exists")
             .arg("-v")
             .arg("-f").arg(&file_path)
             .envs(env)
