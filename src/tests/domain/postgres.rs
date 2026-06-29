@@ -39,6 +39,7 @@ async fn create_config() -> (ContainerAsync<Postgres>, DatabaseConfig) {
         generated_id: "40875631-e3d2-4dfe-a26b-2a347ecc64fd".to_string(),
         path: "".to_string(),
         max_packet_size: "".to_string(),
+        options: std::collections::HashMap::new(),
     };
 
     (container, config)
@@ -156,6 +157,7 @@ async fn postgres_password_with_slash_test() {
         generated_id: "5a1f0e3c-9b8a-4a8e-9b1b-0a1c2d3e4f5a".to_string(),
         path: "".to_string(),
         max_packet_size: "".to_string(),
+        options: std::collections::HashMap::new(),
     };
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;

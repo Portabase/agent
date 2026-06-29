@@ -77,3 +77,96 @@ fn postgresql_cluster_respects_explicit_database() {
 
     assert_eq!(cfg.databases[0].database, "maintenance");
 }
+
+#[test]
+fn postgresql_options_keep_ownership_parses() {
+    let file = write_json(
+        r#"{
+            "databases": [
+                {
+                    "name": "db1",
+                    "type": "postgresql",
+                    "username": "u",
+                    "password": "p",
+                    "port": 5432,
+                    "host": "localhost",
+                    "database": "mydb",
+                    "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681",
+                    "options": {
+                        "keep_ownership": true
+                    }
+                }
+            ]
+        }"#,
+    );
+
+    let service = ConfigService::new(test_context());
+    let cfg = service.load(Some(file.path().to_str().unwrap())).unwrap();
+
+    let keep = cfg.databases[0]
+        .options
+        .get("keep_ownership")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    assert!(keep);
+}
+
+#[test]
+fn postgresql_options_absent_defaults_to_empty() {
+    let file = write_json(
+        r#"{
+            "databases": [
+                {
+                    "name": "db1",
+                    "type": "postgresql",
+                    "username": "u",
+                    "password": "p",
+                    "port": 5432,
+                    "host": "localhost",
+                    "database": "mydb",
+                    "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681"
+                }
+            ]
+        }"#,
+    );
+
+    let service = ConfigService::new(test_context());
+    let cfg = service.load(Some(file.path().to_str().unwrap())).unwrap();
+
+    assert!(cfg.databases[0].options.is_empty());
+}
+
+#[test]
+fn postgresql_options_non_bool_keep_ownership_falls_back_to_false() {
+    let file = write_json(
+        r#"{
+            "databases": [
+                {
+                    "name": "db1",
+                    "type": "postgresql",
+                    "username": "u",
+                    "password": "p",
+                    "port": 5432,
+                    "host": "localhost",
+                    "database": "mydb",
+                    "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681",
+                    "options": {
+                        "keep_ownership": "yes"
+                    }
+                }
+            ]
+        }"#,
+    );
+
+    let service = ConfigService::new(test_context());
+    let cfg = service.load(Some(file.path().to_str().unwrap())).unwrap();
+
+    let keep = cfg.databases[0]
+        .options
+        .get("keep_ownership")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    assert!(!keep);
+}

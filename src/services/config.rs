@@ -3,6 +3,7 @@
 use crate::core::context::Context;
 use serde::Deserialize;
 use serde_json;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -58,6 +59,7 @@ pub struct DatabaseConfig {
     pub generated_id: String,
     pub path: String,
     pub max_packet_size: String,
+    pub options: HashMap<String, serde_json::Value>,
 }
 
 #[allow(dead_code)]
@@ -80,6 +82,7 @@ pub struct InputDatabaseConfig {
     pub generated_id: String,
     pub path: Option<String>,
     pub max_packet_size: Option<String>,
+    pub options: Option<HashMap<String, serde_json::Value>>,
 }
 
 #[allow(dead_code)]
@@ -247,6 +250,7 @@ impl ConfigService {
                 generated_id: db.generated_id,
                 path: path_val,
                 max_packet_size,
+                options: db.options.unwrap_or_default(),
             });
         }
 
