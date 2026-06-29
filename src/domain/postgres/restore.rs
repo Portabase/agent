@@ -46,6 +46,12 @@ pub async fn run(
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
+        if keep_ownership {
+            logger.log("info", format!("Restoring ownership and privileges for {}", cfg.name));
+        } else {
+            logger.log("info", format!("Stripping ownership and privileges for {} (--no-owner --no-privileges)", cfg.name));
+        }
+
         match format {
             PostgresDumpFormat::Fc => {
                 logger.log("info", format!("Running FC restore for {}", cfg.name));
