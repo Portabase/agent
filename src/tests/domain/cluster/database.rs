@@ -14,6 +14,7 @@ fn cluster_config() -> DatabaseConfig {
         generated_id: "40875631-e3d2-4dfe-a26b-2a347ecc64fd".to_string(),
         path: String::new(),
         max_packet_size: String::new(),
+        options: std::collections::HashMap::new(),
     }
 }
 

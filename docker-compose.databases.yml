@@ -15,6 +15,20 @@ services:
     networks:
       - portabase
 
+  db-postgres-2:
+    container_name: db-postgres-2
+    image: postgres:17-alpine
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres-data-2:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=devdb2
+      - POSTGRES_USER=devuser2
+      - POSTGRES_PASSWORD=changeme2
+    networks:
+      - portabase
+
   db-mariadb:
     container_name: db-mariadb
     image: mariadb:latest
@@ -179,6 +193,7 @@ services:
 
 volumes:
   postgres-data:
+  postgres-data-2:
   mariadb-data:
   mysql-data:
   mongodb-data:

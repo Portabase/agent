@@ -28,6 +28,7 @@ async fn create_config() -> (ContainerAsync<Valkey>, DatabaseConfig) {
         generated_id: "40875485-e3d2-4dfe-a26b-2a347ecc64fd".to_string(),
         path: "".to_string(),
         max_packet_size: "".to_string(),
+        options: std::collections::HashMap::new(),
     };
 
     (container, config)

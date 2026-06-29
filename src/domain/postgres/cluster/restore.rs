@@ -5,7 +5,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::super::connection::{is_superuser, psql_binary_name, select_pg_path, server_version};
+use super::super::connection::{is_superuser, psql_binary_name, select_pg_path, server_version, terminate_all_connections};
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 
@@ -39,6 +39,12 @@ pub async fn run(
         }
 
         let psql = select_pg_path(&version).join(psql_binary_name());
+
+        if let Err(e) = futures::executor::block_on(terminate_all_connections(&cfg)) {
+            logger.log("error", format!("Failed to terminate connections for cluster {}: {:?}", cfg.name, e));
+            return Err(e.into());
+        }
+        logger.log("info", format!("All user database connections terminated for cluster {}", cfg.name));
 
         logger.log("info", format!("Replaying cluster dump for {} via {:?}", cfg.name, psql));
 

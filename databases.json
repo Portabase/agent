@@ -11,6 +11,19 @@
       "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681"
     },
     {
+      "name": "Test database 1 - PostgreSQL - BIS",
+      "database": "devdb2",
+      "type": "postgresql",
+      "username": "devuser2",
+      "password": "changeme2",
+      "port": 5432,
+      "host": "db-postgres-2",
+      "generated_id": "16678159-ff7e-5697-8c83-0adeff214681",
+      "options": {
+        "keep_ownership": true
+      }
+    },
+    {
       "name": "Test database 2 - MariaDB",
       "database": "mariadb",
       "type": "mariadb",
