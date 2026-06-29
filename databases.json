@@ -3,7 +3,7 @@
     {
       "name": "Test database 1 - PostgreSQL",
       "database": "devdb",
-      "type": "postgresql",
+      "type": "postgresql-cluster",
       "username": "devuser",
       "password": "changeme",
       "port": 5432,

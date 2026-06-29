@@ -144,6 +144,27 @@ pub async fn terminate_connections(cfg: &DatabaseConfig) -> Result<()> {
     Ok(())
 }
 
+pub async fn terminate_all_connections(cfg: &DatabaseConfig) -> Result<()> {
+    let mut admin = cfg.clone();
+    admin.database = "postgres".to_string().into();
+
+    let client = connect(&admin).await?;
+
+    client
+        .execute(
+            r#"
+            SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity
+            WHERE datname NOT IN ('postgres', 'template0', 'template1')
+              AND pid <> pg_backend_pid();
+            "#,
+            &[],
+        )
+        .await?;
+
+    Ok(())
+}
+
 pub fn detect_format_from_file(restore_file: &Path) -> PostgresDumpFormat {
     match restore_file.extension().and_then(|e| e.to_str()) {
         Some("dump") => PostgresDumpFormat::Fc,
