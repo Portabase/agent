@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_compression::tokio::bufread::GzipDecoder;
 use async_compression::tokio::write::GzipEncoder as AsyncGzipEncoder;
 use futures::StreamExt;
@@ -29,6 +29,39 @@ pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Arc<JobLogger>) ->
         logger.log("info", format!("File {:?} is already a tar.gz, skipping compression", file));
         return Ok(CompressionResult {
             compressed_path: file.clone(),
+        });
+    }
+
+    if file
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.ends_with(".tar"))
+        .unwrap_or(false)
+    {
+        let gz_path = PathBuf::from(format!("{}.gz", file.display()));
+        logger.log("info", format!("Input {:?} is a raw tar, gzipping directly", file));
+
+        let input = File::open(file)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to open tar {:?}: {}", file, e))?;
+        let mut reader = BufReader::with_capacity(8 * 1024 * 1024, input);
+
+        let output_file = File::create(&gz_path)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create {:?}: {}", gz_path, e))?;
+        let mut encoder = AsyncGzipEncoder::new(output_file);
+
+        tokio::io::copy(&mut reader, &mut encoder)
+            .await
+            .map_err(|e| anyhow::anyhow!("Gzip copy failed: {}", e))?;
+        encoder
+            .shutdown()
+            .await
+            .map_err(|e| anyhow::anyhow!("Gzip shutdown failed: {}", e))?;
+
+        logger.log("info", format!("Compressed {:?} to {:?}", file, gz_path));
+        return Ok(CompressionResult {
+            compressed_path: gz_path,
         });
     }
 
@@ -119,3 +152,23 @@ pub async fn decompress_large_tar_gz(
 
     Ok(extracted_files)
 }
+
+pub async fn gunzip_to_file(gz_path: &Path, out_path: &Path) -> Result<()> {
+    let file = File::open(gz_path)
+        .await
+        .with_context(|| format!("Failed to open {}", gz_path.display()))?;
+    let buf_reader = BufReader::with_capacity(8 * 1024 * 1024, file);
+    let mut decoder = GzipDecoder::new(buf_reader);
+
+    let out = File::create(out_path)
+        .await
+        .with_context(|| format!("Failed to create {}", out_path.display()))?;
+    let mut writer = tokio::io::BufWriter::new(out);
+
+    tokio::io::copy(&mut decoder, &mut writer).await?;
+    writer.shutdown().await?;
+
+    info!("Gunzipped {:?} into {:?}", gz_path, out_path);
+    Ok(())
+}
+

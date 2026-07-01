@@ -27,7 +27,9 @@ impl RestoreService {
             .download_backup(&file_url, tmp_path, Arc::clone(&logger), expected_size)
             .await?;
 
-        let backup_file = self.prepare_archive(downloaded, tmp_path, Arc::clone(&logger)).await?;
+        let backup_file = self
+            .prepare_archive(downloaded, tmp_path, &cfg.db_type, Arc::clone(&logger))
+            .await?;
 
         let result = self.run_restore(cfg, backup_file, Arc::clone(&logger)).await?;
 

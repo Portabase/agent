@@ -32,6 +32,8 @@ async fn create_config() -> (ContainerAsync<Mysql>, DatabaseConfig) {
         generated_id: "0f1bb8f2-35a0-4c91-8098-e36873d3ce31".to_string(),
         path: "".to_string(),
         max_packet_size: "512M".to_string(),
+        volume_name: "".to_string(),
+        container_name: None,
         options: std::collections::HashMap::new(),
     };
 

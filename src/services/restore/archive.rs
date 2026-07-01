@@ -1,18 +1,19 @@
 use super::service::RestoreService;
-
 use crate::utils::compress::decompress_large_tar_gz;
 use crate::utils::file::decrypt_file_stream_gcm;
-
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use crate::services::backup::logger::JobLogger;
+use crate::services::config::DbType;
+use crate::utils::common::choose_restore_path;
 
 impl RestoreService {
     pub async fn prepare_archive(
         &self,
         downloaded_file: PathBuf,
         tmp_path: &Path,
+        db_type: &DbType,
         logger: Arc<JobLogger>
     ) -> Result<PathBuf> {
         logger.log("info", "Start preparing backup archive".to_string());
@@ -59,6 +60,13 @@ impl RestoreService {
             archive = decrypted;
         }
 
+        if matches!(db_type, DbType::DockerVolume) {
+            let raw_tar = tmp_path.join("volume.tar");
+            crate::utils::compress::gunzip_to_file(archive.as_path(), &raw_tar).await?;
+            logger.log("info", format!("Docker volume archive gunzipped to {}", raw_tar.display()));
+            return Ok(raw_tar);
+        }
+
         logger.log("info", format!("Decompressing archive {}", archive.display()));
 
         let files = match decompress_large_tar_gz(archive.as_path(), tmp_path).await {
@@ -76,12 +84,8 @@ impl RestoreService {
 
         logger.log("info", format!("Archive prepared, {} file(s) extracted", files.len()));
 
-        if files.len() == 1 {
-            logger.log("debug", format!("Using single extracted file: {}", files[0].display()));
-            Ok(files[0].clone())
-        } else {
-            logger.log("debug", format!("Multiple files extracted, using archive root: {}", archive.display()));
-            Ok(archive)
-        }
+        let chosen = choose_restore_path(&files, tmp_path, &archive);
+        logger.log("debug", format!("Restore source resolved to: {}", chosen.display()));
+        Ok(chosen)
     }
 }

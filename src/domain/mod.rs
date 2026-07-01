@@ -1,3 +1,4 @@
+pub mod docker_volume;
 pub mod factory;
 mod mongodb;
 pub mod mysql;

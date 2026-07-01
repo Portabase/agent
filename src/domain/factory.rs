@@ -1,3 +1,4 @@
+use crate::domain::docker_volume::database::DockerVolumeDatabase;
 use crate::domain::mongodb::database::MongoDatabase;
 use crate::domain::mysql::database::MySQLDatabase;
 use crate::domain::postgres::cluster::database::PostgresClusterDatabase;
@@ -41,6 +42,7 @@ impl DatabaseFactory {
             DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg)),
             DbType::Firebird => Arc::new(FirebirdDatabase::new(cfg)),
             DbType::Mssql => Arc::new(MssqlDatabase::new(cfg)),
+            DbType::DockerVolume => Arc::new(DockerVolumeDatabase::new(cfg)),
         }
     }
 
@@ -59,6 +61,7 @@ impl DatabaseFactory {
             DbType::Valkey => Arc::new(ValkeyDatabase::new(cfg)),
             DbType::Firebird => Arc::new(FirebirdDatabase::new(cfg)),
             DbType::Mssql => Arc::new(MssqlDatabase::new(cfg)),
+            DbType::DockerVolume => Arc::new(DockerVolumeDatabase::new(cfg)),
         }
     }
 }
