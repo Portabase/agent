@@ -65,6 +65,21 @@ fn volume_config(volume_name: &str) -> crate::services::config::DatabaseConfig {
     }
 }
 
+async fn ensure_image(docker: &bollard::Docker, image: &str) {
+    use bollard::query_parameters::CreateImageOptionsBuilder;
+    use futures_util::StreamExt;
+
+    let (name, tag) = image.split_once(':').unwrap_or((image, "latest"));
+    let opts = CreateImageOptionsBuilder::default()
+        .from_image(name)
+        .tag(tag)
+        .build();
+    let mut stream = docker.create_image(Some(opts), None, None);
+    while let Some(item) = stream.next().await {
+        item.unwrap();
+    }
+}
+
 async fn seed_volume(docker: &bollard::Docker, volume: &str, filename: &str, content: &str) {
     use bollard::models::{ContainerCreateBody, HostConfig};
     use bollard::query_parameters::{
@@ -72,6 +87,8 @@ async fn seed_volume(docker: &bollard::Docker, volume: &str, filename: &str, con
         WaitContainerOptions,
     };
     use futures_util::StreamExt;
+
+    ensure_image(docker, "busybox").await;
 
     let body = ContainerCreateBody {
         image: Some("busybox".to_string()),
@@ -193,6 +210,8 @@ async fn list_volume(docker: &bollard::Docker, volume: &str) -> String {
     };
     use tokio_stream::StreamExt;
 
+    ensure_image(docker, "busybox").await;
+
     let body = ContainerCreateBody {
         image: Some("busybox".to_string()),
         cmd: Some(vec!["sh".into(), "-c".into(), "ls -A /vol".into()]),
@@ -240,6 +259,8 @@ async fn sweep_removes_labeled_helpers() {
         .create_volume(VolumeCreateRequest { name: Some(vol.clone()), ..Default::default() })
         .await
         .unwrap();
+
+    ensure_image(&docker, "busybox").await;
 
     let helper = create_helper(&docker, "busybox", &vol, "sweep-test", true, None).await.unwrap();
 
