@@ -129,7 +129,8 @@
       "name": "Test database 14 - Docker Volume",
       "type": "docker-volume",
       "volume_name": "databases_sqlite-data",
-      "generated_id": "16706126-ff7e-4c97-8c83-0adeff214690"
+      "generated_id": "16706126-ff7e-4c97-8c83-0adeff214690",
+      "container_name": "db-sqlite"
     }
   ]
 }
