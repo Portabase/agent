@@ -26,6 +26,8 @@ pub enum DbType {
     Valkey,
     Firebird,
     Mssql,
+    #[serde(rename = "docker-volume")]
+    DockerVolume,
 }
 
 impl DbType {
@@ -41,6 +43,7 @@ impl DbType {
             DbType::Valkey => "valkey",
             DbType::Firebird => "firebird",
             DbType::Mssql => "mssql",
+            DbType::DockerVolume => "docker-volume",
         }
     }
 }
@@ -59,6 +62,8 @@ pub struct DatabaseConfig {
     pub generated_id: String,
     pub path: String,
     pub max_packet_size: String,
+    pub volume_name: String,
+    pub container_name: Option<String>,
     pub options: HashMap<String, serde_json::Value>,
 }
 
@@ -82,6 +87,8 @@ pub struct InputDatabaseConfig {
     pub generated_id: String,
     pub path: Option<String>,
     pub max_packet_size: Option<String>,
+    pub volume_name: Option<String>,
+    pub container_name: Option<String>,
     pub options: Option<HashMap<String, serde_json::Value>>,
 }
 
@@ -202,7 +209,7 @@ impl ConfigService {
                 | DbType::Firebird
                 | DbType::Valkey
                 | DbType::Mssql => required(&db.host, &db.name, "host")?,
-                DbType::Sqlite => optional(&db.host),
+                DbType::Sqlite | DbType::DockerVolume => optional(&db.host),
             };
 
             let port = match db.db_type {
@@ -215,11 +222,13 @@ impl ConfigService {
                 | DbType::Firebird
                 | DbType::Valkey
                 | DbType::Mssql => required(&db.port, &db.name, "port")?,
-                DbType::Sqlite => db.port.unwrap_or(0),
+                DbType::Sqlite | DbType::DockerVolume => db.port.unwrap_or(0),
             };
 
             let database_name = match db.db_type {
-                DbType::Sqlite | DbType::Redis | DbType::Valkey => optional(&db.database),
+                DbType::Sqlite | DbType::Redis | DbType::Valkey | DbType::DockerVolume => {
+                    optional(&db.database)
+                }
                 DbType::PostgresqlCluster => db
                     .database
                     .clone()
@@ -239,6 +248,12 @@ impl ConfigService {
                 _ => String::new(),
             };
 
+            let volume_name = match db.db_type {
+                DbType::DockerVolume => required(&db.volume_name, &db.name, "volume_name")?,
+                _ => optional(&db.volume_name),
+            };
+            let container_name = db.container_name.clone();
+
             databases.push(DatabaseConfig {
                 name: db.name,
                 database: database_name,
@@ -250,6 +265,8 @@ impl ConfigService {
                 generated_id: db.generated_id,
                 path: path_val,
                 max_packet_size,
+                volume_name,
+                container_name,
                 options: db.options.unwrap_or_default(),
             });
         }

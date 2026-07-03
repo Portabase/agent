@@ -1,5 +1,17 @@
 use serde::Serialize;
 use serde_json::Value;
+use std::path::{Path, PathBuf};
+
+pub(crate) fn choose_restore_path(
+    extracted: &[PathBuf],
+    _extraction_dir: &Path,
+    archive: &Path,
+) -> PathBuf {
+    match extracted.len() {
+        1 => extracted[0].clone(),
+        _ => archive.to_path_buf(),
+    }
+}
 
 #[derive(Clone, Copy)]
 pub enum BackupMethod {

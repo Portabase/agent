@@ -36,7 +36,7 @@ jobs:
             agent-test bash -c "
               mkdir -p /app/coverage &&
               rm -rf /app/target/* /app/coverage/* &&
-              cargo test --verbose &&
+              cargo test --verbose -- --test-threads=2 &&
               sync
             "
 

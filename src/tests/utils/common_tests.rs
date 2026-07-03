@@ -1,5 +1,6 @@
-use crate::utils::common::{BackupMethod, vec_to_option_json};
+use crate::utils::common::{BackupMethod, choose_restore_path, vec_to_option_json};
 use serde_json::json;
+use std::path::{Path, PathBuf};
 
 #[test]
 fn backup_method_to_string_automatic() {
@@ -46,4 +47,29 @@ fn vec_to_option_json_serializes_struct_vector() {
             { "id": 2 }
         ]))
     );
+}
+
+#[test]
+fn choose_restore_path_single_file_returns_that_file() {
+    let dir = Path::new("/tmp/extract");
+    let archive = Path::new("/tmp/backup.tar.gz");
+    let files = vec![PathBuf::from("/tmp/extract/dump.sql")];
+    // Single extracted file: restore from that file directly.
+    assert_eq!(
+        choose_restore_path(&files, dir, archive),
+        PathBuf::from("/tmp/extract/dump.sql")
+    );
+}
+
+#[test]
+fn choose_restore_path_multi_file_non_docker_volume_returns_archive_path() {
+    let dir = Path::new("/tmp/extract");
+    let archive = Path::new("/tmp/backup.tar.gz");
+    let files = vec![
+        PathBuf::from("/tmp/extract/toc.dat"),
+        PathBuf::from("/tmp/extract/3141.dat.gz"),
+    ];
+    let chosen = choose_restore_path(&files, dir, archive);
+    assert_eq!(chosen, PathBuf::from("/tmp/backup.tar.gz"));
+    assert_eq!(chosen.extension().and_then(|e| e.to_str()), Some("gz"));
 }

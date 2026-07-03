@@ -199,3 +199,68 @@ fn keep_ownership_extraction_logic() {
     let keep4 = opts4.get("keep_ownership").and_then(|v| v.as_bool()).unwrap_or(false);
     assert!(!keep4, "should strip when value is not bool");
 }
+
+#[test]
+fn parses_docker_volume_type() {
+    let file = write_json(
+        r#"{
+            "databases": [
+                {
+                    "name": "uploads",
+                    "type": "docker-volume",
+                    "volume_name": "myapp_uploads",
+                    "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681",
+                    "container_name": "myapp"
+                }
+            ]
+        }"#,
+    );
+
+    let service = ConfigService::new(test_context());
+    let cfg = service.load(Some(file.path().to_str().unwrap())).unwrap();
+
+    assert_eq!(cfg.databases[0].db_type.as_str(), "docker-volume");
+    assert_eq!(cfg.databases[0].volume_name, "myapp_uploads");
+    assert_eq!(cfg.databases[0].container_name.as_deref(), Some("myapp"));
+}
+
+#[test]
+fn docker_volume_container_name_optional() {
+    let file = write_json(
+        r#"{
+            "databases": [
+                {
+                    "name": "uploads",
+                    "type": "docker-volume",
+                    "volume_name": "myapp_uploads",
+                    "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681"
+                }
+            ]
+        }"#,
+    );
+
+    let service = ConfigService::new(test_context());
+    let cfg = service.load(Some(file.path().to_str().unwrap())).unwrap();
+
+    assert_eq!(cfg.databases[0].volume_name, "myapp_uploads");
+    assert!(cfg.databases[0].container_name.is_none());
+}
+
+#[test]
+fn docker_volume_requires_volume_name() {
+    let file = write_json(
+        r#"{
+            "databases": [
+                {
+                    "name": "uploads",
+                    "type": "docker-volume",
+                    "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681"
+                }
+            ]
+        }"#,
+    );
+
+    let service = ConfigService::new(test_context());
+    let err = service.load(Some(file.path().to_str().unwrap())).unwrap_err();
+    assert!(err.contains("volume_name"), "error was: {err}");
+}

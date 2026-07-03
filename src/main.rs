@@ -22,6 +22,16 @@ async fn main() {
         eprintln!("Failed to clean locks on startup: {:?}", e);
     }
 
+    // Best-effort cleanup of ephemeral helper containers orphaned by a crash.
+    match crate::domain::docker_volume::docker::client() {
+        Ok(docker) => match crate::domain::docker_volume::docker::sweep_ephemeral(&docker).await {
+            Ok(n) if n > 0 => tracing::info!("Removed {n} orphaned ephemeral helper container(s)"),
+            Ok(_) => {}
+            Err(e) => tracing::warn!("Ephemeral helper sweep failed: {e}"),
+        },
+        Err(e) => tracing::debug!("Docker socket unavailable, skipping helper sweep: {e}"),
+    }
+
     tokio::join!(ping_server(), async {
         let conn = redis_client::redis_connection().await;
         scheduler::scheduler_loop(conn).await;

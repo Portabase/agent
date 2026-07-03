@@ -55,6 +55,8 @@ fn make_config(host: String, port: u16, database: &str, generated_id: &str) -> D
         generated_id: generated_id.to_string(),
         path: "".to_string(),
         max_packet_size: "".to_string(),
+        volume_name: "".to_string(),
+        container_name: None,
         options: std::collections::HashMap::new(),
     }
 }

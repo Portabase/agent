@@ -71,3 +71,57 @@ async fn decompress_multiple_files() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn compress_tar_is_not_double_wrapped() -> Result<()> {
+    use tokio_tar::Builder as TarBuilder;
+
+    let tmp = tempdir()?;
+    // Build a real tar containing a single entry "payload.txt".
+    let payload = tmp.path().join("payload.txt");
+    write(&payload, b"volume-bytes").await?;
+    let tar_path = tmp.path().join("volume.tar");
+    {
+        let f = tokio::fs::File::create(&tar_path).await?;
+        let mut b = TarBuilder::new(f);
+        b.append_path_with_name(&payload, "payload.txt").await?;
+        b.finish().await?;
+    }
+
+    let result = compress_to_tar_gz_large(
+        &tar_path,
+        std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()),
+    )
+    .await?;
+    assert_eq!(result.compressed_path, tmp.path().join("volume.tar.gz"));
+
+    // Decompress and confirm the FIRST tar entry is "payload.txt" — i.e. our tar
+    // was gzipped directly, not wrapped inside another tar named "volume.tar".
+    let out = tmp.path().join("out");
+    tokio::fs::create_dir_all(&out).await?;
+    let files = decompress_large_tar_gz(&result.compressed_path, &out).await?;
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].file_name().unwrap(), "payload.txt");
+    assert_eq!(read(&files[0]).await?, b"volume-bytes");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn gunzip_to_file_restores_tar_byte_for_byte() -> Result<()> {
+    use crate::utils::compress::gunzip_to_file;
+
+    let tmp = tempdir()?;
+    let tar_path = tmp.path().join("input.tar");
+    let original: Vec<u8> = (0u32..50_000).map(|n| (n % 256) as u8).collect();
+    write(&tar_path, &original).await?;
+
+    let gz = compress_to_tar_gz_large(&tar_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await?;
+
+    let out_tar = tmp.path().join("out.tar");
+    gunzip_to_file(&gz.compressed_path, &out_tar).await?;
+
+    assert_eq!(read(&out_tar).await?, original);
+
+    Ok(())
+}

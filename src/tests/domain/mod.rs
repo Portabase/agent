@@ -7,3 +7,4 @@ mod redis;
 mod valkey;
 mod firebird;
 mod mssql;
+mod docker_volume;
