@@ -28,6 +28,7 @@ impl StorageProvider for GoogleCloudStorageProvider {
         _method: BackupMethod,
         storage: &DatabaseStorage,
         encrypt: Option<bool>,
+        _backup_storage_id: &str,
     ) -> UploadResult {
         let Some(file_path) = result.backup_file else {
             return UploadResult {

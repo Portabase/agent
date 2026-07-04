@@ -104,6 +104,7 @@ impl BackupService {
                         method,
                         &storage,
                         Some(encrypt),
+                        &backup_storage_id,
                     )
                     .await;
 
