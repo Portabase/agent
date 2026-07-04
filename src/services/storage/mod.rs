@@ -22,6 +22,7 @@ pub trait StorageProvider: Send + Sync {
         method: BackupMethod,
         config: &DatabaseStorage,
         encrypt: Option<bool>,
+        backup_storage_id: &str,
     ) -> UploadResult;
 }
 

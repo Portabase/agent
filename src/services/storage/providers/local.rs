@@ -23,6 +23,7 @@ impl StorageProvider for LocalProvider {
         method: BackupMethod,
         storage: &DatabaseStorage,
         encrypt: Option<bool>,
+        backup_storage_id: &str,
     ) -> UploadResult {
         let Some(file_path) = result.backup_file else {
             return UploadResult {
@@ -81,6 +82,10 @@ impl StorageProvider for LocalProvider {
         extra_headers.insert(
             "X-Generated-Id",
             HeaderValue::from_str(&result.generated_id).unwrap(),
+        );
+        extra_headers.insert(
+            "X-Backup-Storage-Id",
+            HeaderValue::from_str(backup_storage_id).unwrap(),
         );
         extra_headers.insert("X-Status", HeaderValue::from_str(&result.status).unwrap());
         extra_headers.insert(
