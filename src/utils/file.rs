@@ -175,3 +175,32 @@ pub async fn decrypt_file_stream_gcm(
     writer.flush().await?;
     Ok(())
 }
+
+/// Decrypt a base64 `nonce(12) ‖ ciphertext ‖ tag(16)` AES-256-GCM envelope
+/// using the raw master key (STANDARD base64). Returns the plaintext bytes.
+pub fn decrypt_json_gcm(ciphertext_b64: &str, master_key_b64: &str) -> Result<Vec<u8>> {
+    let master_key_bytes = general_purpose::STANDARD
+        .decode(master_key_b64)
+        .map_err(|_| anyhow::anyhow!("Invalid base64 master key"))?;
+
+    let data = general_purpose::STANDARD
+        .decode(ciphertext_b64)
+        .map_err(|_| anyhow::anyhow!("Invalid base64 ciphertext"))?;
+
+    if data.len() < 12 + 16 {
+        return Err(anyhow::anyhow!("Ciphertext too short"));
+    }
+
+    let key = Key::<Aes256Gcm>::try_from(master_key_bytes.as_slice())
+        .map_err(|_| anyhow::anyhow!("Invalid AES-256 key length"))?;
+    let cipher = Aes256Gcm::new(&key);
+
+    let nonce = Nonce::try_from(&data[..12])
+        .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
+
+    let plaintext = cipher
+        .decrypt(&nonce, &data[12..])
+        .map_err(|e| anyhow::anyhow!("AES-GCM decryption failed: {:?}", e))?;
+
+    Ok(plaintext)
+}

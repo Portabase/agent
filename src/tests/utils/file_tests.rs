@@ -86,3 +86,27 @@ async fn encrypt_stream_starts_with_json_header_line() -> Result<()> {
 
     Ok(())
 }
+
+use crate::utils::file::decrypt_json_gcm;
+
+const VECTOR_KEY_B64: &str = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=";
+const VECTOR_ENVELOPE_B64: &str = "AQIDBAUGBwgJCgsM4AfK9w7I2A7UDzMvpJaScfnUYAGDZgPWT5Chrp1pdzMPPQVpNjb6ZEiFea9YdWVFv1UEo9RGmmf+zYUv4I3gE4SU/SBrMwkCHEpJGJOzJtK3tSpJmzLVX3+7EeUNwp4qjZheL8p0pe1x6dRUtx3JmLjz1W/RhWd6zuReDItv6+0jg4CaPOHvFXBreaGNCTRslxbImD+lFBoEOvw8lsbH";
+const VECTOR_PLAINTEXT: &str = "[{\"id\":\"11111111-1111-1111-1111-111111111111\",\"config\":{\"bucket\":\"my-bucket\",\"accessKeyId\":\"AKIA\",\"secretAccessKey\":\"s3cr3t\"},\"provider\":\"s3\"}]";
+
+#[test]
+fn decrypt_json_gcm_decrypts_node_vector() {
+    let plaintext = decrypt_json_gcm(VECTOR_ENVELOPE_B64, VECTOR_KEY_B64).unwrap();
+    assert_eq!(String::from_utf8(plaintext).unwrap(), VECTOR_PLAINTEXT);
+}
+
+#[test]
+fn decrypt_json_gcm_rejects_wrong_key() {
+    let wrong_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    assert!(decrypt_json_gcm(VECTOR_ENVELOPE_B64, wrong_key).is_err());
+}
+
+#[test]
+fn decrypt_json_gcm_rejects_short_input() {
+    // 8 bytes base64 -> shorter than nonce(12)+tag(16)
+    assert!(decrypt_json_gcm("AAAAAAAAAAA=", VECTOR_KEY_B64).is_err());
+}
