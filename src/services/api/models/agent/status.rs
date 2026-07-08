@@ -31,7 +31,12 @@ pub struct DatabaseStatus {
     pub dbms: String,
     #[serde(rename = "generatedId")]
     pub generated_id: String,
+    #[serde(default)]
     pub storages: Vec<DatabaseStorage>,
+    #[serde(default)]
+    pub storages_encrypted: Option<bool>,
+    #[serde(default)]
+    pub storages_ciphertext: Option<String>,
     pub encrypt: bool,
     pub data: DatabaseData,
 }

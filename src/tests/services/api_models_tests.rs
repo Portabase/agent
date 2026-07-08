@@ -2,7 +2,7 @@ use serde_json::json;
 
 use crate::services::api::models::agent::backup::{BackupResponse, BackupUploadResponse};
 use crate::services::api::models::agent::restore::ResultRestoreResponse;
-use crate::services::api::models::agent::status::PingResult;
+use crate::services::api::models::agent::status::{DatabaseStatus, PingResult};
 
 #[test]
 fn backup_response_deserializes_nested_backup_id() {
@@ -109,4 +109,42 @@ fn ping_result_deserializes_and_normalizes_storage_config_keys() {
     assert!(!result.databases[0].data.restore.action);
     assert!(result.databases[0].data.restore.file.is_none());
     assert!(result.databases[0].data.restore.meta_file.is_none());
+}
+
+#[test]
+fn database_status_legacy_plaintext_storages() {
+    let status: DatabaseStatus = serde_json::from_value(json!({
+        "dbms": "postgres",
+        "generatedId": "gen-1",
+        "storages": [ { "id": "s1", "config": { "bucket": "b" }, "provider": "s3" } ],
+        "encrypt": true,
+        "data": {
+            "backup": { "action": false, "cron": null },
+            "restore": { "action": false, "file": null, "metaFile": null, "size": null }
+        }
+    })).unwrap();
+
+    assert_eq!(status.storages.len(), 1);
+    assert_eq!(status.storages_encrypted, None);
+    assert!(status.storages_ciphertext.is_none());
+}
+
+#[test]
+fn database_status_encrypted_envelope() {
+    let status: DatabaseStatus = serde_json::from_value(json!({
+        "dbms": "postgres",
+        "generatedId": "gen-1",
+        "storages": [],
+        "storages_encrypted": true,
+        "storages_ciphertext": "AQIDBA==",
+        "encrypt": true,
+        "data": {
+            "backup": { "action": true, "cron": null },
+            "restore": { "action": false, "file": null, "metaFile": null, "size": null }
+        }
+    })).unwrap();
+
+    assert!(status.storages.is_empty());
+    assert_eq!(status.storages_encrypted, Some(true));
+    assert_eq!(status.storages_ciphertext.as_deref(), Some("AQIDBA=="));
 }
