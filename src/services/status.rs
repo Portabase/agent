@@ -3,8 +3,10 @@
 use crate::core::context::Context;
 use crate::services::api::endpoints::status::DatabasePayload;
 use crate::services::api::models::agent::status::PingResult;
+use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::config::DatabaseConfig;
 use crate::settings::CONFIG;
+use crate::utils::file::decrypt_json_gcm;
 use reqwest::Client;
 use std::error::Error;
 use std::sync::Arc;
@@ -45,12 +47,29 @@ impl StatusService {
         ).await?;
 
         let version_str = CONFIG.app_version.as_str();
-        let result = self
+        let mut result = self
             .ctx
             .api
             .agent_status(&edge_key.agent_id, &version_str, databases_payload)
             .await?
             .unwrap();
+
+        for db in result.databases.iter_mut() {
+            if db.storages_encrypted == Some(true) {
+                let ciphertext = db
+                    .storages_ciphertext
+                    .as_deref()
+                    .ok_or("storages_encrypted set but storages_ciphertext missing")?;
+
+                let plaintext =
+                    decrypt_json_gcm(ciphertext, &edge_key.master_key_b64)
+                        .map_err(|e| format!("Failed to decrypt storages: {e}"))?;
+
+                db.storages = serde_json::from_slice::<Vec<DatabaseStorage>>(&plaintext)
+                    .map_err(|e| format!("Failed to parse decrypted storages: {e}"))?;
+            }
+        }
+
         Ok(result)
     }
 }
