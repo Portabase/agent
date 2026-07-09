@@ -48,8 +48,17 @@ pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
                         task_clone.task, e
                     );
                 }
-                let next_ts = next_run_timestamp(&task_clone.cron);
-                let _: () = conn_clone.zadd(SCHEDULE_KEY, &key, next_ts).await.unwrap();
+                match next_run_timestamp(&task_clone.cron) {
+                    Some(next_ts) => {
+                        let _: () = conn_clone.zadd(SCHEDULE_KEY, &key, next_ts).await.unwrap();
+                    }
+                    None => {
+                        error!(
+                            "Invalid cron expression for task={}: {}",
+                            task_clone.task, task_clone.cron
+                        );
+                    }
+                }
             });
         }
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
