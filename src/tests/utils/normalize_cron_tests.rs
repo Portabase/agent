@@ -54,6 +54,21 @@ fn normalize_converts_unix_saturday_to_crate_dow() {
 }
 
 #[test]
+fn normalized_sunday_actually_fires_on_sunday() {
+    use chrono::{Datelike, Timelike, Weekday};
+
+    let normalized = normalize_cron("00 03 * * 0");
+    assert_eq!(normalized, "0 00 03 * * 1");
+
+    let schedule = Schedule::from_str(&normalized).unwrap();
+    let next = schedule.upcoming(chrono::Utc).next().unwrap();
+
+    assert_eq!(next.weekday(), Weekday::Sun);
+    assert_eq!(next.hour(), 3);
+    assert_eq!(next.minute(), 0);
+}
+
+#[test]
 fn normalize_converts_unix_dow_range() {
     assert_eq!(normalize_cron("00 06 * * 0-4"), "0 00 06 * * 1-5");
 }
