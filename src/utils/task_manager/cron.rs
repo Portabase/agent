@@ -10,9 +10,9 @@ use std::str::FromStr;
 use tracing::debug;
 use tracing::info;
 
-pub fn next_run_timestamp(expr: &str) -> i64 {
-    let schedule = Schedule::from_str(expr).unwrap();
-    schedule.upcoming(Local).next().unwrap().timestamp()
+pub fn next_run_timestamp(expr: &str) -> Option<i64> {
+    let schedule = Schedule::from_str(expr).ok()?;
+    Some(schedule.upcoming(Local).next()?.timestamp())
 }
 
 pub async fn check_and_update_cron(
@@ -50,24 +50,21 @@ pub async fn check_and_update_cron(
                 let metadata_changed = stored.metadata != metadata;
 
                 if cron_changed || args_changed || metadata_changed {
-                    upsert_task(conn, &task_name, task, &cron, args.clone(), metadata)
-                        .await
-                        .unwrap_or_else(|e| {
-                            tracing::error!("Failed to update task {}: {:?}", task_name, e);
-                        });
-
-                    info!(
-                        "Task {} updated (cron: {}, args: {}, metadata: {})",
-                        task_name, cron_changed, args_changed, metadata_changed
-                    );
+                    match upsert_task(conn, &task_name, task, &cron, args.clone(), metadata).await {
+                        Ok(()) => info!(
+                            "Task {} updated (cron: {}, args: {}, metadata: {})",
+                            task_name, cron_changed, args_changed, metadata_changed
+                        ),
+                        Err(e) => {
+                            tracing::error!("Failed to update task {}: {:?}", task_name, e)
+                        }
+                    }
                 }
             } else {
-                upsert_task(conn, &task_name, task, &cron, args, metadata)
-                    .await
-                    .unwrap_or_else(|e| {
-                        tracing::error!("Failed to create task {}: {:?}", task_name, e);
-                    });
-                info!("Task {} created", task_name);
+                match upsert_task(conn, &task_name, task, &cron, args, metadata).await {
+                    Ok(()) => info!("Task {} created", task_name),
+                    Err(e) => tracing::error!("Failed to create task {}: {:?}", task_name, e),
+                }
             }
         }
     }
