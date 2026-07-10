@@ -16,7 +16,16 @@ pub async fn upsert_task(
     metadata: Option<Value>,
 ) -> redis::RedisResult<()> {
     let key = format!("redbeat:{}", name);
-    let next_ts = next_run_timestamp(cron);
+    let next_ts = match next_run_timestamp(cron) {
+        Some(ts) => ts,
+        None => {
+            return Err(redis::RedisError::from((
+                redis::ErrorKind::Client,
+                "invalid cron expression",
+                cron.to_string(),
+            )));
+        }
+    };
 
     let entry = PeriodicTask {
         task: task.to_string(),
