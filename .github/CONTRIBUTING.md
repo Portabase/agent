@@ -26,11 +26,16 @@ Please take a moment to review this guide. It will help you understand how to co
 
 2. **Clone the repository**
    ```bash
-   git clone https://github.com/Portabase/agent-rust.git
+   git clone https://github.com/Portabase/agent.git
    ```
 
-3. **Set up the development environment**  
-   Follow the steps in the `README.md` to install dependencies and configure the project.
+3. **Set up the development environment**<br/>
+  You need to have Docker installed in order to run the tests.
+  All builds complete within Docker.<br/>
+  At runtime, the agent built within the container will decode the EDGE_KEY for the Portabase server to poll and send information to; you will want to create an .env file off the included example if you are not using the full E2E tests.<br/><br/>
+  Run the agent against seeded DBs:<br/>
+  just up          # creates portabase_network, starts DBs + the agent (cargo watch -x run)                                                                                                                                                                                                                                                                                                                                       
+  just seed-all    # load sample data into each DB<br/><br/>
 
 4. **Create a branch**  
    Use the feature branch to work on changes.

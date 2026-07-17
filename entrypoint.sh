@@ -42,7 +42,10 @@ redis-server --port $REDIS_PORT --daemonize yes
 echo "[entrypoint] Waiting for Redis to be ready..."
 MAX_RETRIES=20
 COUNT=0
-until redis-cli -h localhost -p "$REDIS_PORT" ping >/dev/null 2>&1 ; do
+# Use 127.0.0.1 rather than "localhost": some compose setups remap "localhost"
+# (e.g. extra_hosts localhost:host-gateway) so it no longer points at the
+# container's own loopback where this Redis is bound.
+until redis-cli -h 127.0.0.1 -p "$REDIS_PORT" ping >/dev/null 2>&1 ; do
     COUNT=$((COUNT+1))
     if [ $COUNT -ge $MAX_RETRIES ]; then
         echo "[ERROR] Redis did not start after $MAX_RETRIES attempts"

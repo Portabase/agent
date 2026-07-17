@@ -19,15 +19,28 @@ pub fn client() -> Result<Docker> {
 }
 
 pub fn parse_container_id(mountinfo: &str, cgroup: &str) -> Option<String> {
+    // Markers that precede the 64-hex container id, by runtime:
+    //   overlay-containers/<id>  Podman rootless (mountinfo: .../overlay-containers/<id>/userdata)
+    //   libpod-<id>              Podman (cgroup: .../libpod-<id>.scope)
+    //   /containers/<id>         Docker (mountinfo: /var/lib/docker/containers/<id>/...)
+    //   /docker/<id>             Docker (cgroup v1: /docker/<id>)
+    // overlay-containers/ is tried before /containers/ so the Podman path (which
+    // also contains a "/containers/" substring) resolves to the real id.
+    const MARKERS: [&str; 4] = ["overlay-containers/", "libpod-", "/containers/", "/docker/"];
     for src in [mountinfo, cgroup] {
         for line in src.lines() {
-            for marker in ["/containers/", "/docker/"] {
-                if let Some(idx) = line.find(marker) {
+            for marker in MARKERS {
+                let mut search_from = 0;
+                while let Some(rel) = line[search_from..].find(marker) {
+                    let idx = search_from + rel;
                     let rest = &line[idx + marker.len()..];
                     let id: String = rest.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
                     if id.len() >= 64 {
                         return Some(id[..64].to_string());
                     }
+                    // This occurrence didn't yield an id (e.g. a "/containers/"
+                    // substring that isn't the id); keep scanning the same line.
+                    search_from = idx + marker.len();
                 }
             }
         }
