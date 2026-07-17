@@ -23,6 +23,29 @@ fn parse_container_id_none_on_cgroup_v2() {
     assert_eq!(parse_container_id("", "0::/\n"), None);
 }
 
+#[test]
+fn parse_container_id_from_podman_rootless_mountinfo() {
+    // Rootless Podman: cgroup is "0::/" (no id); the id lives in mountinfo under
+    // overlay-containers/. The line also contains a "/containers/" substring
+    // (…/share/containers/storage/…) that must not be mistaken for the id.
+    let id = "c".repeat(64);
+    let mountinfo = format!(
+        "1234 1000 0:60 / /vol rw,relatime shared:1 - overlay overlay \
+         rw,lowerdir=/home/u/.local/share/containers/storage/overlay/L1/diff,\
+         upperdir=/home/u/.local/share/containers/storage/overlay-containers/{id}/userdata/upper"
+    );
+    assert_eq!(parse_container_id(&mountinfo, "0::/\n"), Some(id));
+}
+
+#[test]
+fn parse_container_id_from_podman_libpod_cgroup() {
+    let id = "d".repeat(64);
+    let cgroup = format!(
+        "0::/user.slice/user-1000.slice/user@1000.service/user.slice/libpod-{id}.scope/container\n"
+    );
+    assert_eq!(parse_container_id("", &cgroup), Some(id));
+}
+
 #[tokio::test]
 async fn docker_volume_ping_true_for_existing_volume() {
     use crate::domain::docker_volume::docker::client;
