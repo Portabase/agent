@@ -47,8 +47,14 @@ pub fn full_file_name(encrypt: bool) -> String {
     }
 }
 
-pub fn full_file_path(file_name: &String) -> String {
-    format!("backups/{}/{}", Utc::now().format("%Y-%m-%d"), file_name)
+pub fn full_file_path(file_name: &String, prefix: Option<&str>) -> String {
+    let prefix = prefix
+        .map(str::trim)
+        .map(|prefix| prefix.trim_matches(char::from(47)))
+        .filter(|prefix| !prefix.is_empty())
+        .unwrap_or("backups");
+
+    format!("{}/{}/{}", prefix, Utc::now().format("%Y-%m-%d"), file_name)
 }
 
 const CHUNK_SIZE: usize = 16 * 1024 * 1024;

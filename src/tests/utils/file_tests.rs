@@ -30,12 +30,16 @@ fn full_file_name_matches_expected_suffix() {
 }
 
 #[test]
-fn full_file_path_prefixes_backups_directory_and_date() {
+fn full_file_path_uses_default_or_configured_prefix() {
     let file_name = "backup.tar.gz".to_string();
-    let full_path = full_file_path(&file_name);
 
-    assert!(full_path.starts_with("backups/"));
-    assert!(full_path.ends_with("/backup.tar.gz"));
+    let default_path = full_file_path(&file_name, None);
+    assert!(default_path.starts_with("backups/"));
+    assert!(default_path.ends_with("/backup.tar.gz"));
+
+    let configured_path = full_file_path(&file_name, Some("/portabase/"));
+    assert!(configured_path.starts_with("portabase/"));
+    assert!(configured_path.ends_with("/backup.tar.gz"));
 }
 
 #[tokio::test]
