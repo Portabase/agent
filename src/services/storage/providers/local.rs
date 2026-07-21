@@ -38,7 +38,7 @@ impl StorageProvider for LocalProvider {
         let encrypt = encrypt.unwrap_or(false);
 
         let file_name = full_file_name(encrypt);
-        let remote_file_path = full_file_path(&file_name, storage.prefix.as_deref());
+        let remote_file_path = full_file_path(&file_name, storage.folder_name.as_deref());
 
         let total_size = match fs::metadata(&file_path).await {
             Ok(meta) => meta.len(),

@@ -15,11 +15,13 @@ services:
 #      - cargo-target:/app/target
       - databases_sqlite-data:/sqlite-data/workspace/data
       - ./scripts/sqlite/test-db:/sqlite-data-2/workspace/data
+#      - /bigdisk:/scratch
     environment:
       APP_ENV: development
       LOG: debug
       TZ: "Europe/Paris"
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiZWZhYTM0YTQtZDY1NC00OGQ3LTgwNDYtNjRkMWExYTA1M2FlIiwibWFzdGVyS2V5QjY0IjoiMUh0djdtWCtYVkJxL0IzUEV2WDlZZjlQeUdVZW5oRHlXemo5THRqNW90WT0ifQ=="
+#      TMPDIR: /scratch
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiNTljYzRjYTUtOTAyNy00ZThiLTk1NDktMjAzOTI3ZDVjNmUyIiwibWFzdGVyS2V5QjY0IjoiMUh0djdtWCtYVkJxL0IzUEV2WDlZZjlQeUdVZW5oRHlXemo5THRqNW90WT0ifQ=="
       #CHUNK_SIZE_MB: "1"
       #POOLING: 1
       #DATABASES_CONFIG_FILE: "config.toml"

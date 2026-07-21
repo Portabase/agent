@@ -85,7 +85,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         info!("Uploading file {}", file_name);
 
-        let remote_file_path = full_file_path(&file_name, storage.prefix.as_deref());
+        let remote_file_path = full_file_path(&file_name, storage.folder_name.as_deref());
 
         match upload_stream_to_google_drive(
             &config,

@@ -30,7 +30,7 @@ fn full_file_name_matches_expected_suffix() {
 }
 
 #[test]
-fn full_file_path_uses_default_or_configured_prefix() {
+fn full_file_path_uses_default_or_configured_folder_name() {
     let file_name = "backup.tar.gz".to_string();
 
     let default_path = full_file_path(&file_name, None);

@@ -148,7 +148,7 @@ impl StorageProvider for S3Provider {
         info!("Uploading file {}", file_name);
 
         let bucket = &config.bucket_name;
-        let remote_file_path = full_file_path(&file_name, storage.prefix.as_deref());
+        let remote_file_path = full_file_path(&file_name, storage.folder_name.as_deref());
         info!("S3 key {:}", remote_file_path);
         info!(
             "Starting multipart upload to s3://{}/{}",
