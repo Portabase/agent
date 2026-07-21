@@ -85,7 +85,7 @@ impl StorageProvider for GoogleCloudStorageProvider {
 
         let file_name = full_file_name(encrypt);
         info!("Uploading file {}", file_name);
-        let remote_file_path = full_file_path(&file_name);
+        let remote_file_path = full_file_path(&file_name, storage.folder_name.as_deref());
 
         let client = match build_client(&config).await {
             Ok(c) => c,

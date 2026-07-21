@@ -95,7 +95,7 @@ impl StorageProvider for AzureBlobProvider {
         };
 
         let file_name = full_file_name(encrypt);
-        let remote_file_path = full_file_path(&file_name);
+        let remote_file_path = full_file_path(&file_name, storage.folder_name.as_deref());
         info!(
             "Starting block upload to azure blob {}/{}",
             config.container_name, remote_file_path
