@@ -122,7 +122,6 @@ jobs:
     needs:
       - create-release
       - publish-docker
-      - publish-docker-ghcr
       - publish-helm
     runs-on: ubuntu-latest
     outputs:
