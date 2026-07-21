@@ -24,6 +24,8 @@ pub struct DatabaseStorage {
     #[serde(deserialize_with = "deserialize_snake_case")]
     pub config: Value,
     pub provider: String,
+    #[serde(default)]
+    pub prefix: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
