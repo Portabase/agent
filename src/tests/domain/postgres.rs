@@ -383,3 +383,20 @@ mod select_pg_path_tests {
         }
     }
 }
+
+mod quoting_tests {
+    use crate::domain::postgres::connection::{quote_ident, quote_literal};
+
+    #[test]
+    fn quote_ident_escapes_double_quotes() {
+        assert_eq!(quote_ident("devdb"), "\"devdb\"");
+        assert_eq!(quote_ident("a\"b"), "\"a\"\"b\"");
+        assert_eq!(quote_ident("drop\"; --"), "\"drop\"\"; --\"");
+    }
+
+    #[test]
+    fn quote_literal_escapes_single_quotes() {
+        assert_eq!(quote_literal("UTF8"), "'UTF8'");
+        assert_eq!(quote_literal("O'Brien"), "'O''Brien'");
+    }
+}

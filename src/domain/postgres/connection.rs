@@ -122,6 +122,14 @@ pub(crate) fn pg_restore_binary_name() -> &'static str {
     }
 }
 
+pub(crate) fn quote_ident(s: &str) -> String {
+    format!("\"{}\"", s.replace('"', "\"\""))
+}
+
+pub(crate) fn quote_literal(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
 pub(crate) fn pg_dump_exists_in(dir: &std::path::Path) -> bool {
     dir.join(pg_dump_binary_name()).is_file()
 }
