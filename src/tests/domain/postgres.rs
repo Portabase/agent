@@ -708,6 +708,71 @@ async fn drop_database_force_wins_over_open_connection() {
     assert!(result.is_ok(), "restore::run failed: {:?}", result);
 }
 
+#[test]
+fn sniff_format_detects_custom_and_gzip() {
+    use crate::domain::postgres::connection::sniff_format;
+
+    let dir = TempDir::new().unwrap();
+    let fc = dir.path().join("a.dump");
+    std::fs::write(&fc, b"PGDMP\x01\x0e\x00").unwrap();
+    assert_eq!(sniff_format(&fc).unwrap(), PostgresDumpFormat::Fc);
+
+    let fd = dir.path().join("b.gz");
+    std::fs::write(&fd, [0x1f, 0x8b, 0x08, 0x00]).unwrap();
+    assert_eq!(sniff_format(&fd).unwrap(), PostgresDumpFormat::Fd);
+
+    let bad = dir.path().join("c.bin");
+    std::fs::write(&bad, b"not a dump").unwrap();
+    assert!(sniff_format(&bad).is_err());
+}
+
+#[tokio::test]
+async fn corrupt_archive_leaves_database_untouched() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE TABLE must_survive(id int);")
+        .await
+        .unwrap();
+
+    let mut cfg = config.clone();
+    cfg.options
+        .insert("clean_mode".into(), serde_json::json!("drop_schemas"));
+
+    let dir = TempDir::new().unwrap();
+    let broken_file = dir.path().join("broken.tar.gz");
+    std::fs::write(&broken_file, [0x1f, 0x8b, 0x08, 0x00, 0xde, 0xad, 0xbe, 0xef]).unwrap();
+
+    let result = crate::domain::postgres::restore::run(
+        cfg.clone(),
+        PostgresDumpFormat::Fd,
+        broken_file,
+        pg_dump_env(&cfg),
+        Arc::new(JobLogger::new()),
+    )
+    .await;
+
+    assert!(result.is_err(), "corrupt archive must be rejected before any destructive step");
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    let n: i64 = client
+        .query_one(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'must_survive'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(n, 1, "corrupt archive must never trigger the schema drop");
+}
+
 mod select_pg_path_tests {
     use crate::domain::postgres::connection::{
         pg_dump_binary_name, pg_dump_exists_in, pg_dumpall_binary_name, pg_restore_binary_name,

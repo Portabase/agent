@@ -40,6 +40,12 @@ pub(crate) fn prepare_archive(
     pg_restore: &Path,
     logger: &JobLogger,
 ) -> Result<PreparedArchive> {
+    let sniffed = crate::domain::postgres::connection::sniff_format(restore_file)?;
+    if sniffed != format {
+        logger.log("warn", format!("Declared format {:?} != sniffed {:?}; using sniffed", format, sniffed));
+    }
+    let format = sniffed;
+
     let (path, tmp) = match format {
         PostgresDumpFormat::Fc => (restore_file.to_path_buf(), None),
         PostgresDumpFormat::Fd => {

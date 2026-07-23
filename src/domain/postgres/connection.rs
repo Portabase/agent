@@ -288,6 +288,21 @@ pub async fn drop_and_recreate_database(cfg: &DatabaseConfig) -> Result<()> {
     Ok(())
 }
 
+pub fn sniff_format(restore_file: &Path) -> Result<PostgresDumpFormat> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(restore_file)?;
+    let mut magic = [0u8; 5];
+    let n = f.read(&mut magic)?;
+    let head = &magic[..n];
+    if head.starts_with(b"PGDMP") {
+        Ok(PostgresDumpFormat::Fc)
+    } else if head.starts_with(&[0x1f, 0x8b]) {
+        Ok(PostgresDumpFormat::Fd)
+    } else {
+        anyhow::bail!("Unrecognized dump format for {:?}", restore_file)
+    }
+}
+
 pub fn detect_format_from_file(restore_file: &Path) -> PostgresDumpFormat {
     match restore_file.extension().and_then(|e| e.to_str()) {
         Some("dump") => PostgresDumpFormat::Fc,
