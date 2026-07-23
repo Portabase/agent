@@ -325,6 +325,193 @@ async fn drop_all_schemas_removes_user_schema() {
     assert_eq!(n, 0);
 }
 
+#[tokio::test]
+async fn restore_drop_schemas_removes_extra_objects() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE TABLE base_t(id int);")
+        .await
+        .unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let dump_file = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE TABLE orphan_only_here(id int);")
+        .await
+        .unwrap();
+
+    let mut cfg = config.clone();
+    cfg.options
+        .insert("clean_mode".into(), serde_json::json!("drop_schemas"));
+
+    let format = crate::domain::postgres::connection::detect_format_from_file(&dump_file);
+
+    let result = crate::domain::postgres::restore::run(
+        cfg.clone(),
+        format,
+        dump_file,
+        pg_dump_env(&cfg),
+        Arc::new(JobLogger::new()),
+    )
+    .await;
+
+    assert!(result.is_ok(), "restore::run failed: {:?}", result);
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+
+    let n: i64 = client
+        .query_one(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'orphan_only_here'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(n, 0);
+
+    let n: i64 = client
+        .query_one(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'base_t'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(n, 1);
+}
+
+#[tokio::test]
+async fn restore_clean_leaves_divergent_object() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE TABLE base_t(id int);")
+        .await
+        .unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let dump_file = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE TABLE survives_clean(id int);")
+        .await
+        .unwrap();
+
+    let mut cfg = config.clone();
+    cfg.options
+        .insert("clean_mode".into(), serde_json::json!("clean"));
+
+    let format = crate::domain::postgres::connection::detect_format_from_file(&dump_file);
+
+    let result = crate::domain::postgres::restore::run(
+        cfg.clone(),
+        format,
+        dump_file,
+        pg_dump_env(&cfg),
+        Arc::new(JobLogger::new()),
+    )
+    .await;
+
+    assert!(result.is_ok(), "restore::run failed: {:?}", result);
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+
+    let n: i64 = client
+        .query_one(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'survives_clean'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(n, 1, "clean mode is not a reset; divergent object survives");
+}
+
+#[tokio::test]
+async fn restore_unknown_clean_mode_falls_back() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let dump_file = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    let mut cfg = config.clone();
+    cfg.options
+        .insert("clean_mode".into(), serde_json::json!("wat"));
+
+    let format = crate::domain::postgres::connection::detect_format_from_file(&dump_file);
+
+    let logger = Arc::new(JobLogger::new());
+
+    let result = crate::domain::postgres::restore::run(
+        cfg.clone(),
+        format,
+        dump_file,
+        pg_dump_env(&cfg),
+        logger.clone(),
+    )
+    .await;
+
+    assert!(result.is_ok(), "restore::run failed: {:?}", result);
+
+    let entries = Arc::try_unwrap(logger)
+        .expect("logger should have a single owner after run() completes")
+        .into_entries();
+    assert!(entries
+        .iter()
+        .any(|e| e.message.contains("Unknown clean_mode 'wat'")));
+}
+
 mod select_pg_path_tests {
     use crate::domain::postgres::connection::{
         pg_dump_binary_name, pg_dump_exists_in, pg_dumpall_binary_name, pg_restore_binary_name,

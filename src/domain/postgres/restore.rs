@@ -5,7 +5,11 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::connection::{pg_restore_binary_name, select_pg_path, server_version, terminate_connections};
+use super::clean_mode::RestoreCleanMode;
+use super::connection::{
+    drop_all_schemas, pg_restore_binary_name, recreate_public_schema, select_pg_path,
+    server_version, terminate_connections,
+};
 use super::format::PostgresDumpFormat;
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
@@ -141,20 +145,39 @@ pub async fn run(
             logger.log("info", format!("Stripping ownership and privileges for {} (--no-owner --no-privileges)", cfg.name));
         }
 
+        let (mode, bad_value) = RestoreCleanMode::from_config(&cfg);
+        if let Some(v) = bad_value {
+            logger.log("warn", format!("Unknown clean_mode '{}' for {}, falling back to 'clean'", v, cfg.name));
+        }
+
         let prepared = prepare_archive(format, &restore_file, &pg_restore, &logger)?;
 
-        if let Err(e) = handle.block_on(terminate_connections(&cfg)) {
-            logger.log("error", format!("Failed to terminate connections for {}: {:?}", cfg.name, e));
-            return Err(e.into());
+        match mode {
+            RestoreCleanMode::DropSchemas => {
+                handle.block_on(terminate_connections(&cfg))?;
+                let owner = cfg.username.clone();
+                let dropped = handle.block_on(drop_all_schemas(&cfg))?;
+                logger.log("warn", format!("clean_mode=drop_schemas dropped schemas {:?} in {}", dropped, cfg.database));
+                if !toc_creates_public_schema(prepared.toc()) {
+                    handle.block_on(recreate_public_schema(&cfg, &owner))?;
+                }
+            }
+            RestoreCleanMode::DropDatabase => {
+                anyhow::bail!("clean_mode=drop_database not yet available");
+            }
+            RestoreCleanMode::Clean | RestoreCleanMode::None => {
+                handle.block_on(terminate_connections(&cfg))?;
+            }
         }
-        logger.log("info", format!("Connections terminated for database {}", cfg.name));
 
         let mut cmd = Command::new(&pg_restore);
         if !keep_ownership {
             cmd.args(["--no-owner", "--no-privileges"]);
         }
-        cmd.args(["--clean", "--if-exists"])
-            .arg("--host").arg(&cfg.host)
+        if mode.uses_pg_restore_clean() {
+            cmd.args(["--clean", "--if-exists"]);
+        }
+        cmd.arg("--host").arg(&cfg.host)
             .arg("--port").arg(cfg.port.to_string())
             .arg("--username").arg(&cfg.username)
             .arg("--dbname").arg(&cfg.database)
