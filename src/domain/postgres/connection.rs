@@ -114,6 +114,14 @@ pub(crate) fn psql_binary_name() -> &'static str {
     }
 }
 
+pub(crate) fn pg_restore_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "pg_restore.exe"
+    } else {
+        "pg_restore"
+    }
+}
+
 pub(crate) fn pg_dump_exists_in(dir: &std::path::Path) -> bool {
     dir.join(pg_dump_binary_name()).is_file()
 }

@@ -172,8 +172,8 @@ async fn postgres_password_with_slash_test() {
 
 mod select_pg_path_tests {
     use crate::domain::postgres::connection::{
-        pg_dump_binary_name, pg_dump_exists_in, pg_dumpall_binary_name, psql_binary_name,
-        select_pg_path_with,
+        pg_dump_binary_name, pg_dump_exists_in, pg_dumpall_binary_name, pg_restore_binary_name,
+        psql_binary_name, select_pg_path_with,
     };
 
     // `select_pg_path_with` takes the `PG_BIN_DIR` override as a plain
@@ -248,6 +248,16 @@ mod select_pg_path_tests {
             assert_eq!(name, "psql.exe");
         } else {
             assert_eq!(name, "psql");
+        }
+    }
+
+    #[test]
+    fn pg_restore_binary_name_is_platform_correct() {
+        let name = pg_restore_binary_name();
+        if cfg!(target_os = "windows") {
+            assert_eq!(name, "pg_restore.exe");
+        } else {
+            assert_eq!(name, "pg_restore");
         }
     }
 }
