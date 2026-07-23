@@ -68,7 +68,6 @@ async fn postgres_ping_test() {
 async fn is_superuser_detects_superuser_role() {
     init_tracing_for_test();
 
-    // The testcontainer's POSTGRES_USER ("testuser") is the bootstrap superuser.
     let (_container, config) = create_config().await;
 
     let is_super = crate::domain::postgres::connection::is_superuser(&config)
@@ -779,11 +778,6 @@ mod select_pg_path_tests {
         psql_binary_name, select_pg_path_with,
     };
 
-    // `select_pg_path_with` takes the `PG_BIN_DIR` override as a plain
-    // argument, so these tests never touch process-global env state or the
-    // cached `CONFIG`. They stay deterministic regardless of whether — or at
-    // which version — a real PostgreSQL install exists on the host.
-
     #[test]
     fn respects_pg_bin_dir_override() {
         let custom = if cfg!(target_os = "windows") {
@@ -797,8 +791,6 @@ mod select_pg_path_tests {
 
     #[test]
     fn pg_bin_dir_override_ignores_requested_version() {
-        // The override is taken as-is, regardless of which version was
-        // requested — this documents/locks in that behavior.
         let custom = if cfg!(target_os = "windows") {
             r"C:\custom\pg\bin"
         } else {
@@ -810,10 +802,6 @@ mod select_pg_path_tests {
 
     #[test]
     fn empty_pg_bin_dir_falls_through_to_detection() {
-        // An empty override means "unset" (matches `CONFIG.pg_bin_dir` when
-        // `PG_BIN_DIR` is absent). It must not be returned as a literal empty
-        // path — resolution falls through to platform defaults / PATH lookup
-        // and yields a non-empty path.
         let path = select_pg_path_with("17", "");
         assert_ne!(path, std::path::PathBuf::from(""));
     }
