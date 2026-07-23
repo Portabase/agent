@@ -190,6 +190,44 @@ pub fn detect_format_from_file(restore_file: &Path) -> PostgresDumpFormat {
     }
 }
 
+pub async fn drop_all_schemas(cfg: &DatabaseConfig) -> Result<Vec<String>> {
+    let client = connect(cfg).await?;
+    let rows = client
+        .query(
+            r#"
+            SELECT nspname FROM pg_namespace
+            WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND nspname NOT LIKE 'pg\_temp\_%'
+              AND nspname NOT LIKE 'pg\_toast\_temp\_%'
+            ORDER BY nspname
+            "#,
+            &[],
+        )
+        .await?;
+    let schemas: Vec<String> = rows.iter().map(|r| r.get::<_, String>(0)).collect();
+    for s in &schemas {
+        client
+            .batch_execute(&format!("DROP SCHEMA IF EXISTS {} CASCADE", quote_ident(s)))
+            .await?;
+    }
+    client
+        .batch_execute("SELECT lo_unlink(oid) FROM pg_largeobject_metadata")
+        .await
+        .ok();
+    Ok(schemas)
+}
+
+pub async fn recreate_public_schema(cfg: &DatabaseConfig, owner: &str) -> Result<()> {
+    let client = connect(cfg).await?;
+    client
+        .batch_execute(&format!(
+            "CREATE SCHEMA IF NOT EXISTS public AUTHORIZATION {}; GRANT USAGE ON SCHEMA public TO PUBLIC;",
+            quote_ident(owner)
+        ))
+        .await?;
+    Ok(())
+}
+
 pub async fn detect_format_from_size(cfg: &DatabaseConfig) -> PostgresDumpFormat {
     info!(
         "Detecting database format {:?} - {:?}",

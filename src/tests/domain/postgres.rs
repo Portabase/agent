@@ -292,6 +292,39 @@ async fn restore_run_unified_fc_roundtrip() {
     assert!(result.is_ok(), "restore::run failed: {:?}", result);
 }
 
+#[tokio::test]
+async fn drop_all_schemas_removes_user_schema() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE SCHEMA IF NOT EXISTS extra_ns; CREATE TABLE IF NOT EXISTS extra_ns.t(id int);")
+        .await
+        .unwrap();
+
+    let dropped = crate::domain::postgres::connection::drop_all_schemas(&config)
+        .await
+        .unwrap();
+    assert!(dropped.iter().any(|s| s == "extra_ns"));
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    let row = client
+        .query_one(
+            "SELECT count(*) FROM pg_namespace WHERE nspname = 'extra_ns'",
+            &[],
+        )
+        .await
+        .unwrap();
+    let n: i64 = row.get(0);
+    assert_eq!(n, 0);
+}
+
 mod select_pg_path_tests {
     use crate::domain::postgres::connection::{
         pg_dump_binary_name, pg_dump_exists_in, pg_dumpall_binary_name, pg_restore_binary_name,
