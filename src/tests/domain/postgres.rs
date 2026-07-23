@@ -79,6 +79,31 @@ async fn is_superuser_detects_superuser_role() {
 }
 
 #[tokio::test]
+async fn can_drop_database_false_for_unprivileged_role() {
+    init_tracing_for_test();
+
+    let (_container, admin) = create_config().await;
+
+    let a = crate::domain::postgres::connection::connect(&admin)
+        .await
+        .unwrap();
+    a.batch_execute("DROP ROLE IF EXISTS lowpriv; CREATE ROLE lowpriv LOGIN PASSWORD 'x';")
+        .await
+        .unwrap();
+
+    let mut low = admin.clone();
+    low.username = "lowpriv".into();
+    low.password = "x".into();
+
+    assert_eq!(
+        crate::domain::postgres::connection::can_drop_database(&low)
+            .await
+            .unwrap(),
+        false
+    );
+}
+
+#[tokio::test]
 async fn postgres_backup_restore_test() {
     init_tracing_for_test();
 

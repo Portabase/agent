@@ -33,6 +33,14 @@ pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
     Ok(version)
 }
 
+pub async fn server_version_major(cfg: &DatabaseConfig) -> Result<u32> {
+    let v = server_version(cfg).await?;
+    Ok(v.split(['.', ' '])
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(17))
+}
+
 pub async fn is_superuser(cfg: &DatabaseConfig) -> Result<bool> {
     let client = connect(cfg).await?;
     let is_super: bool = client
@@ -41,6 +49,19 @@ pub async fn is_superuser(cfg: &DatabaseConfig) -> Result<bool> {
         .get(0);
 
     Ok(is_super)
+}
+
+pub async fn can_drop_database(cfg: &DatabaseConfig) -> Result<bool> {
+    let client = connect(cfg).await?;
+    let row = client
+        .query_one(
+            "SELECT r.rolsuper OR (r.rolcreatedb AND pg_catalog.pg_has_role(current_user, d.datdba, 'USAGE')) \
+             FROM pg_roles r, pg_database d \
+             WHERE r.rolname = current_user AND d.datname = current_database()",
+            &[],
+        )
+        .await?;
+    Ok(row.get(0))
 }
 
 
@@ -176,6 +197,92 @@ pub async fn terminate_all_connections(cfg: &DatabaseConfig) -> Result<()> {
             "#,
             &[],
         )
+        .await?;
+
+    Ok(())
+}
+
+pub async fn drop_and_recreate_database(cfg: &DatabaseConfig) -> Result<()> {
+    let mut admin_cfg = cfg.clone();
+    admin_cfg.database = "postgres".to_string();
+    let admin = connect(&admin_cfg).await?;
+
+    let row = admin
+        .query_opt(
+            r#"
+            SELECT pg_encoding_to_char(encoding), datcollate, datctype,
+                   pg_get_userbyid(datdba), datistemplate
+            FROM pg_database WHERE datname = $1
+            "#,
+            &[&cfg.database],
+        )
+        .await?;
+
+    let (encoding, collate, ctype, owner) = match &row {
+        Some(r) => (
+            r.get::<_, String>(0),
+            r.get::<_, String>(1),
+            r.get::<_, String>(2),
+            r.get::<_, String>(3),
+        ),
+        None => ("UTF8".into(), "C".into(), "C".into(), cfg.username.clone()),
+    };
+
+    if let Some(r) = &row {
+        if r.get::<_, bool>(4) {
+            anyhow::bail!("Refusing to drop template database {}", cfg.database);
+        }
+    }
+
+    let db = quote_ident(&cfg.database);
+
+    if let Err(e) = admin
+        .batch_execute(&format!("ALTER DATABASE {db} WITH ALLOW_CONNECTIONS false"))
+        .await
+    {
+        tracing::warn!("ALLOW_CONNECTIONS false failed for {}: {e}", cfg.database);
+    }
+
+    let major = server_version_major(cfg).await?;
+    let drop_stmt = if major >= 13 {
+        format!("DROP DATABASE IF EXISTS {db} WITH (FORCE)")
+    } else {
+        format!("DROP DATABASE IF EXISTS {db}")
+    };
+
+    let mut last_err = None;
+    let mut dropped = false;
+    for _ in 0..3 {
+        let _ = terminate_connections(cfg).await;
+        match admin.batch_execute(&drop_stmt).await {
+            Ok(()) => {
+                dropped = true;
+                break;
+            }
+            Err(e) => {
+                last_err = Some(e);
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        }
+    }
+
+    if !dropped {
+        let _ = admin
+            .batch_execute(&format!("ALTER DATABASE {db} WITH ALLOW_CONNECTIONS true"))
+            .await;
+        return Err(last_err
+            .map(anyhow::Error::from)
+            .unwrap_or_else(|| anyhow::anyhow!("DROP DATABASE {} failed", cfg.database)));
+    }
+
+    admin
+        .batch_execute(&format!(
+            "CREATE DATABASE {db} OWNER {} TEMPLATE template0 ENCODING {} LC_COLLATE {} LC_CTYPE {}",
+            quote_ident(&owner),
+            quote_literal(&encoding),
+            quote_literal(&collate),
+            quote_literal(&ctype),
+        ))
         .await?;
 
     Ok(())
