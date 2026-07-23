@@ -7,8 +7,8 @@ use std::time::Instant;
 
 use super::clean_mode::RestoreCleanMode;
 use super::connection::{
-    drop_all_schemas, pg_restore_binary_name, recreate_public_schema, select_pg_path,
-    server_version, terminate_connections,
+    can_drop_database, drop_all_schemas, drop_and_recreate_database, pg_restore_binary_name,
+    recreate_public_schema, select_pg_path, server_version, terminate_connections,
 };
 use super::format::PostgresDumpFormat;
 use crate::services::backup::logger::JobLogger;
@@ -163,7 +163,14 @@ pub async fn run(
                 }
             }
             RestoreCleanMode::DropDatabase => {
-                anyhow::bail!("clean_mode=drop_database not yet available");
+                if !handle.block_on(can_drop_database(&cfg))? {
+                    anyhow::bail!(
+                        "clean_mode=drop_database requires CREATEDB + ownership on {}; use clean_mode=drop_schemas instead",
+                        cfg.database
+                    );
+                }
+                logger.log("warn", format!("clean_mode=drop_database DROPPING database {} before restore", cfg.database));
+                handle.block_on(drop_and_recreate_database(&cfg))?;
             }
             RestoreCleanMode::Clean | RestoreCleanMode::None => {
                 handle.block_on(terminate_connections(&cfg))?;

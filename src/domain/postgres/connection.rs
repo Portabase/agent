@@ -243,7 +243,7 @@ pub async fn drop_and_recreate_database(cfg: &DatabaseConfig) -> Result<()> {
         tracing::warn!("ALLOW_CONNECTIONS false failed for {}: {e}", cfg.database);
     }
 
-    let major = server_version_major(cfg).await?;
+    let major = server_version_major(&admin_cfg).await?;
     let drop_stmt = if major >= 13 {
         format!("DROP DATABASE IF EXISTS {db} WITH (FORCE)")
     } else {
