@@ -17,10 +17,11 @@ pub async fn run(
     env: HashMap<String, String>,
     logger: Arc<JobLogger>,
 ) -> Result<()> {
+    let handle = tokio::runtime::Handle::current();
     tokio::task::spawn_blocking(move || -> Result<()> {
         logger.log("info", format!("Starting restore for database {}", cfg.name));
 
-        let version = match futures::executor::block_on(server_version(&cfg)) {
+        let version = match handle.block_on(server_version(&cfg)) {
             Ok(v) => {
                 logger.log("debug", format!("Postgres version detected: {}", v));
                 v
@@ -35,7 +36,7 @@ pub async fn run(
 
         logger.log("debug", format!("Using pg_restore at {:?}", pg_restore));
 
-        if let Err(e) = futures::executor::block_on(terminate_connections(&cfg)) {
+        if let Err(e) = handle.block_on(terminate_connections(&cfg)) {
             logger.log("error", format!("Failed to terminate connections for {}: {:?}", cfg.name, e));
             return Err(e.into());
         }
