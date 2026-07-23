@@ -1,9 +1,14 @@
 use crate::domain::factory::DatabaseFactory;
+use crate::domain::postgres::connection::{pg_restore_binary_name, select_pg_path, server_version};
+use crate::domain::postgres::format::PostgresDumpFormat;
+use crate::domain::postgres::restore::prepare_archive;
+use crate::services::backup::logger::JobLogger;
 use crate::services::config::{DatabaseConfig, DbType};
 use crate::tests::init_tracing_for_test;
 use crate::utils::compress::{compress_to_tar_gz_large, decompress_large_tar_gz};
 use oauth2::url;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tempfile::TempDir;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ImageExt};
@@ -63,7 +68,6 @@ async fn postgres_ping_test() {
 async fn is_superuser_detects_superuser_role() {
     init_tracing_for_test();
 
-    // The testcontainer's POSTGRES_USER ("testuser") is the bootstrap superuser.
     let (_container, config) = create_config().await;
 
     let is_super = crate::domain::postgres::connection::is_superuser(&config)
@@ -71,6 +75,31 @@ async fn is_superuser_detects_superuser_role() {
         .unwrap();
 
     assert!(is_super);
+}
+
+#[tokio::test]
+async fn can_drop_database_false_for_unprivileged_role() {
+    init_tracing_for_test();
+
+    let (_container, admin) = create_config().await;
+
+    let a = crate::domain::postgres::connection::connect(&admin)
+        .await
+        .unwrap();
+    a.batch_execute("DROP ROLE IF EXISTS lowpriv; CREATE ROLE lowpriv LOGIN PASSWORD 'x';")
+        .await
+        .unwrap();
+
+    let mut low = admin.clone();
+    low.username = "lowpriv".into();
+    low.password = "x".into();
+
+    assert_eq!(
+        crate::domain::postgres::connection::can_drop_database(&low)
+            .await
+            .unwrap(),
+        false
+    );
 }
 
 #[tokio::test]
@@ -170,16 +199,584 @@ async fn postgres_password_with_slash_test() {
     assert_eq!(reachable, true);
 }
 
+fn pg_dump_env(config: &DatabaseConfig) -> std::collections::HashMap<String, String> {
+    let mut env = std::env::vars().collect::<std::collections::HashMap<_, _>>();
+    env.insert("PGPASSWORD".to_string(), config.password.clone());
+    env
+}
+
+#[tokio::test]
+async fn prepare_archive_fd_locates_toc_dir() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let backup_path = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fd,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    let compression = compress_to_tar_gz_large(&backup_path, Arc::new(JobLogger::new()))
+        .await
+        .unwrap();
+
+    assert!(compression.compressed_path.is_file());
+
+    let version = server_version(&config).await.unwrap();
+    let pg_restore = select_pg_path(&version).join(pg_restore_binary_name());
+
+    let logger = JobLogger::new();
+
+    let prepared = prepare_archive(
+        PostgresDumpFormat::Fd,
+        &compression.compressed_path,
+        &pg_restore,
+        &logger,
+    )
+    .unwrap();
+
+    assert!(prepared.path().join("toc.dat").exists());
+    assert!(!prepared.toc().is_empty());
+}
+
+#[tokio::test]
+async fn prepare_archive_fc_returns_file_path_unchanged() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let backup_path = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    assert!(backup_path.is_file());
+
+    let version = server_version(&config).await.unwrap();
+    let pg_restore = select_pg_path(&version).join(pg_restore_binary_name());
+
+    let logger = JobLogger::new();
+
+    let prepared = prepare_archive(PostgresDumpFormat::Fc, &backup_path, &pg_restore, &logger).unwrap();
+
+    assert_eq!(prepared.path(), backup_path.as_path());
+    assert!(!prepared.toc().is_empty());
+}
+
+#[tokio::test]
+async fn restore_run_unified_fc_roundtrip() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client.execute("CREATE TABLE t(id int);", &[]).await.unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let dump_file = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    assert!(dump_file.is_file());
+
+    let format = crate::domain::postgres::connection::detect_format_from_file(&dump_file);
+
+    let result = crate::domain::postgres::restore::run(
+        config.clone(),
+        format,
+        dump_file,
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await;
+
+    assert!(result.is_ok(), "restore::run failed: {:?}", result);
+}
+
+#[tokio::test]
+async fn drop_all_schemas_removes_user_schema() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE SCHEMA IF NOT EXISTS extra_ns; CREATE TABLE IF NOT EXISTS extra_ns.t(id int);")
+        .await
+        .unwrap();
+
+    let dropped = crate::domain::postgres::connection::drop_all_schemas(&config)
+        .await
+        .unwrap();
+    assert!(dropped.iter().any(|s| s == "extra_ns"));
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    let row = client
+        .query_one(
+            "SELECT count(*) FROM pg_namespace WHERE nspname = 'extra_ns'",
+            &[],
+        )
+        .await
+        .unwrap();
+    let n: i64 = row.get(0);
+    assert_eq!(n, 0);
+}
+
+#[tokio::test]
+async fn restore_drop_schemas_removes_extra_objects() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE TABLE base_t(id int);")
+        .await
+        .unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let dump_file = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE TABLE orphan_only_here(id int);")
+        .await
+        .unwrap();
+
+    let mut cfg = config.clone();
+    cfg.options
+        .insert("clean_mode".into(), serde_json::json!("drop_schemas"));
+
+    let format = crate::domain::postgres::connection::detect_format_from_file(&dump_file);
+
+    let result = crate::domain::postgres::restore::run(
+        cfg.clone(),
+        format,
+        dump_file,
+        pg_dump_env(&cfg),
+        Arc::new(JobLogger::new()),
+    )
+    .await;
+
+    assert!(result.is_ok(), "restore::run failed: {:?}", result);
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+
+    let n: i64 = client
+        .query_one(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'orphan_only_here'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(n, 0);
+
+    let n: i64 = client
+        .query_one(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'base_t'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(n, 1);
+}
+
+#[tokio::test]
+async fn restore_clean_leaves_divergent_object() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE TABLE base_t(id int);")
+        .await
+        .unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let dump_file = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE TABLE survives_clean(id int);")
+        .await
+        .unwrap();
+
+    let mut cfg = config.clone();
+    cfg.options
+        .insert("clean_mode".into(), serde_json::json!("clean"));
+
+    let format = crate::domain::postgres::connection::detect_format_from_file(&dump_file);
+
+    let result = crate::domain::postgres::restore::run(
+        cfg.clone(),
+        format,
+        dump_file,
+        pg_dump_env(&cfg),
+        Arc::new(JobLogger::new()),
+    )
+    .await;
+
+    assert!(result.is_ok(), "restore::run failed: {:?}", result);
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+
+    let n: i64 = client
+        .query_one(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'survives_clean'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(n, 1, "clean mode is not a reset; divergent object survives");
+}
+
+#[tokio::test]
+async fn restore_unknown_clean_mode_falls_back() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let dump_file = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    let mut cfg = config.clone();
+    cfg.options
+        .insert("clean_mode".into(), serde_json::json!("wat"));
+
+    let format = crate::domain::postgres::connection::detect_format_from_file(&dump_file);
+
+    let logger = Arc::new(JobLogger::new());
+
+    let result = crate::domain::postgres::restore::run(
+        cfg.clone(),
+        format,
+        dump_file,
+        pg_dump_env(&cfg),
+        logger.clone(),
+    )
+    .await;
+
+    assert!(result.is_ok(), "restore::run failed: {:?}", result);
+
+    let entries = Arc::try_unwrap(logger)
+        .expect("logger should have a single owner after run() completes")
+        .into_entries();
+    assert!(entries
+        .iter()
+        .any(|e| e.message.contains("Unknown clean_mode 'wat'")));
+}
+
+#[tokio::test]
+async fn drop_database_preflight_preserves_data_when_unprivileged() {
+    init_tracing_for_test();
+
+    let (_container, admin) = create_config().await;
+
+    let a = crate::domain::postgres::connection::connect(&admin)
+        .await
+        .unwrap();
+    a.batch_execute("DROP ROLE IF EXISTS lowpriv2; CREATE ROLE lowpriv2 LOGIN PASSWORD 'x';")
+        .await
+        .unwrap();
+    a.batch_execute("CREATE TABLE IF NOT EXISTS keep_me(id int);")
+        .await
+        .unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let dump_file = crate::domain::postgres::backup::run(
+        admin.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&admin),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    let mut low = admin.clone();
+    low.username = "lowpriv2".into();
+    low.password = "x".into();
+    low.options
+        .insert("clean_mode".into(), serde_json::json!("drop_database"));
+
+    let format = crate::domain::postgres::connection::detect_format_from_file(&dump_file);
+
+    let res = crate::domain::postgres::restore::run(
+        low.clone(),
+        format,
+        dump_file,
+        pg_dump_env(&low),
+        Arc::new(JobLogger::new()),
+    )
+    .await;
+    assert!(res.is_err(), "preflight must reject an unprivileged role");
+
+    let a = crate::domain::postgres::connection::connect(&admin)
+        .await
+        .unwrap();
+    let n: i64 = a
+        .query_one(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'keep_me'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(n, 1, "preflight must fail before dropping anything");
+}
+
+#[tokio::test]
+async fn drop_database_preserves_encoding_and_owner() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE TABLE base_t(id int);")
+        .await
+        .unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let dump_file = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    let before = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT pg_encoding_to_char(encoding), datcollate FROM pg_database WHERE datname = current_database()",
+            &[],
+        )
+        .await
+        .unwrap();
+    let enc0: String = before.get(0);
+    let coll0: String = before.get(1);
+
+    let mut cfg = config.clone();
+    cfg.options
+        .insert("clean_mode".into(), serde_json::json!("drop_database"));
+
+    let format = crate::domain::postgres::connection::detect_format_from_file(&dump_file);
+
+    let result = crate::domain::postgres::restore::run(
+        cfg.clone(),
+        format,
+        dump_file,
+        pg_dump_env(&cfg),
+        Arc::new(JobLogger::new()),
+    )
+    .await;
+    assert!(result.is_ok(), "restore::run failed: {:?}", result);
+
+    let after = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT pg_encoding_to_char(encoding), datcollate FROM pg_database WHERE datname = current_database()",
+            &[],
+        )
+        .await
+        .unwrap();
+    let enc1: String = after.get(0);
+    let coll1: String = after.get(1);
+    assert_eq!(enc0, enc1);
+    assert_eq!(coll0, coll1);
+}
+
+#[tokio::test]
+async fn drop_database_force_wins_over_open_connection() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let dump_file = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    let mut cfg = config.clone();
+    cfg.options
+        .insert("clean_mode".into(), serde_json::json!("drop_database"));
+
+    let squatter = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    let _keep = tokio::spawn(async move {
+        let _ = squatter.query_one("SELECT pg_sleep(5)", &[]).await;
+    });
+
+    let format = crate::domain::postgres::connection::detect_format_from_file(&dump_file);
+
+    let result = crate::domain::postgres::restore::run(
+        cfg.clone(),
+        format,
+        dump_file,
+        pg_dump_env(&cfg),
+        Arc::new(JobLogger::new()),
+    )
+    .await;
+    assert!(result.is_ok(), "restore::run failed: {:?}", result);
+}
+
+#[test]
+fn sniff_format_detects_custom_and_gzip() {
+    use crate::domain::postgres::connection::sniff_format;
+
+    let dir = TempDir::new().unwrap();
+    let fc = dir.path().join("a.dump");
+    std::fs::write(&fc, b"PGDMP\x01\x0e\x00").unwrap();
+    assert_eq!(sniff_format(&fc).unwrap(), PostgresDumpFormat::Fc);
+
+    let fd = dir.path().join("b.gz");
+    std::fs::write(&fd, [0x1f, 0x8b, 0x08, 0x00]).unwrap();
+    assert_eq!(sniff_format(&fd).unwrap(), PostgresDumpFormat::Fd);
+
+    let bad = dir.path().join("c.bin");
+    std::fs::write(&bad, b"not a dump").unwrap();
+    assert!(sniff_format(&bad).is_err());
+}
+
+#[tokio::test]
+async fn corrupt_archive_leaves_database_untouched() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client
+        .batch_execute("CREATE TABLE must_survive(id int);")
+        .await
+        .unwrap();
+
+    let mut cfg = config.clone();
+    cfg.options
+        .insert("clean_mode".into(), serde_json::json!("drop_schemas"));
+
+    let dir = TempDir::new().unwrap();
+    let broken_file = dir.path().join("broken.tar.gz");
+    std::fs::write(&broken_file, [0x1f, 0x8b, 0x08, 0x00, 0xde, 0xad, 0xbe, 0xef]).unwrap();
+
+    let result = crate::domain::postgres::restore::run(
+        cfg.clone(),
+        PostgresDumpFormat::Fd,
+        broken_file,
+        pg_dump_env(&cfg),
+        Arc::new(JobLogger::new()),
+    )
+    .await;
+
+    assert!(result.is_err(), "corrupt archive must be rejected before any destructive step");
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    let n: i64 = client
+        .query_one(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'must_survive'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(n, 1, "corrupt archive must never trigger the schema drop");
+}
+
 mod select_pg_path_tests {
     use crate::domain::postgres::connection::{
-        pg_dump_binary_name, pg_dump_exists_in, pg_dumpall_binary_name, psql_binary_name,
-        select_pg_path_with,
+        pg_dump_binary_name, pg_dump_exists_in, pg_dumpall_binary_name, pg_restore_binary_name,
+        psql_binary_name, select_pg_path_with,
     };
-
-    // `select_pg_path_with` takes the `PG_BIN_DIR` override as a plain
-    // argument, so these tests never touch process-global env state or the
-    // cached `CONFIG`. They stay deterministic regardless of whether — or at
-    // which version — a real PostgreSQL install exists on the host.
 
     #[test]
     fn respects_pg_bin_dir_override() {
@@ -194,8 +791,6 @@ mod select_pg_path_tests {
 
     #[test]
     fn pg_bin_dir_override_ignores_requested_version() {
-        // The override is taken as-is, regardless of which version was
-        // requested — this documents/locks in that behavior.
         let custom = if cfg!(target_os = "windows") {
             r"C:\custom\pg\bin"
         } else {
@@ -207,10 +802,6 @@ mod select_pg_path_tests {
 
     #[test]
     fn empty_pg_bin_dir_falls_through_to_detection() {
-        // An empty override means "unset" (matches `CONFIG.pg_bin_dir` when
-        // `PG_BIN_DIR` is absent). It must not be returned as a literal empty
-        // path — resolution falls through to platform defaults / PATH lookup
-        // and yields a non-empty path.
         let path = select_pg_path_with("17", "");
         assert_ne!(path, std::path::PathBuf::from(""));
     }
@@ -249,5 +840,100 @@ mod select_pg_path_tests {
         } else {
             assert_eq!(name, "psql");
         }
+    }
+
+    #[test]
+    fn pg_restore_binary_name_is_platform_correct() {
+        let name = pg_restore_binary_name();
+        if cfg!(target_os = "windows") {
+            assert_eq!(name, "pg_restore.exe");
+        } else {
+            assert_eq!(name, "pg_restore");
+        }
+    }
+}
+
+mod quoting_tests {
+    use crate::domain::postgres::connection::{quote_ident, quote_literal};
+
+    #[test]
+    fn quote_ident_escapes_double_quotes() {
+        assert_eq!(quote_ident("devdb"), "\"devdb\"");
+        assert_eq!(quote_ident("a\"b"), "\"a\"\"b\"");
+        assert_eq!(quote_ident("drop\"; --"), "\"drop\"\"; --\"");
+    }
+
+    #[test]
+    fn quote_literal_escapes_single_quotes() {
+        assert_eq!(quote_literal("UTF8"), "'UTF8'");
+        assert_eq!(quote_literal("O'Brien"), "'O''Brien'");
+    }
+}
+
+mod clean_mode_tests {
+    use crate::domain::postgres::clean_mode::RestoreCleanMode as M;
+    use crate::services::config::{DatabaseConfig, DbType};
+
+    fn cfg_with(clean_mode: Option<&str>) -> DatabaseConfig {
+        let mut options = std::collections::HashMap::new();
+        if let Some(v) = clean_mode {
+            options.insert("clean_mode".to_string(), serde_json::json!(v));
+        }
+        DatabaseConfig {
+            name: "t".into(),
+            database: "testdb".into(),
+            db_type: DbType::Postgresql,
+            username: "testuser".into(),
+            password: "changeme".into(),
+            port: 5432,
+            host: "localhost".into(),
+            generated_id: "00000000-0000-0000-0000-000000000000".into(),
+            path: "".into(),
+            max_packet_size: "".into(),
+            volume_name: "".into(),
+            container_name: None,
+            options,
+        }
+    }
+
+    #[test]
+    fn clean_mode_parsing() {
+        assert_eq!(M::from_config(&cfg_with(None)), (M::Clean, None));
+        assert_eq!(M::from_config(&cfg_with(Some("clean"))), (M::Clean, None));
+        assert_eq!(M::from_config(&cfg_with(Some("none"))), (M::None, None));
+        assert_eq!(
+            M::from_config(&cfg_with(Some("drop_schemas"))),
+            (M::DropSchemas, None)
+        );
+        assert_eq!(
+            M::from_config(&cfg_with(Some("drop_database"))),
+            (M::DropDatabase, None)
+        );
+        assert_eq!(
+            M::from_config(&cfg_with(Some("bogus"))),
+            (M::Clean, Some("bogus".to_string()))
+        );
+    }
+
+    #[test]
+    fn uses_pg_restore_clean_behavior() {
+        assert!(M::Clean.uses_pg_restore_clean());
+        assert!(!M::DropSchemas.uses_pg_restore_clean());
+        assert!(!M::None.uses_pg_restore_clean());
+        assert!(!M::DropDatabase.uses_pg_restore_clean());
+    }
+}
+
+mod toc_tests {
+    use crate::domain::postgres::restore::toc_creates_public_schema;
+
+    #[test]
+    fn toc_public_schema_detection() {
+        let with = "215; 2615 2200 SCHEMA - public pg_database_owner";
+        let without_table = "200; 1259 12346 TABLE devschema users devuser";
+        let without_similar_schema = "216; 2615 2201 SCHEMA - publicish someowner";
+        assert!(toc_creates_public_schema(with));
+        assert!(!toc_creates_public_schema(without_table));
+        assert!(!toc_creates_public_schema(without_similar_schema));
     }
 }

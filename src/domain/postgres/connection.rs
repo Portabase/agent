@@ -33,6 +33,14 @@ pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
     Ok(version)
 }
 
+pub async fn server_version_major(cfg: &DatabaseConfig) -> Result<u32> {
+    let v = server_version(cfg).await?;
+    Ok(v.split(['.', ' '])
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(17))
+}
+
 pub async fn is_superuser(cfg: &DatabaseConfig) -> Result<bool> {
     let client = connect(cfg).await?;
     let is_super: bool = client
@@ -41,6 +49,19 @@ pub async fn is_superuser(cfg: &DatabaseConfig) -> Result<bool> {
         .get(0);
 
     Ok(is_super)
+}
+
+pub async fn can_drop_database(cfg: &DatabaseConfig) -> Result<bool> {
+    let client = connect(cfg).await?;
+    let row = client
+        .query_one(
+            "SELECT r.rolsuper OR (r.rolcreatedb AND pg_catalog.pg_has_role(current_user, d.datdba, 'USAGE')) \
+             FROM pg_roles r, pg_database d \
+             WHERE r.rolname = current_user AND d.datname = current_database()",
+            &[],
+        )
+        .await?;
+    Ok(row.get(0))
 }
 
 
@@ -114,6 +135,22 @@ pub(crate) fn psql_binary_name() -> &'static str {
     }
 }
 
+pub(crate) fn pg_restore_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "pg_restore.exe"
+    } else {
+        "pg_restore"
+    }
+}
+
+pub(crate) fn quote_ident(s: &str) -> String {
+    format!("\"{}\"", s.replace('"', "\"\""))
+}
+
+pub(crate) fn quote_literal(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
 pub(crate) fn pg_dump_exists_in(dir: &std::path::Path) -> bool {
     dir.join(pg_dump_binary_name()).is_file()
 }
@@ -165,6 +202,107 @@ pub async fn terminate_all_connections(cfg: &DatabaseConfig) -> Result<()> {
     Ok(())
 }
 
+pub async fn drop_and_recreate_database(cfg: &DatabaseConfig) -> Result<()> {
+    let mut admin_cfg = cfg.clone();
+    admin_cfg.database = "postgres".to_string();
+    let admin = connect(&admin_cfg).await?;
+
+    let row = admin
+        .query_opt(
+            r#"
+            SELECT pg_encoding_to_char(encoding), datcollate, datctype,
+                   pg_get_userbyid(datdba), datistemplate
+            FROM pg_database WHERE datname = $1
+            "#,
+            &[&cfg.database],
+        )
+        .await?;
+
+    let (encoding, collate, ctype, owner) = match &row {
+        Some(r) => (
+            r.get::<_, String>(0),
+            r.get::<_, String>(1),
+            r.get::<_, String>(2),
+            r.get::<_, String>(3),
+        ),
+        None => ("UTF8".into(), "C".into(), "C".into(), cfg.username.clone()),
+    };
+
+    if let Some(r) = &row {
+        if r.get::<_, bool>(4) {
+            anyhow::bail!("Refusing to drop template database {}", cfg.database);
+        }
+    }
+
+    let db = quote_ident(&cfg.database);
+
+    if let Err(e) = admin
+        .batch_execute(&format!("ALTER DATABASE {db} WITH ALLOW_CONNECTIONS false"))
+        .await
+    {
+        tracing::warn!("ALLOW_CONNECTIONS false failed for {}: {e}", cfg.database);
+    }
+
+    let major = server_version_major(&admin_cfg).await?;
+    let drop_stmt = if major >= 13 {
+        format!("DROP DATABASE IF EXISTS {db} WITH (FORCE)")
+    } else {
+        format!("DROP DATABASE IF EXISTS {db}")
+    };
+
+    let mut last_err = None;
+    let mut dropped = false;
+    for _ in 0..3 {
+        let _ = terminate_connections(cfg).await;
+        match admin.batch_execute(&drop_stmt).await {
+            Ok(()) => {
+                dropped = true;
+                break;
+            }
+            Err(e) => {
+                last_err = Some(e);
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        }
+    }
+
+    if !dropped {
+        let _ = admin
+            .batch_execute(&format!("ALTER DATABASE {db} WITH ALLOW_CONNECTIONS true"))
+            .await;
+        return Err(last_err
+            .map(anyhow::Error::from)
+            .unwrap_or_else(|| anyhow::anyhow!("DROP DATABASE {} failed", cfg.database)));
+    }
+
+    admin
+        .batch_execute(&format!(
+            "CREATE DATABASE {db} OWNER {} TEMPLATE template0 ENCODING {} LC_COLLATE {} LC_CTYPE {}",
+            quote_ident(&owner),
+            quote_literal(&encoding),
+            quote_literal(&collate),
+            quote_literal(&ctype),
+        ))
+        .await?;
+
+    Ok(())
+}
+
+pub fn sniff_format(restore_file: &Path) -> Result<PostgresDumpFormat> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(restore_file)?;
+    let mut magic = [0u8; 5];
+    let n = f.read(&mut magic)?;
+    let head = &magic[..n];
+    if head.starts_with(b"PGDMP") {
+        Ok(PostgresDumpFormat::Fc)
+    } else if head.starts_with(&[0x1f, 0x8b]) {
+        Ok(PostgresDumpFormat::Fd)
+    } else {
+        anyhow::bail!("Unrecognized dump format for {:?}", restore_file)
+    }
+}
+
 pub fn detect_format_from_file(restore_file: &Path) -> PostgresDumpFormat {
     match restore_file.extension().and_then(|e| e.to_str()) {
         Some("dump") => PostgresDumpFormat::Fc,
@@ -172,6 +310,44 @@ pub fn detect_format_from_file(restore_file: &Path) -> PostgresDumpFormat {
         // Some("tar.gz") => PostgresDumpFormat::Fd,
         _ => PostgresDumpFormat::Fc,
     }
+}
+
+pub async fn drop_all_schemas(cfg: &DatabaseConfig) -> Result<Vec<String>> {
+    let client = connect(cfg).await?;
+    let rows = client
+        .query(
+            r#"
+            SELECT nspname FROM pg_namespace
+            WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND nspname NOT LIKE 'pg\_temp\_%'
+              AND nspname NOT LIKE 'pg\_toast\_temp\_%'
+            ORDER BY nspname
+            "#,
+            &[],
+        )
+        .await?;
+    let schemas: Vec<String> = rows.iter().map(|r| r.get::<_, String>(0)).collect();
+    for s in &schemas {
+        client
+            .batch_execute(&format!("DROP SCHEMA IF EXISTS {} CASCADE", quote_ident(s)))
+            .await?;
+    }
+    client
+        .batch_execute("SELECT lo_unlink(oid) FROM pg_largeobject_metadata")
+        .await
+        .ok();
+    Ok(schemas)
+}
+
+pub async fn recreate_public_schema(cfg: &DatabaseConfig, owner: &str) -> Result<()> {
+    let client = connect(cfg).await?;
+    client
+        .batch_execute(&format!(
+            "CREATE SCHEMA IF NOT EXISTS public AUTHORIZATION {}; GRANT USAGE ON SCHEMA public TO PUBLIC;",
+            quote_ident(owner)
+        ))
+        .await?;
+    Ok(())
 }
 
 pub async fn detect_format_from_size(cfg: &DatabaseConfig) -> PostgresDumpFormat {

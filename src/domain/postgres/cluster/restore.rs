@@ -15,10 +15,11 @@ pub async fn run(
     env: HashMap<String, String>,
     logger: Arc<JobLogger>,
 ) -> Result<()> {
+    let handle = tokio::runtime::Handle::current();
     tokio::task::spawn_blocking(move || -> Result<()> {
         logger.log("info", format!("Starting cluster restore for {}", cfg.name));
 
-        let version = match futures::executor::block_on(server_version(&cfg)) {
+        let version = match handle.block_on(server_version(&cfg)) {
             Ok(v) => v,
             Err(e) => {
                 logger.log("error", format!("Failed to get server version for {}: {:?}", cfg.name, e));
@@ -26,7 +27,7 @@ pub async fn run(
             }
         };
 
-        match futures::executor::block_on(is_superuser(&cfg)) {
+        match handle.block_on(is_superuser(&cfg)) {
             Ok(true) => {}
             Ok(false) => {
                 logger.log("error", format!("postgresql-cluster restore requires a superuser role for {}", cfg.name));
@@ -40,7 +41,7 @@ pub async fn run(
 
         let psql = select_pg_path(&version).join(psql_binary_name());
 
-        if let Err(e) = futures::executor::block_on(terminate_all_connections(&cfg)) {
+        if let Err(e) = handle.block_on(terminate_all_connections(&cfg)) {
             logger.log("error", format!("Failed to terminate connections for cluster {}: {:?}", cfg.name, e));
             return Err(e.into());
         }
