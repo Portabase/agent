@@ -400,3 +400,57 @@ mod quoting_tests {
         assert_eq!(quote_literal("O'Brien"), "'O''Brien'");
     }
 }
+
+mod clean_mode_tests {
+    use crate::domain::postgres::clean_mode::RestoreCleanMode as M;
+    use crate::services::config::{DatabaseConfig, DbType};
+
+    fn cfg_with(clean_mode: Option<&str>) -> DatabaseConfig {
+        let mut options = std::collections::HashMap::new();
+        if let Some(v) = clean_mode {
+            options.insert("clean_mode".to_string(), serde_json::json!(v));
+        }
+        DatabaseConfig {
+            name: "t".into(),
+            database: "testdb".into(),
+            db_type: DbType::Postgresql,
+            username: "testuser".into(),
+            password: "changeme".into(),
+            port: 5432,
+            host: "localhost".into(),
+            generated_id: "00000000-0000-0000-0000-000000000000".into(),
+            path: "".into(),
+            max_packet_size: "".into(),
+            volume_name: "".into(),
+            container_name: None,
+            options,
+        }
+    }
+
+    #[test]
+    fn clean_mode_parsing() {
+        assert_eq!(M::from_config(&cfg_with(None)), (M::Clean, None));
+        assert_eq!(M::from_config(&cfg_with(Some("clean"))), (M::Clean, None));
+        assert_eq!(M::from_config(&cfg_with(Some("none"))), (M::None, None));
+        assert_eq!(
+            M::from_config(&cfg_with(Some("drop_schemas"))),
+            (M::DropSchemas, None)
+        );
+        assert_eq!(
+            M::from_config(&cfg_with(Some("drop_database"))),
+            (M::DropDatabase, None)
+        );
+        assert_eq!(
+            M::from_config(&cfg_with(Some("bogus"))),
+            (M::Clean, Some("bogus".to_string()))
+        );
+    }
+
+    #[test]
+    fn uses_pg_restore_clean_behavior() {
+        assert!(M::Clean.uses_pg_restore_clean());
+        assert!(!M::DropSchemas.uses_pg_restore_clean());
+        assert!(!M::None.uses_pg_restore_clean());
+        assert!(!M::DropDatabase.uses_pg_restore_clean());
+    }
+}
