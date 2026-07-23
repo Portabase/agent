@@ -1,9 +1,14 @@
 use crate::domain::factory::DatabaseFactory;
+use crate::domain::postgres::connection::{pg_restore_binary_name, select_pg_path, server_version};
+use crate::domain::postgres::format::PostgresDumpFormat;
+use crate::domain::postgres::restore::prepare_archive;
+use crate::services::backup::logger::JobLogger;
 use crate::services::config::{DatabaseConfig, DbType};
 use crate::tests::init_tracing_for_test;
 use crate::utils::compress::{compress_to_tar_gz_large, decompress_large_tar_gz};
 use oauth2::url;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tempfile::TempDir;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ImageExt};
@@ -168,6 +173,84 @@ async fn postgres_password_with_slash_test() {
     let reachable = db.ping().await.unwrap_or(false);
 
     assert_eq!(reachable, true);
+}
+
+fn pg_dump_env(config: &DatabaseConfig) -> std::collections::HashMap<String, String> {
+    let mut env = std::env::vars().collect::<std::collections::HashMap<_, _>>();
+    env.insert("PGPASSWORD".to_string(), config.password.clone());
+    env
+}
+
+#[tokio::test]
+async fn prepare_archive_fd_locates_toc_dir() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let backup_path = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fd,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    let compression = compress_to_tar_gz_large(&backup_path, Arc::new(JobLogger::new()))
+        .await
+        .unwrap();
+
+    assert!(compression.compressed_path.is_file());
+
+    let version = server_version(&config).await.unwrap();
+    let pg_restore = select_pg_path(&version).join(pg_restore_binary_name());
+
+    let logger = JobLogger::new();
+
+    let prepared = prepare_archive(
+        PostgresDumpFormat::Fd,
+        &compression.compressed_path,
+        &pg_restore,
+        &logger,
+    )
+    .unwrap();
+
+    assert!(prepared.path().join("toc.dat").exists());
+    assert!(!prepared.toc().is_empty());
+}
+
+#[tokio::test]
+async fn prepare_archive_fc_returns_file_path_unchanged() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let backup_path = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    assert!(backup_path.is_file());
+
+    let version = server_version(&config).await.unwrap();
+    let pg_restore = select_pg_path(&version).join(pg_restore_binary_name());
+
+    let logger = JobLogger::new();
+
+    let prepared = prepare_archive(PostgresDumpFormat::Fc, &backup_path, &pg_restore, &logger).unwrap();
+
+    assert_eq!(prepared.path(), backup_path.as_path());
+    assert!(!prepared.toc().is_empty());
 }
 
 mod select_pg_path_tests {
