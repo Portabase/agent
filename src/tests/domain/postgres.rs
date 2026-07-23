@@ -253,6 +253,45 @@ async fn prepare_archive_fc_returns_file_path_unchanged() {
     assert!(!prepared.toc().is_empty());
 }
 
+#[tokio::test]
+async fn restore_run_unified_fc_roundtrip() {
+    init_tracing_for_test();
+
+    let (_container, config) = create_config().await;
+
+    let client = crate::domain::postgres::connection::connect(&config)
+        .await
+        .unwrap();
+    client.execute("CREATE TABLE t(id int);", &[]).await.unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+
+    let dump_file = crate::domain::postgres::backup::run(
+        config.clone(),
+        PostgresDumpFormat::Fc,
+        temp_dir.path().to_path_buf(),
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
+
+    assert!(dump_file.is_file());
+
+    let format = crate::domain::postgres::connection::detect_format_from_file(&dump_file);
+
+    let result = crate::domain::postgres::restore::run(
+        config.clone(),
+        format,
+        dump_file,
+        pg_dump_env(&config),
+        Arc::new(JobLogger::new()),
+    )
+    .await;
+
+    assert!(result.is_ok(), "restore::run failed: {:?}", result);
+}
+
 mod select_pg_path_tests {
     use crate::domain::postgres::connection::{
         pg_dump_binary_name, pg_dump_exists_in, pg_dumpall_binary_name, pg_restore_binary_name,
