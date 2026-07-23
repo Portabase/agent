@@ -15,8 +15,12 @@ use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 
 pub(crate) fn toc_creates_public_schema(toc: &str) -> bool {
-    toc.lines()
-        .any(|l| l.contains(" SCHEMA ") && l.trim_end().ends_with(" public"))
+    toc.lines().any(|l| {
+        l.split(" SCHEMA - ")
+            .nth(1)
+            .and_then(|rest| rest.split_whitespace().next())
+            == Some("public")
+    })
 }
 
 pub(crate) struct PreparedArchive {

@@ -941,9 +941,11 @@ mod toc_tests {
 
     #[test]
     fn toc_public_schema_detection() {
-        let with = "123; 2615 12345 SCHEMA - public";
-        let without = "200; 1259 12346 TABLE devschema users devuser";
+        let with = "215; 2615 2200 SCHEMA - public pg_database_owner";
+        let without_table = "200; 1259 12346 TABLE devschema users devuser";
+        let without_similar_schema = "216; 2615 2201 SCHEMA - publicish someowner";
         assert!(toc_creates_public_schema(with));
-        assert!(!toc_creates_public_schema(without));
+        assert!(!toc_creates_public_schema(without_table));
+        assert!(!toc_creates_public_schema(without_similar_schema));
     }
 }
