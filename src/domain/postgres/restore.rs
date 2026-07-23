@@ -10,6 +10,11 @@ use super::format::PostgresDumpFormat;
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 
+pub(crate) fn toc_creates_public_schema(toc: &str) -> bool {
+    toc.lines()
+        .any(|l| l.contains(" SCHEMA ") && l.trim_end().ends_with(" public"))
+}
+
 pub(crate) struct PreparedArchive {
     path: PathBuf,
     _tmp: Option<tempfile::TempDir>,

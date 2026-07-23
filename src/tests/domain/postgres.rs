@@ -487,3 +487,15 @@ mod clean_mode_tests {
         assert!(!M::DropDatabase.uses_pg_restore_clean());
     }
 }
+
+mod toc_tests {
+    use crate::domain::postgres::restore::toc_creates_public_schema;
+
+    #[test]
+    fn toc_public_schema_detection() {
+        let with = "123; 2615 12345 SCHEMA - public";
+        let without = "200; 1259 12346 TABLE devschema users devuser";
+        assert!(toc_creates_public_schema(with));
+        assert!(!toc_creates_public_schema(without));
+    }
+}
