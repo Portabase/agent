@@ -23,6 +23,7 @@ pub async fn run(
         let start = Instant::now();
         let output = Command::new("gbak")
             .arg("-b")
+            .arg("-g")
             .arg("-v")
             .arg("-user").arg(&cfg.username)
             .arg("-password").arg(&cfg.password)
