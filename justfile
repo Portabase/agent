@@ -45,6 +45,14 @@ seed-firebird:
     echo "SELECT RDB\$RELATION_NAME FROM RDB\$RELATIONS WHERE RDB\$SYSTEM_FLAG = 0 AND RDB\$VIEW_BLR IS NULL;" \
     | docker exec -i db-firebird isql -user alice -password fake_password /var/lib/firebird/data/mirror.fdb
 
+seed-firebird-large:
+    echo "Seeding Firebird..."
+    docker exec -i db-firebird isql -user alice -password fake_password /var/lib/firebird/data/mirror.fdb < ./scripts/firebird/seed-large.sql
+
+    echo "Verifying Firebird tables..."
+    echo "SELECT RDB\$RELATION_NAME FROM RDB\$RELATIONS WHERE RDB\$SYSTEM_FLAG = 0 AND RDB\$VIEW_BLR IS NULL;" \
+    | docker exec -i db-firebird isql -user alice -password fake_password /var/lib/firebird/data/mirror.fdb
+
 seed-mssql:
     echo "Seeding MSSQL..."
     docker exec -i rust-dev sqlcmd -S "db-mssql,1433" -U sa -P "$MSSQL_SA_PASSWORD" -N disable -i /app/scripts/mssql/seed.sql
