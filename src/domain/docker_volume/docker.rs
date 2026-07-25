@@ -15,7 +15,7 @@ pub const EPHEMERAL_LABEL: &str = "io.portabase.ephemeral";
 const HELPER_MOUNT: &str = "/vol";
 
 pub fn client() -> Result<Docker> {
-    Docker::connect_with_unix_defaults().context("Failed to connect to Docker daemon socket")
+    Docker::connect_with_defaults().context("Failed to connect to Docker daemon socket")
 }
 
 pub fn parse_container_id(mountinfo: &str, cgroup: &str) -> Option<String> {
