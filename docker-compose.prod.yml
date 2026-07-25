@@ -1,13 +1,14 @@
 services:
   rust-app:
-#    build:
-#      context: .
-#      dockerfile: docker/Dockerfile
-#      target: prod
-    image: portabase/agent:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: prod
+#    image: portabase/agent:latest
     container_name: rust-prod
     volumes:
       - ./databases.json:/config/config.json
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       LOG: info
       TZ: "Europe/Paris"
@@ -17,48 +18,6 @@ services:
       - "localhost:host-gateway"
     networks:
       - portabase
-
-
-  db-mongodb-auth:
-    container_name: db-mongodb-auth
-    image: mongo:latest
-    ports:
-      - "27082:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: rootpassword
-      MONGO_INITDB_DATABASE: testdbauth
-    command: mongod --auth
-    networks:
-      - portabase
-    volumes:
-      - mongodb-data-auth:/data/db
-    healthcheck:
-      test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  db-mongodb:
-    container_name: db-mongodb
-    image: mongo:latest
-    ports:
-      - "27083:27017"
-    volumes:
-      - mongodb-data:/data/db
-    healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    environment:
-      MONGO_INITDB_DATABASE: testdb
-    networks:
-      - portabase
-
-volumes:
-  mongodb-data:
-  mongodb-data-auth:
 
 networks:
   portabase:
