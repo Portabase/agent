@@ -118,12 +118,24 @@ jobs:
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  build-windows:
+    needs: create-release
+    if: ${{ needs.create-release.result == 'success' }}
+    uses: ./.github/workflows/windows-release.yml
+    with:
+      version: ${{ needs.create-release.outputs.version }}
+      ref: ${{ needs.create-release.outputs.version }}
+      draft_tag: ${{ needs.create-release.outputs.draft_tag }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   finalize-release:
     needs:
       - create-release
       - publish-docker
       - publish-docker-ghcr
       - publish-helm
+      - build-windows
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.publish_release_step.outputs.release_tag }}
