@@ -13,7 +13,9 @@ use aws_config::retry::RetryConfig;
 use aws_sdk_s3 as s3;
 use aws_sdk_s3::config::BehaviorVersion;
 use aws_sdk_s3::config::Region;
+use aws_sdk_s3::config::RequestChecksumCalculation;
 use aws_sdk_s3::config::retry::ReconnectMode;
+use aws_sdk_s3::error::DisplayErrorContext;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use futures::StreamExt;
@@ -135,6 +137,10 @@ impl StorageProvider for S3Provider {
             .credentials_provider(credentials)
             .region(region)
             .force_path_style(true)
+            // S3-compatible endpoints (MinIO, Garage, RustFS, Synology, ...) reject the
+            // default CRC32 integrity checksums the SDK attaches to multipart uploads.
+            // Only send checksums when the operation actually requires them.
+            .request_checksum_calculation(RequestChecksumCalculation::WhenRequired)
             .endpoint_url(endpoint)
             .behavior_version(BehaviorVersion::latest())
             .build();
@@ -164,11 +170,12 @@ impl StorageProvider for S3Provider {
         {
             Ok(r) => r,
             Err(e) => {
-                error!("Failed to create multipart upload: {}", e);
+                let detail = DisplayErrorContext(&e).to_string();
+                error!("Failed to create multipart upload: {}", detail);
                 return UploadResult {
                     storage_id: storage.id.clone(),
                     success: false,
-                    error: Some(e.to_string()),
+                    error: Some(detail),
                     remote_file_path: None,
                     total_size: None,
                 };
@@ -251,7 +258,8 @@ impl StorageProvider for S3Provider {
                         }
                     }
                     Err(e) => {
-                        error!("Failed to upload part {}: {}", part_number, e);
+                        let detail = DisplayErrorContext(&e).to_string();
+                        error!("Failed to upload part {}: {}", part_number, detail);
                         let _ = client
                             .abort_multipart_upload()
                             .bucket(bucket)
@@ -262,7 +270,7 @@ impl StorageProvider for S3Provider {
                         return UploadResult {
                             storage_id: storage.id.clone(),
                             success: false,
-                            error: Some(e.to_string()),
+                            error: Some(detail),
                             remote_file_path: None,
                             total_size: None,
                         };
@@ -317,7 +325,8 @@ impl StorageProvider for S3Provider {
                 }
             }
             Err(e) => {
-                error!("Failed to complete multipart upload: {}", e);
+                let detail = DisplayErrorContext(&e).to_string();
+                error!("Failed to complete multipart upload: {}", detail);
                 let _ = client
                     .abort_multipart_upload()
                     .bucket(bucket)
@@ -328,7 +337,7 @@ impl StorageProvider for S3Provider {
                 UploadResult {
                     storage_id: storage.id.clone(),
                     success: false,
-                    error: Some(e.to_string()),
+                    error: Some(detail),
                     remote_file_path: None,
                     total_size: None,
                 }
