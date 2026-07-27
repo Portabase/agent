@@ -43,8 +43,20 @@ pub async fn check_and_update_cron(
             debug!("Task cron normalized: unix \"{}\" -> crate \"{}\"", raw_cron, cron);
 
             if exists {
-                let raw: String = conn.hget(&redis_key, "data").await.unwrap();
-                let stored: models::PeriodicTask = serde_json::from_str(&raw).unwrap();
+                let raw: String = match conn.hget(&redis_key, "data").await {
+                    Ok(raw) => raw,
+                    Err(e) => {
+                        tracing::error!("Failed to load task data for {}: {:?}", task_name, e);
+                        return;
+                    }
+                };
+                let stored: models::PeriodicTask = match serde_json::from_str(&raw) {
+                    Ok(stored) => stored,
+                    Err(e) => {
+                        tracing::error!("Failed to parse task data for {}: {:?}", task_name, e);
+                        return;
+                    }
+                };
 
                 let cron_changed = stored.cron != cron;
                 let args_changed = stored.args != args;

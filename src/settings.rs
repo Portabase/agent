@@ -18,6 +18,7 @@ pub struct Settings {
     pub chunk_size: usize, // bytes
     pub retry_attempts: u32,
     pub retry_backoff_ms: u64,
+    pub max_concurrent_backups: Option<usize>, // None = unlimited
 }
 
 impl Settings {
@@ -69,6 +70,20 @@ impl Settings {
             panic!("RETRY_BACKOFF_MS must be between 100 and 30000 milliseconds");
         }
 
+        let max_concurrent_backups = match env::var("MAX_CONCURRENT_BACKUPS") {
+            Ok(val) if val.trim().is_empty() => None,
+            Ok(val) => {
+                let parsed = val
+                    .parse::<usize>()
+                    .expect("MAX_CONCURRENT_BACKUPS must be a valid positive integer");
+                if parsed == 0 {
+                    panic!("MAX_CONCURRENT_BACKUPS must be at least 1");
+                }
+                Some(parsed)
+            }
+            Err(_) => None,
+        };
+
         let tz = env::var("TZ").unwrap_or_else(|_| "UTC".to_string());
 
         Self {
@@ -87,6 +102,7 @@ impl Settings {
             chunk_size,
             retry_attempts,
             retry_backoff_ms,
+            max_concurrent_backups,
         }
     }
 }
