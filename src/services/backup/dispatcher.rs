@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use tokio::sync::Semaphore;
 use tracing::error;
 
-static BACKUP_SEMAPHORE: Lazy<Option<Semaphore>> =
+pub(crate) static BACKUP_SEMAPHORE: Lazy<Option<Semaphore>> =
     Lazy::new(|| CONFIG.max_concurrent_backups.map(Semaphore::new));
 
 impl BackupService {
