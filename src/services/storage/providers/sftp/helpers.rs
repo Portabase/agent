@@ -46,6 +46,9 @@ pub fn build_sftp_config(
     if config.username.trim().is_empty() {
         bail!("sftp username is required");
     }
+    if config.host.contains(['\r', '\n']) || config.username.contains(['\r', '\n']) {
+        bail!("sftp host/username must not contain line breaks");
+    }
 
     let has_password = config.password.as_deref().is_some_and(|p| !p.trim().is_empty());
     let has_key = config.private_key.as_deref().is_some_and(|k| !k.trim().is_empty());

@@ -1,7 +1,7 @@
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::storage::providers::sftp::helpers::build_sftp_config;
 use crate::services::storage::providers::sftp::models::SftpProviderConfig;
-use crate::services::storage::{StorageProvider, get_provider};
+use crate::services::storage::get_provider;
 
 fn storage(config: serde_json::Value) -> DatabaseStorage {
     serde_json::from_value(serde_json::json!({
