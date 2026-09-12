@@ -78,8 +78,6 @@ pub fn validate_config(config_text: &str, remote_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// `rclone obscure <password>` — several backends (sftp, ...) require the
-/// password field to be obscured rather than plain.
 pub fn obscure_password(password: &str) -> Result<String> {
     let out = std::process::Command::new("rclone")
         .arg("obscure")
@@ -97,9 +95,6 @@ pub fn obscure_password(password: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// Serialize ordered `(key, value)` fields into an rclone config section
-/// ("json to rclone config"). Empty values are skipped; values containing line
-/// breaks are rejected to prevent config injection. Order is preserved.
 pub fn build_rclone_config(remote_name: &str, fields: &[(&str, String)]) -> Result<String> {
     if remote_name.contains(['\r', '\n']) {
         bail!("rclone remote name must not contain line breaks");
