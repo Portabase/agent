@@ -61,7 +61,6 @@ impl StorageProvider for SftpProvider {
             }
         };
 
-        // `_key_file` stays in scope so the temp key survives the whole upload.
         let (config_text, _key_file) = match build_sftp_config(&config) {
             Ok(v) => v,
             Err(e) => {

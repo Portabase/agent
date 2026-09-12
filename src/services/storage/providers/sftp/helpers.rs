@@ -4,7 +4,6 @@ use std::io::Write;
 use std::process::Command;
 use tempfile::NamedTempFile;
 
-/// `rclone obscure <password>` — the sftp backend requires an obscured pass.
 pub fn obscure_password(password: &str) -> Result<String> {
     let out = Command::new("rclone")
         .arg("obscure")
@@ -38,9 +37,6 @@ fn write_key(private_key: &str) -> Result<NamedTempFile> {
     Ok(file)
 }
 
-/// Build the rclone `[sftp]` config text. When a private key is present it is
-/// written to a temp file referenced as `key_file`; the returned handle must
-/// be kept alive for the whole upload (drop removes the file).
 pub fn build_sftp_config(
     config: &SftpProviderConfig,
 ) -> Result<(String, Option<NamedTempFile>)> {

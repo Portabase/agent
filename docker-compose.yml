@@ -12,16 +12,16 @@ services:
       - ./databases.json:/config/config.json
       #- ./databases.toml:/config/config.toml
       - /var/run/docker.sock:/var/run/docker.sock
-#      - cargo-target:/app/target
+      #      - cargo-target:/app/target
       - databases_sqlite-data:/sqlite-data/workspace/data
       - ./scripts/sqlite/test-db:/sqlite-data-2/workspace/data
-#      - /bigdisk:/scratch
+    #      - /bigdisk:/scratch
     environment:
       APP_ENV: development
       LOG: debug
       TZ: "Europe/Paris"
-#      TMPDIR: /scratch
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiMWNhYTY2ZjEtMWJjNi00MzQzLThiMmItNGEwZDFmM2UzMWI5IiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
+      #      TMPDIR: /scratch
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiYmU3ODlmZGMtODZkNS00NDc3LWI3N2EtYjgwYjQ2YWRiM2I3IiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
       #CHUNK_SIZE_MB: "1"
       #POOLING: 1
       #RETRY_ATTEMPTS: 3
@@ -40,7 +40,7 @@ services:
 volumes:
   cargo-registry:
   cargo-git:
-#  cargo-target:
+  #  cargo-target:
   databases_sqlite-data:
     external: true
 
