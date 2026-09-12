@@ -78,6 +78,48 @@ pub fn validate_config(config_text: &str, remote_name: &str) -> Result<()> {
     Ok(())
 }
 
+/// `rclone obscure <password>` — several backends (sftp, ...) require the
+/// password field to be obscured rather than plain.
+pub fn obscure_password(password: &str) -> Result<String> {
+    let out = std::process::Command::new("rclone")
+        .arg("obscure")
+        .arg(password)
+        .output()
+        .context("failed to spawn rclone (is the binary installed in this image?)")?;
+
+    if !out.status.success() {
+        bail!(
+            "rclone obscure failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Serialize ordered `(key, value)` fields into an rclone config section
+/// ("json to rclone config"). Empty values are skipped; values containing line
+/// breaks are rejected to prevent config injection. Order is preserved.
+pub fn build_rclone_config(remote_name: &str, fields: &[(&str, String)]) -> Result<String> {
+    if remote_name.contains(['\r', '\n']) {
+        bail!("rclone remote name must not contain line breaks");
+    }
+
+    let mut lines = vec![format!("[{remote_name}]")];
+    for (key, value) in fields {
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+        if value.contains(['\r', '\n']) {
+            bail!("rclone config value for '{key}' must not contain line breaks");
+        }
+        lines.push(format!("{key} = {value}"));
+    }
+
+    Ok(lines.join("\n") + "\n")
+}
+
 /// `<remote>:<remote_path>/<remote_file_path>`
 pub fn remote_target(remote_name: &str, remote_path: &str, remote_file_path: &str) -> String {
     let base = remote_path.trim().trim_matches('/');

@@ -1,25 +1,8 @@
+use crate::services::storage::providers::rclone::helpers::{build_rclone_config, obscure_password};
 use crate::services::storage::providers::sftp::models::SftpProviderConfig;
 use anyhow::{Context, Result, bail};
 use std::io::Write;
-use std::process::Command;
 use tempfile::NamedTempFile;
-
-pub fn obscure_password(password: &str) -> Result<String> {
-    let out = Command::new("rclone")
-        .arg("obscure")
-        .arg(password)
-        .output()
-        .context("failed to spawn rclone (is the binary installed in this image?)")?;
-
-    if !out.status.success() {
-        bail!(
-            "rclone obscure failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
-    }
-
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-}
 
 fn write_key(private_key: &str) -> Result<NamedTempFile> {
     let mut file = NamedTempFile::new().context("failed to create sftp key temp file")?;
@@ -46,9 +29,6 @@ pub fn build_sftp_config(
     if config.username.trim().is_empty() {
         bail!("sftp username is required");
     }
-    if config.host.contains(['\r', '\n']) || config.username.contains(['\r', '\n']) {
-        bail!("sftp host/username must not contain line breaks");
-    }
 
     let has_password = config.password.as_deref().is_some_and(|p| !p.trim().is_empty());
     let has_key = config.private_key.as_deref().is_some_and(|k| !k.trim().is_empty());
@@ -56,32 +36,36 @@ pub fn build_sftp_config(
         bail!("sftp requires a password or a private key");
     }
 
-    let mut lines = vec![
-        "[sftp]".to_string(),
-        "type = sftp".to_string(),
-        format!("host = {}", config.host.trim()),
-    ];
-
-    if let Some(port) = config.port.as_deref() {
-        let port = port.trim();
-        if !port.is_empty() {
-            lines.push(format!("port = {port}"));
-        }
-    }
-
-    lines.push(format!("user = {}", config.username.trim()));
-
     let mut key_file: Option<NamedTempFile> = None;
+    let mut key_file_path = String::new();
     if has_key {
         let file = write_key(config.private_key.as_deref().unwrap())?;
-        lines.push(format!("key_file = {}", file.path().display()));
+        key_file_path = file.path().display().to_string();
         key_file = Some(file);
     }
 
-    if has_password {
-        let obscured = obscure_password(config.password.as_deref().unwrap())?;
-        lines.push(format!("pass = {obscured}"));
-    }
+    let pass = if has_password {
+        obscure_password(config.password.as_deref().unwrap())?
+    } else {
+        String::new()
+    };
 
-    Ok((lines.join("\n") + "\n", key_file))
+    let port = config
+        .port
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    let fields: &[(&str, String)] = &[
+        ("type", "sftp".to_string()),
+        ("host", config.host.trim().to_string()),
+        ("port", port),
+        ("user", config.username.trim().to_string()),
+        ("key_file", key_file_path),
+        ("pass", pass),
+    ];
+
+    let config_text = build_rclone_config("sftp", fields)?;
+    Ok((config_text, key_file))
 }

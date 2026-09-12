@@ -37,6 +37,28 @@ fn config_deserializes_from_dashboard_camel_case() {
 }
 
 #[test]
+fn build_rclone_config_skips_empty_and_rejects_line_breaks() {
+    use crate::services::storage::providers::rclone::helpers::build_rclone_config;
+
+    let text = build_rclone_config(
+        "sftp",
+        &[
+            ("type", "sftp".to_string()),
+            ("host", "h".to_string()),
+            ("port", "".to_string()),      // empty -> skipped
+            ("user", "  u  ".to_string()), // trimmed
+        ],
+    )
+    .unwrap();
+    assert_eq!(text, "[sftp]\ntype = sftp\nhost = h\nuser = u\n");
+
+    let err = build_rclone_config("sftp", &[("host", "a\nkey = injected".to_string())])
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("line breaks"), "unexpected error: {err}");
+}
+
+#[test]
 fn validate_config_accepts_the_target_remote() {
     assert!(validate_config(OVH_CONFIG, "ovhcloud-rbx").is_ok());
 }
