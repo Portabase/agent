@@ -21,8 +21,8 @@ services:
       LOG: debug
       TZ: "Europe/Paris"
       #      TMPDIR: /scratch
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiYmU3ODlmZGMtODZkNS00NDc3LWI3N2EtYjgwYjQ2YWRiM2I3IiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
-      #CHUNK_SIZE_MB: "1"
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiZDk1YjhiYjktZmVjOS00ODI5LTk1NDQtZmI5NThkMTIxMmYyIiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
+#      CHUNK_SIZE_MB: "1"
       #POOLING: 1
       #RETRY_ATTEMPTS: 3
       #RETRY_BACKOFF_MS: 1000
