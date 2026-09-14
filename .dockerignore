@@ -1,11 +1,9 @@
-# Git
 .git
 .gitignore
-
-# MD files
 CHANGELOG.md
 README.md
 RELEASE.md
-
-#IDE configurations
 .idea
+target
+dump.rdb
+.superpowers

@@ -9,7 +9,7 @@ RUN mkdir -p /mysql-exports/bin /mysql-exports/lib \
 # =========================
 # Base image (shared)
 # =========================
-FROM rust:1.94.0 AS base
+FROM rust:1.98 AS base
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     pkg-config \
@@ -43,6 +43,15 @@ RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
     && curl -sSL "https://github.com/microsoft/go-sqlcmd/releases/latest/download/sqlcmd-linux-${ARCH}.tar.bz2" \
        | tar -xjf - -C /usr/local/bin sqlcmd \
     && chmod +x /usr/local/bin/sqlcmd
+
+# =========================
+# rclone (all storage backends)
+# =========================
+ARG RCLONE_VERSION=1.75.1
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL -o /tmp/rclone.deb "https://downloads.rclone.org/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-linux-${ARCH}.deb" \
+    && dpkg -i /tmp/rclone.deb \
+    && rm /tmp/rclone.deb
 
 ARG TARGETARCH
 
@@ -133,6 +142,12 @@ RUN apt-get update && apt-get install -y \
     valkey \
     firebird3.0-utils \
     && rm -rf /var/lib/apt/lists/*
+
+ARG RCLONE_VERSION=1.75.1
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL -o /tmp/rclone.deb "https://downloads.rclone.org/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-linux-${ARCH}.deb" \
+    && dpkg -i /tmp/rclone.deb \
+    && rm /tmp/rclone.deb
 
 ENV DOTNET_ROOT=/usr/local/dotnet
 RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \

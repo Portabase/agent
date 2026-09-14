@@ -9,7 +9,9 @@ use providers::azure_blob;
 use providers::google_cloud_storage;
 use providers::google_drive;
 use providers::local;
+use providers::rclone;
 use providers::s3;
+use providers::sftp;
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -26,7 +28,6 @@ pub trait StorageProvider: Send + Sync {
     ) -> UploadResult;
 }
 
-/// Factory to create provider instance from storage config
 pub fn get_provider(storage: &DatabaseStorage) -> Option<Box<dyn StorageProvider>> {
     info!("Getting provider");
     info!("{:#?}", storage.provider.as_str());
@@ -39,6 +40,8 @@ pub fn get_provider(storage: &DatabaseStorage) -> Option<Box<dyn StorageProvider
         "google-cloud-storage" => Some(Box::new(
             google_cloud_storage::GoogleCloudStorageProvider {},
         )),
+        "rclone" => Some(Box::new(rclone::RcloneProvider {})),
+        "sftp" => Some(Box::new(sftp::SftpProvider {})),
         _ => {
             error!("Unknown storage provider: {}", storage.provider);
             None
