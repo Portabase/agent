@@ -11,6 +11,7 @@ use providers::google_drive;
 use providers::local;
 use providers::rclone;
 use providers::s3;
+use providers::sftp;
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -40,6 +41,7 @@ pub fn get_provider(storage: &DatabaseStorage) -> Option<Box<dyn StorageProvider
             google_cloud_storage::GoogleCloudStorageProvider {},
         )),
         "rclone" => Some(Box::new(rclone::RcloneProvider {})),
+        "sftp" => Some(Box::new(sftp::SftpProvider {})),
         _ => {
             error!("Unknown storage provider: {}", storage.provider);
             None
