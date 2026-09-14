@@ -2,9 +2,8 @@ use anyhow::{Context as _, Result, anyhow};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use chrono::{Duration, Utc};
-use openssl::hash::MessageDigest;
-use openssl::pkey::PKey;
-use openssl::sign::Signer;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use url::Url;
 use azure_core::http::RequestContent;
 use azure_storage_blob::clients::{BlobClient, BlockBlobClient};
@@ -36,12 +35,12 @@ impl SasResource {
 
 pub(crate) const SAS_VERSION: &str = "2022-11-02";
 
+type HmacSha256 = Hmac<Sha256>;
+
 pub(crate) fn hmac_sha256_b64(key: &[u8], data: &str) -> Result<String> {
-    let pkey = PKey::hmac(key).context("hmac key")?;
-    let mut signer = Signer::new(MessageDigest::sha256(), &pkey).context("signer")?;
-    signer.update(data.as_bytes()).context("signer update")?;
-    let sig = signer.sign_to_vec().context("sign")?;
-    Ok(STANDARD.encode(sig))
+    let mut mac = HmacSha256::new_from_slice(key).context("hmac key")?;
+    mac.update(data.as_bytes());
+    Ok(STANDARD.encode(mac.finalize().into_bytes()))
 }
 
 pub fn build_service_sas(
