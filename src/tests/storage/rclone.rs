@@ -180,7 +180,7 @@ use testcontainers::{GenericImage, ImageExt};
 const BUCKET: &str = "portabase";
 
 async fn start_minio() -> (testcontainers::ContainerAsync<GenericImage>, String) {
-    let container = GenericImage::new("bitnami/minio", "latest")
+    let container = GenericImage::new("coollabsio/minio", "latest")
         .with_exposed_port(9000.tcp())
         .with_wait_for(WaitFor::message_on_stderr("API:"))
         .with_env_var("MINIO_ROOT_USER", "minioadmin")
