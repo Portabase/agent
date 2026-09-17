@@ -62,7 +62,7 @@ services:
 
   db-mongodb-auth:
     container_name: db-mongodb-auth
-    image: mongo:latest
+    image: mongo:8.0.4
     ports:
       - "27082:27017"
     environment:
@@ -82,7 +82,7 @@ services:
 
   db-mongodb:
     container_name: db-mongodb
-    image: mongo:latest
+    image: mongo:8.0.4
     ports:
       - "27083:27017"
     volumes:
