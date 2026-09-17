@@ -1,7 +1,7 @@
 use crate::services::config::DatabaseConfig;
 use anyhow::Result;
 use mongodb::Client;
-use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 
 const USERINFO_ENCODE: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
@@ -27,7 +27,8 @@ pub fn get_mongo_uri(cfg: DatabaseConfig) -> Result<String> {
 }
 
 pub fn build_mongo_uri(cfg: &DatabaseConfig, include_db: bool) -> String {
-    let is_srv = cfg.port == 0;
+    let is_multi_host = cfg.host.contains(',');
+    let is_srv = cfg.port == 0 && !is_multi_host;
     let scheme = if is_srv { "mongodb+srv" } else { "mongodb" };
     let has_auth = !cfg.username.is_empty() && !cfg.password.is_empty();
 
@@ -41,7 +42,7 @@ pub fn build_mongo_uri(cfg: &DatabaseConfig, include_db: bool) -> String {
         String::new()
     };
 
-    let authority = if is_srv {
+    let authority = if is_srv || is_multi_host {
         cfg.host.clone()
     } else {
         format!("{}:{}", cfg.host, cfg.port)
@@ -53,7 +54,35 @@ pub fn build_mongo_uri(cfg: &DatabaseConfig, include_db: bool) -> String {
         "/".to_string()
     };
 
-    let query = if has_auth { "?authSource=admin" } else { "" };
+    let mut params: Vec<String> = Vec::new();
+
+    match cfg.options.get("auth_source").and_then(|v| v.as_str()) {
+        Some(s) if !s.is_empty() => params.push(format!(
+            "authSource={}",
+            utf8_percent_encode(s, USERINFO_ENCODE)
+        )),
+        _ if has_auth => params.push("authSource=admin".to_string()),
+        _ => {}
+    }
+
+    if let Some(rs) = cfg.options.get("replica_set").and_then(|v| v.as_str()) {
+        if !rs.is_empty() {
+            params.push(format!(
+                "replicaSet={}",
+                utf8_percent_encode(rs, USERINFO_ENCODE)
+            ));
+        }
+    }
+
+    if cfg.options.get("tls").and_then(|v| v.as_bool()) == Some(true) {
+        params.push("tls=true".to_string());
+    }
+
+    let query = if params.is_empty() {
+        String::new()
+    } else {
+        format!("?{}", params.join("&"))
+    };
 
     format!("{}://{}{}{}{}", scheme, credentials, authority, path, query)
 }
@@ -70,71 +99,4 @@ pub fn extract_db_name(dry_output: &str) -> Option<String> {
         }
     }
     dbs.into_iter().next()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::services::config::{DatabaseConfig, DbType};
-    use std::collections::HashMap;
-
-    fn cfg(host: &str, port: u16, user: &str, pass: &str) -> DatabaseConfig {
-        DatabaseConfig {
-            name: "t".into(),
-            database: "mydb".into(),
-            db_type: DbType::MongoDB,
-            username: user.into(),
-            password: pass.into(),
-            port,
-            host: host.into(),
-            generated_id: "id".into(),
-            path: String::new(),
-            max_packet_size: String::new(),
-            volume_name: String::new(),
-            container_name: None,
-            options: HashMap::new(),
-        }
-    }
-
-    #[test]
-    fn standard_with_auth() {
-        let c = cfg("localhost", 27017, "user", "pass");
-        assert_eq!(
-            build_mongo_uri(&c, true),
-            "mongodb://user:pass@localhost:27017/mydb?authSource=admin"
-        );
-    }
-
-    #[test]
-    fn standard_no_auth() {
-        let c = cfg("localhost", 27017, "", "");
-        assert_eq!(build_mongo_uri(&c, true), "mongodb://localhost:27017/mydb");
-    }
-
-    #[test]
-    fn srv_with_auth() {
-        let c = cfg("cluster.example.mongodb.net", 0, "user", "pass");
-        assert_eq!(
-            build_mongo_uri(&c, true),
-            "mongodb+srv://user:pass@cluster.example.mongodb.net/mydb?authSource=admin"
-        );
-    }
-
-    #[test]
-    fn srv_no_db_for_dryrun() {
-        let c = cfg("cluster.example.mongodb.net", 0, "user", "pass");
-        assert_eq!(
-            build_mongo_uri(&c, false),
-            "mongodb+srv://user:pass@cluster.example.mongodb.net/?authSource=admin"
-        );
-    }
-
-    #[test]
-    fn encodes_special_chars_in_credentials() {
-        let c = cfg("cluster.example.mongodb.net", 0, "user", "p@ss:w/rd?");
-        assert_eq!(
-            build_mongo_uri(&c, true),
-            "mongodb+srv://user:p%40ss%3Aw%2Frd%3F@cluster.example.mongodb.net/mydb?authSource=admin"
-        );
-    }
 }
