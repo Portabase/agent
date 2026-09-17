@@ -100,3 +100,102 @@ async fn mongodb_backup_restore_test() {
         }
     }
 }
+
+use crate::domain::mongodb::connection::build_mongo_uri;
+
+fn uri_cfg(host: &str, port: u16, user: &str, pass: &str) -> DatabaseConfig {
+    DatabaseConfig {
+        name: "t".into(),
+        database: "mydb".into(),
+        db_type: DbType::MongoDB,
+        username: user.into(),
+        password: pass.into(),
+        port,
+        host: host.into(),
+        generated_id: "id".into(),
+        path: String::new(),
+        max_packet_size: String::new(),
+        volume_name: String::new(),
+        container_name: None,
+        options: std::collections::HashMap::new(),
+    }
+}
+
+#[test]
+fn uri_standard_with_auth() {
+    let c = uri_cfg("localhost", 27017, "user", "pass");
+    assert_eq!(
+        build_mongo_uri(&c, true),
+        "mongodb://user:pass@localhost:27017/mydb?authSource=admin"
+    );
+}
+
+#[test]
+fn uri_standard_no_auth() {
+    let c = uri_cfg("localhost", 27017, "", "");
+    assert_eq!(build_mongo_uri(&c, true), "mongodb://localhost:27017/mydb");
+}
+
+#[test]
+fn uri_srv_with_auth() {
+    let c = uri_cfg("cluster.example.mongodb.net", 0, "user", "pass");
+    assert_eq!(
+        build_mongo_uri(&c, true),
+        "mongodb+srv://user:pass@cluster.example.mongodb.net/mydb?authSource=admin"
+    );
+}
+
+#[test]
+fn uri_srv_no_db_for_dryrun() {
+    let c = uri_cfg("cluster.example.mongodb.net", 0, "user", "pass");
+    assert_eq!(
+        build_mongo_uri(&c, false),
+        "mongodb+srv://user:pass@cluster.example.mongodb.net/?authSource=admin"
+    );
+}
+
+#[test]
+fn uri_options_authsource_replicaset_tls() {
+    let mut c = uri_cfg("localhost", 27017, "user", "pass");
+    c.options.insert("auth_source".into(), "myauthdb".into());
+    c.options.insert("replica_set".into(), "rs0".into());
+    c.options.insert("tls".into(), serde_json::Value::Bool(true));
+    assert_eq!(
+        build_mongo_uri(&c, true),
+        "mongodb://user:pass@localhost:27017/mydb?authSource=myauthdb&replicaSet=rs0&tls=true"
+    );
+}
+
+#[test]
+fn uri_multi_host_replica_set() {
+    let mut c = uri_cfg(
+        "mongodb0.example.internal:27017,mongodb1.example.internal:27017,mongodb2.example.internal:27017",
+        0,
+        "myDatabaseUser",
+        "D1fficultP@ssw0rd",
+    );
+    c.database = "myDB".into();
+    c.options.insert("replica_set".into(), "myRepl".into());
+    assert_eq!(
+        build_mongo_uri(&c, true),
+        "mongodb://myDatabaseUser:D1fficultP%40ssw0rd@mongodb0.example.internal:27017,mongodb1.example.internal:27017,mongodb2.example.internal:27017/myDB?authSource=admin&replicaSet=myRepl"
+    );
+}
+
+#[test]
+fn uri_default_authsource_when_auth() {
+    let c = uri_cfg("localhost", 27017, "user", "pass");
+    assert_eq!(
+        build_mongo_uri(&c, true),
+        "mongodb://user:pass@localhost:27017/mydb?authSource=admin"
+    );
+}
+
+#[test]
+fn uri_encodes_special_chars_in_credentials() {
+    let c = uri_cfg("cluster.example.mongodb.net", 0, "user", "p@ss:w/rd?");
+    assert_eq!(
+        build_mongo_uri(&c, true),
+        "mongodb+srv://user:p%40ss%3Aw%2Frd%3F@cluster.example.mongodb.net/mydb?authSource=admin"
+    );
+}
