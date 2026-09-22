@@ -11,6 +11,10 @@ RUN mkdir -p /mysql-exports/bin /mysql-exports/lib \
 # =========================
 FROM rust:1.98 AS base
 
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /etc/apt/trusted.gpg.d/pgdg.asc \
+    && echo "deb https://apt.postgresql.org/pub/repos/apt trixie-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     pkg-config \
     libssl-dev \
@@ -18,6 +22,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     redis-server \
     ca-certificates \
     libpq5 \
+    libedit2 \
     libreadline8 \
     libncurses6 \
     zlib1g \
@@ -127,11 +132,16 @@ RUN echo "APP_VERSION=$(cargo pkgid | awk -F# '{print $2}')" > /app/version.env
 # =========================
 FROM ubuntu:24.04 AS prod
 
+RUN apt-get update && apt-get install -y curl ca-certificates \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /etc/apt/trusted.gpg.d/pgdg.asc \
+    && echo "deb https://apt.postgresql.org/pub/repos/apt noble-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+
 RUN apt-get update && apt-get install -y \
     redis-server \
     ca-certificates \
     tzdata \
     libpq5 \
+    libedit2 \
     libreadline8 \
     libncurses6 \
     zlib1g \
