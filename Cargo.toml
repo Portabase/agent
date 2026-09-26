@@ -61,6 +61,7 @@ postgres = "0.19.12"
 url = "2.5.8"
 percent-encoding = "2.3.2"
 bollard = "0.20.0"
+rustls = "0.23"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

@@ -15,9 +15,10 @@ use utils::task_manager::scheduler;
 
 #[tokio::main]
 async fn main() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     logging::init_logger();
 
-    // Remove all locks on startup
     if let Err(e) = FileLock::clean_startup().await {
         eprintln!("Failed to clean locks on startup: {:?}", e);
     }
