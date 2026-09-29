@@ -63,7 +63,65 @@ You have 4 ways to install Portabase Agent:
 
 [![Contributors](https://contrib.rocks/image?repo=Portabase/agent-rust)](https://github.com/Portabase/agent-rust/graphs/contributors)
 
-[!["Support Portabase"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/portabase)
+## Become a Sponsor
+
+🙏 Thank you to the incredible sponsors for supporting this project! Your contributions help keep Portabase running and growing. If you'd like to join and become a sponsor, please visit the [sponsorship page](https://github.com/sponsors/Portabase) and be part of something great! 🚀
+
+### 💎 Platinum Sponsors
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/sponsors/Portabase">
+        <img src="/.github/assets/plus-circle.svg" height="180" alt="Become a platinum sponsor"/>
+        <br />
+        Become a platinum sponsor
+      </a>
+    </td>
+  </tr>
+</table>
+
+### 🥇 Gold Sponsors
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/sponsors/Portabase">
+        <img src="/.github/assets/plus-circle.svg" height="150" alt="Become a gold sponsor"/>
+        <br />
+        Become a gold sponsor
+      </a>
+    </td>
+  </tr>
+</table>
+
+### 🥈 Silver Sponsors
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/sponsors/Portabase">
+        <img src="/.github/assets/plus-circle.svg" height="100" alt="Become a silver sponsor"/>
+        <br />
+        Become a silver sponsor
+      </a>
+    </td>
+  </tr>
+</table>
+
+### 🤝 Community Sponsors
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/sponsors/Portabase">
+        <img src="/.github/assets/plus-circle.svg" height="80" alt="Become a community sponsor"/>
+        <br />
+        Become a community sponsor
+      </a>
+    </td>
+  </tr>
+</table>
 
 ## License
 
