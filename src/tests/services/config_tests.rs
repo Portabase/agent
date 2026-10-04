@@ -1,7 +1,7 @@
 use crate::core::context::Context;
 use crate::services::api::ApiClient;
 use crate::services::config::ConfigService;
-use crate::services::config::{build_config, DatabasesConfig, InputDatabaseConfig};
+use crate::services::config::{DatabasesConfig, InputDatabaseConfig, build_config, files_method};
 use crate::utils::edge_key::EdgeKey;
 use std::io::Write;
 use std::sync::Arc;
@@ -176,24 +176,39 @@ fn keep_ownership_extraction_logic() {
     // true → keep ownership
     let mut opts: HashMap<String, Value> = HashMap::new();
     opts.insert("keep_ownership".to_string(), Value::Bool(true));
-    let keep = opts.get("keep_ownership").and_then(|v| v.as_bool()).unwrap_or(false);
+    let keep = opts
+        .get("keep_ownership")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     assert!(keep, "should keep ownership when flag is true");
 
     // false → strip
     let mut opts2: HashMap<String, Value> = HashMap::new();
     opts2.insert("keep_ownership".to_string(), Value::Bool(false));
-    let keep2 = opts2.get("keep_ownership").and_then(|v| v.as_bool()).unwrap_or(false);
+    let keep2 = opts2
+        .get("keep_ownership")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     assert!(!keep2, "should strip when flag is false");
 
     // missing → strip
     let opts3: HashMap<String, Value> = HashMap::new();
-    let keep3 = opts3.get("keep_ownership").and_then(|v| v.as_bool()).unwrap_or(false);
+    let keep3 = opts3
+        .get("keep_ownership")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     assert!(!keep3, "should strip when key absent");
 
     // wrong type → strip
     let mut opts4: HashMap<String, Value> = HashMap::new();
-    opts4.insert("keep_ownership".to_string(), Value::String("yes".to_string()));
-    let keep4 = opts4.get("keep_ownership").and_then(|v| v.as_bool()).unwrap_or(false);
+    opts4.insert(
+        "keep_ownership".to_string(),
+        Value::String("yes".to_string()),
+    );
+    let keep4 = opts4
+        .get("keep_ownership")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     assert!(!keep4, "should strip when value is not bool");
 }
 
@@ -258,7 +273,9 @@ fn docker_volume_requires_volume_name() {
     );
 
     let service = ConfigService::new(test_context());
-    let err = service.load(Some(file.path().to_str().unwrap())).unwrap_err();
+    let err = service
+        .load(Some(file.path().to_str().unwrap()))
+        .unwrap_err();
     assert!(err.contains("volume_name"), "error was: {err}");
 }
 
@@ -323,11 +340,87 @@ fn databases_config_roundtrips_through_serde() {
     )
     .unwrap();
     let cfg = build_config(input).unwrap();
-    let wrapped = DatabasesConfig { databases: vec![cfg] };
+    let wrapped = DatabasesConfig {
+        databases: vec![cfg],
+    };
 
     let json = serde_json::to_string(&wrapped).unwrap();
     let back: DatabasesConfig = serde_json::from_str(&json).unwrap();
     assert_eq!(back.databases[0].name, "pg");
     assert_eq!(back.databases[0].db_type.as_str(), "postgresql");
     assert_eq!(back.databases[0].password, "secret");
+}
+
+#[test]
+fn files_type_parses_with_options() {
+    let input: InputDatabaseConfig = serde_json::from_str(
+        r#"{
+            "name": "shared",
+            "type": "files",
+            "path": "/data/files",
+            "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681",
+            "options": { "exclude": ["node_modules", "/cache"], "one_file_system": true }
+        }"#,
+    )
+    .unwrap();
+
+    let cfg = build_config(input).unwrap();
+    assert_eq!(cfg.db_type.as_str(), "files");
+    assert_eq!(cfg.path, "/data/files");
+    assert_eq!(
+        cfg.options["exclude"],
+        serde_json::json!(["node_modules", "/cache"])
+    );
+    assert_eq!(cfg.options["one_file_system"], serde_json::json!(true));
+}
+
+#[test]
+fn files_type_requires_path() {
+    let input: InputDatabaseConfig = serde_json::from_str(
+        r#"{ "name": "shared", "type": "files", "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681" }"#,
+    )
+    .unwrap();
+    let err = build_config(input).unwrap_err();
+    assert!(err.contains("path"), "unexpected error: {err}");
+}
+
+#[test]
+fn files_type_rejects_relative_and_root_paths() {
+    for bad in ["data/files", "/", "//"] {
+        let json = format!(
+            r#"{{ "name": "shared", "type": "files", "path": "{bad}", "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681" }}"#
+        );
+        let input: InputDatabaseConfig = serde_json::from_str(&json).unwrap();
+        let err = build_config(input).unwrap_err();
+        assert!(err.contains("absolute"), "path {bad:?} gave: {err}");
+    }
+}
+
+fn files_input(options: &str) -> InputDatabaseConfig {
+    serde_json::from_str(&format!(
+        r#"{{ "name": "docs", "type": "files", "path": "/data/files",
+               "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681"{options} }}"#
+    ))
+    .unwrap()
+}
+
+#[test]
+fn files_method_defaults_to_archive() {
+    let cfg = build_config(files_input("")).unwrap();
+    assert_eq!(files_method(&cfg), "archive");
+}
+
+#[test]
+fn files_method_reads_snapshot_and_sync() {
+    let snap = build_config(files_input(r#", "options": { "method": "snapshot" }"#)).unwrap();
+    assert_eq!(files_method(&snap), "snapshot");
+    let sync = build_config(files_input(r#", "options": { "method": "sync" }"#)).unwrap();
+    assert_eq!(files_method(&sync), "sync");
+}
+
+#[test]
+fn unknown_files_method_refuses_the_source() {
+    let err = build_config(files_input(r#", "options": { "method": "mirror" }"#)).unwrap_err();
+    assert!(err.contains("Unknown method"), "{err}");
+    assert!(err.contains("docs"), "{err}");
 }

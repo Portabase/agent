@@ -1,4 +1,4 @@
-mod models;
+pub mod models;
 
 use crate::core::context::Context;
 use crate::services::api::models::agent::status::DatabaseStorage;

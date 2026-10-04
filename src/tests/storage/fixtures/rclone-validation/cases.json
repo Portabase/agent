@@ -1,0 +1,345 @@
+[
+  {
+    "name": "ovh-s3",
+    "configText": "[ovhcloud-rbx]\ntype = s3\nprovider = OVHcloud\naccess_key_id = my_access\nsecret_access_key = my_secret\nregion = rbx\nendpoint = s3.rbx.io.cloud.ovh.net\nacl = private\n",
+    "remoteName": "ovhcloud-rbx",
+    "ok": true,
+    "errorContains": null
+  },
+  {
+    "name": "comments-crlf",
+    "configText": "# comment\r\n[r]\r\ntype = s3\r\n; note\r\nprovider = AWS\r\n",
+    "remoteName": "r",
+    "ok": true,
+    "errorContains": null
+  },
+  {
+    "name": "empty-value",
+    "configText": "[r]\ntype = webdav\nurl = https://dav.example.com\nuser =\n",
+    "remoteName": "r",
+    "ok": true,
+    "errorContains": null
+  },
+  {
+    "name": "duplicate-type",
+    "configText": "[x]\ntype = s3\ntype = local\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "duplicate rclone config key 'type'"
+  },
+  {
+    "name": "duplicate-type-case",
+    "configText": "[x]\ntype = s3\nTYPE = local\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "duplicate rclone config key 'TYPE'"
+  },
+  {
+    "name": "colon-separator",
+    "configText": "[x]\ntype: local\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "line 2 is not a [section] header"
+  },
+  {
+    "name": "on-the-fly",
+    "configText": "[:local]\ntype = s3\n",
+    "remoteName": ":local",
+    "ok": false,
+    "errorContains": "invalid rclone remote name ':local'"
+  },
+  {
+    "name": "sftp-ssh",
+    "configText": "[x]\ntype = sftp\nhost = h\nssh = touch /tmp/pwned\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'ssh' is not allowed"
+  },
+  {
+    "name": "webdav-command",
+    "configText": "[x]\ntype = webdav\nurl = http://h\nbearer_token_command = id\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'bearer_token_command' is not allowed"
+  },
+  {
+    "name": "env-auth",
+    "configText": "[x]\ntype = s3\nenv_auth = true\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'env_auth' is not allowed"
+  },
+  {
+    "name": "use-msi",
+    "configText": "[x]\ntype = azureblob\naccount = a\nuse_msi = true\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'use_msi' is not allowed"
+  },
+  {
+    "name": "service-account-file",
+    "configText": "[x]\ntype = google cloud storage\nservice_account_file = /etc/passwd\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'service_account_file' is not allowed"
+  },
+  {
+    "name": "blocked-local",
+    "configText": "[x]\ntype = local\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "backend type 'local' is not allowed"
+  },
+  {
+    "name": "two-sections",
+    "configText": "[a]\ntype = s3\n[b]\ntype = s3\n",
+    "remoteName": "a",
+    "ok": false,
+    "errorContains": "exactly one [section] (found 2)"
+  },
+  {
+    "name": "key-before-section",
+    "configText": "type = s3\n[x]\ntype = s3\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "line 1 appears before any [section]"
+  },
+  {
+    "name": "no-type",
+    "configText": "[x]\nprovider = AWS\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "has no type"
+  },
+  {
+    "name": "remote-mismatch",
+    "configText": "[a]\ntype = s3\n",
+    "remoteName": "b",
+    "ok": false,
+    "errorContains": "remote 'b' is not defined"
+  },
+  {
+    "name": "bad-key",
+    "configText": "[x]\ntype = s3\nbad key = 1\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "invalid rclone config key 'bad key'"
+  },
+  {
+    "name": "empty-config",
+    "configText": "",
+    "remoteName": "r",
+    "ok": false,
+    "errorContains": "exactly one [section] (found 0)"
+  },
+  {
+    "name": "empty-section-name",
+    "configText": "[]\ntype = s3\n",
+    "remoteName": "",
+    "ok": false,
+    "errorContains": "invalid rclone remote name ''"
+  },
+  {
+    "name": "name-with-space",
+    "configText": "[a b]\ntype = s3\n",
+    "remoteName": "a b",
+    "ok": false,
+    "errorContains": "invalid rclone remote name 'a b'"
+  },
+  {
+    "name": "blocked-type-uppercase",
+    "configText": "[x]\ntype = LOCAL\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "backend type 'local' is not allowed"
+  },
+  {
+    "name": "key-file-uppercase",
+    "configText": "[x]\ntype = sftp\nKEY_FILE = /etc/passwd\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'KEY_FILE' is not allowed"
+  },
+  {
+    "name": "equals-at-line-start",
+    "configText": "[x]\n= v\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "line 2 is not a [section] header"
+  },
+  {
+    "name": "whitespace-tolerant",
+    "configText": "  [r]  \n  type=s3  \n\n",
+    "remoteName": "r",
+    "ok": true,
+    "errorContains": null
+  },
+  {
+    "name": "quoted-type-backtick",
+    "configText": "[x]\ntype = `local`\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "value for key 'type' must not be quoted"
+  },
+  {
+    "name": "quoted-type-triple",
+    "configText": "[x]\ntype = \"\"\"local\"\"\"\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "value for key 'type' must not be quoted"
+  },
+  {
+    "name": "quoted-type-trailing-junk",
+    "configText": "[x]\ntype = `alias` junk\nremote = /\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "value for key 'type' must not be quoted"
+  },
+  {
+    "name": "quoted-other-value",
+    "configText": "[x]\ntype = s3\nendpoint = `x`\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "value for key 'endpoint' must not be quoted (remote 'x')"
+  },
+  {
+    "name": "blocked-google-photos",
+    "configText": "[x]\ntype = google photos\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "backend type 'google photos' is not allowed"
+  },
+  {
+    "name": "blocked-gphotos",
+    "configText": "[x]\ntype = gphotos\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "backend type 'gphotos' is not allowed"
+  },
+  {
+    "name": "invalid-type-syntax",
+    "configText": "[x]\ntype = s3!\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "invalid rclone backend type 's3!' (remote 'x')"
+  },
+  {
+    "name": "forbidden-use-az",
+    "configText": "[x]\ntype = azureblob\nuse_az = v\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'use_az' is not allowed (remote 'x')"
+  },
+  {
+    "name": "forbidden-use-kerberos",
+    "configText": "[x]\ntype = hdfs\nuse_kerberos = v\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'use_kerberos' is not allowed (remote 'x')"
+  },
+  {
+    "name": "forbidden-kerberos-ccache",
+    "configText": "[x]\ntype = hdfs\nkerberos_ccache = v\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'kerberos_ccache' is not allowed (remote 'x')"
+  },
+  {
+    "name": "forbidden-key-use-agent",
+    "configText": "[x]\ntype = sftp\nkey_use_agent = v\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'key_use_agent' is not allowed (remote 'x')"
+  },
+  {
+    "name": "forbidden-set-env",
+    "configText": "[x]\ntype = sftp\nset_env = v\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'set_env' is not allowed (remote 'x')"
+  },
+  {
+    "name": "forbidden-unix-socket",
+    "configText": "[x]\ntype = sftp\nunix_socket = v\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'unix_socket' is not allowed (remote 'x')"
+  },
+  {
+    "name": "forbidden-client-certificate-path",
+    "configText": "[x]\ntype = azureblob\nclient_certificate_path = v\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "key 'client_certificate_path' is not allowed (remote 'x')"
+  },
+  {
+    "name": "oracle-env-auth",
+    "configText": "[x]\ntype = oracleobjectstorage\nprovider = env_auth\nnamespace = n\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "oracleobjectstorage remotes must use provider = no_auth (remote 'x')"
+  },
+  {
+    "name": "oracle-missing-provider",
+    "configText": "[x]\ntype = oracleobjectstorage\nnamespace = n\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "oracleobjectstorage remotes must use provider = no_auth (remote 'x')"
+  },
+  {
+    "name": "oracle-spaced-type",
+    "configText": "[x]\ntype = oracle object storage\nprovider = instance_principal_auth\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "oracleobjectstorage remotes must use provider = no_auth (remote 'x')"
+  },
+  {
+    "name": "oracle-provider-uppercase-value",
+    "configText": "[x]\ntype = oracleobjectstorage\nprovider = NO_AUTH\nnamespace = n\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "oracleobjectstorage remotes must use provider = no_auth (remote 'x')"
+  },
+  {
+    "name": "oracle-provider-uppercase-key",
+    "configText": "[x]\ntype = oracleobjectstorage\nPROVIDER = no_auth\nnamespace = n\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "oracleobjectstorage remotes must use provider = no_auth (remote 'x')"
+  },
+  {
+    "name": "oracle-no-auth",
+    "configText": "[x]\ntype = oracleobjectstorage\nprovider = no_auth\nnamespace = n\nregion = eu-frankfurt-1\n",
+    "remoteName": "x",
+    "ok": true,
+    "errorContains": null
+  },
+  {
+    "name": "nel-in-type",
+    "configText": "[x]\ntype = local\u0085\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "backend type 'local' is not allowed (remote 'x')"
+  },
+  {
+    "name": "order-duplicate-before-forbidden",
+    "configText": "[x]\ntype = s3\nssh = a\nssh = b\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "duplicate rclone config key 'ssh' (remote 'x')"
+  },
+  {
+    "name": "order-bad-line-before-pair-before-header",
+    "configText": "type = s3\n[x]\nfoo\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "rclone config line 3 is not a [section] header"
+  },
+  {
+    "name": "order-invalid-key-before-duplicate",
+    "configText": "[x]\ntype = s3\nbad key = 1\nbad key = 2\n",
+    "remoteName": "x",
+    "ok": false,
+    "errorContains": "invalid rclone config key 'bad key' (remote 'x')"
+  }
+]

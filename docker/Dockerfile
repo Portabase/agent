@@ -58,6 +58,17 @@ RUN ARCH=$(dpkg --print-architecture) \
     && dpkg -i /tmp/rclone.deb \
     && rm /tmp/rclone.deb
 
+# =========================
+# restic (Snapshots mode)
+# =========================
+ARG RESTIC_VERSION=0.19.1
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL -o /tmp/restic.bz2 "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_${ARCH}.bz2" \
+    && bzip2 -d /tmp/restic.bz2 \
+    && install -m 0755 /tmp/restic /usr/local/bin/restic \
+    && rm /tmp/restic \
+    && restic version
+
 ARG TARGETARCH
 
 # =========================
@@ -146,6 +157,7 @@ RUN apt-get update && apt-get install -y \
     libncurses6 \
     zlib1g \
     curl \
+    bzip2 \
     mariadb-client \
     sqlite3 \
     redis-tools \
@@ -158,6 +170,17 @@ RUN ARCH=$(dpkg --print-architecture) \
     && curl -fsSL -o /tmp/rclone.deb "https://downloads.rclone.org/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-linux-${ARCH}.deb" \
     && dpkg -i /tmp/rclone.deb \
     && rm /tmp/rclone.deb
+
+# =========================
+# restic (Snapshots mode)
+# =========================
+ARG RESTIC_VERSION=0.19.1
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL -o /tmp/restic.bz2 "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_${ARCH}.bz2" \
+    && bzip2 -d /tmp/restic.bz2 \
+    && install -m 0755 /tmp/restic /usr/local/bin/restic \
+    && rm /tmp/restic \
+    && restic version
 
 ENV DOTNET_ROOT=/usr/local/dotnet
 RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \

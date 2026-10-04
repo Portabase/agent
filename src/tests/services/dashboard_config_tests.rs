@@ -82,3 +82,38 @@ fn persist_cache_leaves_no_tmp_file() {
     assert!(!tmp.exists(), "temp file should have been renamed away");
     assert!(path.exists());
 }
+
+use crate::services::dashboard_config::local_only_ids;
+use crate::services::status::payload_method;
+
+fn files_cfg(gen_id: &str, method: Option<&str>) -> DatabaseConfig {
+    let options = method
+        .map(|m| format!(r#", "options": {{ "method": "{m}" }}"#))
+        .unwrap_or_default();
+    let json = format!(
+        r#"{{ "name": "docs", "type": "files", "path": "/data/files", "generated_id": "{gen_id}"{options} }}"#
+    );
+    build_config(serde_json::from_str::<InputDatabaseConfig>(&json).unwrap()).unwrap()
+}
+
+#[test]
+fn local_only_ids_skips_sources_replaced_by_the_dashboard() {
+    let local = vec![cfg("local-a", ID_A, "h"), cfg("local-b", ID_B, "h")];
+    let dashboard = vec![cfg("dash-b", ID_B, "h")];
+    let ids = local_only_ids(&local, &dashboard);
+    assert!(ids.contains(ID_A));
+    assert!(!ids.contains(ID_B));
+}
+
+#[test]
+fn payload_method_is_sent_for_local_files_sources_only() {
+    let local = files_cfg(ID_A, Some("sync"));
+    let ids = local_only_ids(&[local.clone()], &[]);
+    assert_eq!(payload_method(&local, &ids), Some("sync"));
+    assert_eq!(payload_method(&files_cfg(ID_A, None), &ids), Some("archive"));
+    // Replaced by a dashboard config: the dashboard owns the method.
+    let replaced = local_only_ids(&[local.clone()], &[local.clone()]);
+    assert_eq!(payload_method(&local, &replaced), None);
+    // Not a files source.
+    assert_eq!(payload_method(&cfg("pg", ID_A, "h"), &ids), None);
+}

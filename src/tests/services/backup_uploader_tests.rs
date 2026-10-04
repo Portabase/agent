@@ -20,7 +20,7 @@ use tempfile::NamedTempFile;
 use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn ctx_pointing_at(base_url: String) -> Context {
+pub(crate) fn ctx_pointing_at(base_url: String) -> Context {
     Context {
         edge_key: EdgeKey {
             server_url: String::new(),

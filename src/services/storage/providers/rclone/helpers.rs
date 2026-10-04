@@ -10,7 +10,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tracing::info;
 
-const BLOCKED_BACKEND_TYPES: [&str; 13] = [
+/// Entries must not contain spaces: the type is compared with its spaces removed (rclone resolves a
+/// backend by name, registered prefix, or name without spaces: `google photos` = `googlephotos`).
+const BLOCKED_BACKEND_TYPES: [&str; 14] = [
     "local",
     "alias",
     "crypt",
@@ -24,66 +26,132 @@ const BLOCKED_BACKEND_TYPES: [&str; 13] = [
     "memory",
     "http",
     "googlephotos",
+    "gphotos",
 ];
 
-fn sections(config_text: &str) -> Vec<(String, Option<String>)> {
-    let mut out: Vec<(String, Option<String>)> = Vec::new();
-
-    for line in config_text.lines() {
-        let line = line.trim();
-
-        if line.starts_with('[') && line.ends_with(']') && line.len() > 2 {
-            out.push((line[1..line.len() - 1].trim().to_string(), None));
-            continue;
-        }
-
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-
-        if key.trim().eq_ignore_ascii_case("type")
-            && let Some(current) = out.last_mut()
-            && current.1.is_none()
-        {
-            current.1 = Some(value.trim().to_ascii_lowercase());
-        }
-    }
-
-    out
+fn valid_remote_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '+' | '@' | '-'))
 }
 
+fn valid_key(key: &str) -> bool {
+    !key.is_empty() && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
 
+fn forbidden_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    matches!(
+        key.as_str(),
+        "ssh" | "env_auth" | "use_msi" | "use_az" | "use_kerberos" | "kerberos_ccache" | "key_use_agent" | "set_env" | "unix_socket"
+    ) || key.ends_with("_command")
+        || key.ends_with("_file")
+        || key.ends_with("_path")
+}
+
+/// Strict check for user-pasted rclone configs (never for configs Portabase builds itself).
+/// Exactly one `[remote]` of plain `key = value` lines: rclone and a naive parser must read it
+/// identically, and nothing may run a local command or read host credentials.
 pub fn validate_config(config_text: &str, remote_name: &str) -> Result<()> {
-    let sections = sections(config_text);
+    let mut names = Vec::new();
+    let mut pairs = Vec::new();
+    let mut before_header = None;
 
-    if sections.is_empty() {
-        bail!("rclone config contains no remote sections");
-    }
-
-    for (name, backend) in &sections {
-        let Some(backend) = backend else { continue };
-        if BLOCKED_BACKEND_TYPES.contains(&backend.as_str()) {
-            bail!("rclone backend type '{backend}' is not allowed (remote '{name}')");
+    for (i, line) in config_text.split('\n').enumerate() {
+        let (n, line) = (i + 1, line.trim());
+        if line.is_empty() || line.starts_with(['#', ';']) {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            names.push(line[1..line.len() - 1].trim());
+        } else if let Some((key, value)) = line.split_once('=').filter(|(k, _)| !k.is_empty()) {
+            if names.is_empty() {
+                before_header.get_or_insert(n);
+            }
+            pairs.push((key.trim(), value.trim()));
+        } else {
+            bail!("rclone config line {n} is not a [section] header or a 'key = value' pair");
         }
     }
 
-    if !sections.iter().any(|(name, _)| name == remote_name) {
-        let available: Vec<&str> = sections.iter().map(|(name, _)| name.as_str()).collect();
-        bail!(
-            "remote '{remote_name}' is not defined in the rclone config (available: {})",
-            available.join(", ")
-        );
+    if let Some(n) = before_header {
+        bail!("rclone config line {n} appears before any [section]");
+    }
+    if names.len() != 1 {
+        bail!("rclone config must contain exactly one [section] (found {})", names.len());
+    }
+    let name = names[0];
+    if !valid_remote_name(name) {
+        bail!("invalid rclone remote name '{name}'");
+    }
+    for (key, _) in &pairs {
+        if !valid_key(key) {
+            bail!("invalid rclone config key '{key}' (remote '{name}')");
+        }
+    }
+    // rclone (goconfig) unquotes `value` and `"""value"""` and drops what follows the closing quote.
+    for (key, value) in &pairs {
+        if value.starts_with('`') || value.starts_with("\"\"\"") {
+            bail!("rclone config value for key '{key}' must not be quoted (remote '{name}')");
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    for (key, _) in &pairs {
+        if !seen.insert(key.to_ascii_lowercase()) {
+            bail!("duplicate rclone config key '{key}' (remote '{name}')");
+        }
+    }
+    for (key, _) in &pairs {
+        if forbidden_key(key) {
+            bail!("rclone config key '{key}' is not allowed (remote '{name}')");
+        }
+    }
+    let Some((_, backend)) = pairs.iter().find(|(k, _)| k.eq_ignore_ascii_case("type")) else {
+        bail!("rclone remote '{name}' has no type");
+    };
+    let backend = backend.to_ascii_lowercase();
+    if backend.is_empty() || !backend.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == ' ') {
+        bail!("invalid rclone backend type '{backend}' (remote '{name}')");
+    }
+    let compact = backend.replace(' ', "");
+    if BLOCKED_BACKEND_TYPES.contains(&compact.as_str()) {
+        bail!("rclone backend type '{backend}' is not allowed (remote '{name}')");
+    }
+    // The other OCI providers read the host's OCI config or instance identity. Exact match on
+    // purpose: rclone 1.75.1 compares the key and the value case-sensitively, and falls back to
+    // host credentials for `PROVIDER = no_auth` (key ignored) and `provider = NO_AUTH` (unknown value).
+    if compact == "oracleobjectstorage" {
+        if !pairs.contains(&("provider", "no_auth")) {
+            bail!("rclone oracleobjectstorage remotes must use provider = no_auth (remote '{name}')");
+        }
+    }
+    if remote_name != name {
+        bail!("remote '{remote_name}' is not defined in the rclone config (available: {name})");
     }
 
     Ok(())
 }
 
+/// `rclone obscure -` reads the password from stdin, so it never shows up in argv.
 pub fn obscure_password(password: &str) -> Result<String> {
-    let out = std::process::Command::new("rclone")
+    let mut child = std::process::Command::new("rclone")
         .arg("obscure")
-        .arg(password)
-        .output()
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .context("failed to spawn rclone (is the binary installed in this image?)")?;
+
+    // Dropping the handle closes stdin, which is what ends rclone's read.
+    child
+        .stdin
+        .take()
+        .context("rclone stdin unavailable")?
+        .write_all(password.as_bytes())
+        .context("failed to write the password to rclone obscure")?;
+
+    let out = child.wait_with_output().context("failed to wait for rclone obscure")?;
 
     if !out.status.success() {
         bail!(

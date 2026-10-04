@@ -60,6 +60,11 @@ impl RestoreService {
             archive = decrypted;
         }
 
+        if matches!(db_type, DbType::Files) {
+            logger.log("info", "Files archive ready for extraction".to_string());
+            return Ok(archive);
+        }
+
         if matches!(db_type, DbType::DockerVolume) {
             let raw_tar = tmp_path.join("volume.tar");
             crate::utils::compress::gunzip_to_file(archive.as_path(), &raw_tar).await?;

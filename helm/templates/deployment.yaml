@@ -44,6 +44,9 @@ spec:
               # uses ConfigMap content
               {{- end }}
             {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         {{- if .Values.volume.configFile.enabled }}
           {{- if .Values.volume.configFile.hostPath }}
@@ -59,4 +62,7 @@ spec:
               - key: config.json
                 path: config.json
           {{- end }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}

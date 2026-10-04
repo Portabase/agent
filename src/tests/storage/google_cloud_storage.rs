@@ -12,7 +12,7 @@ use testcontainers::{GenericImage, ImageExt};
 
 const BUCKET: &str = "portabase";
 
-async fn start_fake_gcs() -> (testcontainers::ContainerAsync<GenericImage>, String) {
+pub(super) async fn start_fake_gcs() -> (testcontainers::ContainerAsync<GenericImage>, String) {
     // Natural random host port (no port-80 pin). The provider forces a single-shot
     // upload for custom endpoints, which issues one request to this endpoint and never
     // follows a server-built `Location` — so it works on any port, unlike the resumable

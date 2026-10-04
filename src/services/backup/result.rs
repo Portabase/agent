@@ -21,11 +21,9 @@ impl BackupService {
             "failed"
         };
 
-        let file_size = upload_results
-            .iter()
-            .filter_map(|r| r.total_size)
-            .reduce(|a, b| a + b)
-            .map(|sum| sum / upload_results.len() as u64);
+        // Average over the uploads that reported a size: failed ones have none.
+        let sizes: Vec<u64> = upload_results.iter().filter_map(|r| r.total_size).collect();
+        let file_size = (!sizes.is_empty()).then(|| sizes.iter().sum::<u64>() / sizes.len() as u64);
 
         self.ctx
             .api

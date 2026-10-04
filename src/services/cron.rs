@@ -29,7 +29,8 @@ impl CronService {
         let encrypt: bool = database.encrypt;
         let metadata = json!({
             "storages": storages,
-            "encrypt": encrypt
+            "encrypt": encrypt,
+            "engine": database.data.backup.engine.as_deref().unwrap_or("archive"),
         });
 
         check_and_update_cron(

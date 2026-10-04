@@ -12,6 +12,7 @@ impl BackupService {
         method: BackupMethod,
         storages: &Vec<DatabaseStorage>,
         encrypt: bool,
+        engine: &str,
     ) {
         let Some(cfg) = config
             .databases
@@ -29,10 +30,11 @@ impl BackupService {
         let db_cfg = cfg.clone();
         let storages = storages.clone();
         let generated_id = generated_id.clone();
+        let engine = engine.to_string();
 
         tokio::spawn(async move {
             if let Err(e) = service
-                .execute_backup(generated_id, db_cfg, method, storages, encrypt)
+                .execute_backup(generated_id, db_cfg, method, storages, encrypt, engine)
                 .await
             {
                 error!("Backup execution failed: {}", e);

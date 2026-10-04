@@ -32,10 +32,8 @@ pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
             let mut conn_clone = conn.clone();
 
             tokio::spawn(async move {
-                info!(
-                    "Executing task={} args={:?} metadata={:?}",
-                    task_clone.task, task_clone.args, task_clone.metadata
-                );
+                // Never log metadata: it carries decrypted storage channels (secrets).
+                info!("Executing task={} args={:?}", task_clone.task, task_clone.args);
                 if let Err(e) = execute_task(
                     task_clone.task.as_str(),
                     task_clone.args,
@@ -65,6 +63,14 @@ pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
     }
 }
 
+/// Local config merged with the dashboard-pushed sources, as the agent loop sees them.
+fn merged_config(ctx: &Arc<Context>) -> crate::services::config::DatabasesConfig {
+    let local = ConfigService::new(ctx.clone()).load_optional(None);
+    let cache_path = std::path::PathBuf::from(&crate::settings::CONFIG.data_path).join("dashboard_databases.json");
+    let dashboard = crate::services::dashboard_config::load_cache(&cache_path);
+    crate::services::dashboard_config::merge(&local.databases, &dashboard)
+}
+
 pub async fn execute_task(
     task: &str,
     args: Vec<String>,
@@ -77,14 +83,9 @@ pub async fn execute_task(
             info!("{} | {}", generated_id, dbms);
 
             let ctx = Arc::new(Context::new());
-            let config_service = ConfigService::new(ctx.clone());
             let backup_service = BackupService::new(ctx.clone());
 
-            let local = config_service.load_optional(None);
-            let cache_path = std::path::PathBuf::from(&crate::settings::CONFIG.data_path)
-                .join("dashboard_databases.json");
-            let dashboard = crate::services::dashboard_config::load_cache(&cache_path);
-            let config = crate::services::dashboard_config::merge(&local.databases, &dashboard);
+            let config = merged_config(&ctx);
 
             let metadata_obj = metadata
                 .into_iter()
@@ -101,6 +102,8 @@ pub async fn execute_task(
 
             let storages: Vec<DatabaseStorage> = serde_json::from_value(storages_value.clone())?;
             let encrypt: bool = serde_json::from_value(encrypt_value.clone())?;
+            // Tasks stored before P2 have no engine: archive.
+            let engine = metadata_obj.get("engine").and_then(Value::as_str).unwrap_or("archive");
 
             backup_service
                 .dispatch(
@@ -109,6 +112,7 @@ pub async fn execute_task(
                     BackupMethod::Automatic,
                     &storages,
                     encrypt,
+                    engine,
                 )
                 .await;
 

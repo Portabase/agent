@@ -8,3 +8,4 @@ mod valkey;
 mod firebird;
 mod mssql;
 mod docker_volume;
+pub(crate) mod files;

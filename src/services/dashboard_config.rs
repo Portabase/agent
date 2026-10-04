@@ -2,6 +2,7 @@
 
 use crate::services::api::models::agent::status::PingResult;
 use crate::services::config::{DatabaseConfig, DatabasesConfig};
+use std::collections::HashSet;
 use std::path::Path;
 
 pub fn merge(local: &[DatabaseConfig], dashboard: &[DatabaseConfig]) -> DatabasesConfig {
@@ -17,6 +18,15 @@ pub fn merge(local: &[DatabaseConfig], dashboard: &[DatabaseConfig]) -> Database
         }
     }
     DatabasesConfig { databases }
+}
+
+/// `generated_id`s of local (databases.json) sources that no dashboard config replaces.
+pub fn local_only_ids(local: &[DatabaseConfig], dashboard: &[DatabaseConfig]) -> HashSet<String> {
+    local
+        .iter()
+        .filter(|c| !dashboard.iter().any(|d| d.generated_id == c.generated_id))
+        .map(|c| c.generated_id.clone())
+        .collect()
 }
 
 pub fn collect_configs(ping: &PingResult) -> Vec<DatabaseConfig> {

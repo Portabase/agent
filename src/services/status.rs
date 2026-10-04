@@ -6,11 +6,12 @@ use crate::services::api::endpoints::status::DatabasePayload;
 use crate::services::api::models::agent::status::DatabaseStatus;
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::api::models::agent::status::PingResult;
-use crate::services::config::{build_config, DatabaseConfig, InputDatabaseConfig};
+use crate::services::config::{build_config, files_method, DatabaseConfig, DbType, InputDatabaseConfig};
 use crate::settings::CONFIG;
 use crate::utils::file::decrypt_json_gcm;
 use futures_util::future::try_join_all;
 use reqwest::Client;
+use std::collections::HashSet;
 use std::error::Error;
 use std::sync::Arc;
 use tracing::info;
@@ -35,6 +36,29 @@ pub fn resolve_dashboard_config(
     Ok(())
 }
 
+/// A storage channel sent encrypted as a one-element JSON array.
+fn decrypt_storage(ciphertext: &str, master_key_b64: &str, what: &str) -> Result<Option<DatabaseStorage>, String> {
+    let plaintext = decrypt_json_gcm(ciphertext, master_key_b64)
+        .map_err(|e| format!("Failed to decrypt {what} storage: {e}"))?;
+    let storages: Vec<DatabaseStorage> = serde_json::from_slice(&plaintext)
+        .map_err(|e| format!("Failed to parse {what} storage: {e}"))?;
+    Ok(storages.into_iter().next())
+}
+
+/// Decrypts the storage channel of a snapshot restore (`restore.storageCiphertext`).
+pub fn resolve_restore_storage(status: &mut DatabaseStatus, master_key_b64: &str) -> Result<(), String> {
+    if let Some(ciphertext) = status.data.restore.storage_ciphertext.clone() {
+        status.data.restore.storage = decrypt_storage(&ciphertext, master_key_b64, "restore")?;
+    }
+    Ok(())
+}
+
+/// `method` reported in the ping for a files source declared in databases.json;
+/// `None` for dashboard-managed sources (the dashboard owns their method) and other dbms.
+pub fn payload_method(db: &DatabaseConfig, local_ids: &HashSet<String>) -> Option<&'static str> {
+    (matches!(db.db_type, DbType::Files) && local_ids.contains(&db.generated_id)).then(|| files_method(db))
+}
+
 pub struct StatusService {
     ctx: Arc<Context>,
     client: Client,
@@ -48,7 +72,11 @@ impl StatusService {
         }
     }
 
-    pub async fn ping(&self, databases: &[DatabaseConfig]) -> Result<PingResult, Box<dyn Error>> {
+    pub async fn ping(
+        &self,
+        databases: &[DatabaseConfig],
+        local_ids: &HashSet<String>,
+    ) -> Result<PingResult, Box<dyn Error>> {
         let edge_key = &self.ctx.edge_key;
 
         let databases_payload: Vec<DatabasePayload> =
@@ -63,6 +91,7 @@ impl StatusService {
                     dbms: &db.db_type.as_str(),
                     generated_id: &db.generated_id,
                     ping_status: reachable,
+                    method: payload_method(db, local_ids),
                 })
             }))
             .await?;
@@ -91,6 +120,9 @@ impl StatusService {
 
             if let Err(e) = resolve_dashboard_config(db, &edge_key.master_key_b64) {
                 tracing::warn!("Skipping dashboard config for {}: {e}", db.generated_id);
+            }
+            if let Err(e) = resolve_restore_storage(db, &edge_key.master_key_b64) {
+                tracing::warn!("Snapshot restore storage unreadable for {}: {e}", db.generated_id);
             }
         }
         Ok(result)

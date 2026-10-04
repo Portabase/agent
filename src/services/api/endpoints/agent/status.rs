@@ -12,7 +12,9 @@ pub struct DatabasePayload<'a> {
     #[serde(rename = "generatedId")]
     pub generated_id: &'a str,
     #[serde(rename = "pingStatus")]
-    pub ping_status: bool
+    pub ping_status: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<&'a str>,
 }
 
 #[derive(Serialize)]

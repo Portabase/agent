@@ -63,6 +63,41 @@ fn validate_config_accepts_the_target_remote() {
     assert!(validate_config(OVH_CONFIG, "ovhcloud-rbx").is_ok());
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ValidationCase {
+    name: String,
+    config_text: String,
+    remote_name: String,
+    ok: bool,
+    error_contains: Option<String>,
+}
+
+/// The same file is verified against the dashboard validator: keep both in sync.
+#[test]
+fn validate_config_matches_the_shared_test_vectors() {
+    let cases: Vec<ValidationCase> =
+        serde_json::from_str(include_str!("fixtures/rclone-validation/cases.json")).unwrap();
+    assert!(!cases.is_empty());
+
+    let mut failures = Vec::new();
+    for case in &cases {
+        match (validate_config(&case.config_text, &case.remote_name), case.ok) {
+            (Ok(()), true) => {}
+            (Ok(()), false) => failures.push(format!("[{}] expected an error, got Ok", case.name)),
+            (Err(e), true) => failures.push(format!("[{}] expected Ok, got: {e:#}", case.name)),
+            (Err(e), false) => {
+                let msg = format!("{e:#}");
+                let want = case.error_contains.as_deref().expect("ok:false needs errorContains");
+                if !msg.contains(want) {
+                    failures.push(format!("[{}] error {msg:?} does not contain {want:?}", case.name));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} case(s) failed:\n{}", failures.len(), failures.join("\n"));
+}
+
 #[test]
 fn validate_config_rejects_an_unknown_remote_name() {
     let err = validate_config(OVH_CONFIG, "typo").unwrap_err().to_string();
@@ -85,23 +120,28 @@ fn validate_config_rejects_alias_backend() {
 }
 
 #[test]
-fn validate_config_rejects_a_blocked_backend_in_a_chained_section() {
+fn validate_config_rejects_chained_sections() {
+    // A blocked backend hidden behind an allowed (or wrapping) remote can no longer be expressed:
+    // anything beyond a single [section] is refused outright.
     let cfg = "[secret]\ntype = crypt\nremote = disk:vault\n\n[disk]\ntype = local\n";
     let err = validate_config(cfg, "secret").unwrap_err().to_string();
-    assert!(err.contains("crypt"), "unexpected error: {err}");
-    assert!(err.contains("secret"), "error should name the offending remote: {err}");
+    assert!(err.contains("exactly one [section] (found 2)"), "unexpected error: {err}");
 
     let cfg = "[outer]\ntype = s3\nprovider = Minio\n\n[disk]\ntype = local\n";
     let err = validate_config(cfg, "outer").unwrap_err().to_string();
-    assert!(err.contains("local"), "unexpected error: {err}");
-    assert!(err.contains("disk"), "error should name the offending remote: {err}");
+    assert!(err.contains("exactly one [section] (found 2)"), "unexpected error: {err}");
+
+    let cfg = format!("[secret]\ntype = crypt\nremote = ovhcloud-rbx:bucket\n\n{OVH_CONFIG}");
+    let err = validate_config(&cfg, "secret").unwrap_err().to_string();
+    assert!(err.contains("exactly one [section] (found 2)"), "unexpected error: {err}");
 }
 
 #[test]
-fn validate_config_rejects_crypt_even_over_an_allowed_remote() {
-    let cfg = format!("[secret]\ntype = crypt\nremote = ovhcloud-rbx:bucket\n\n{OVH_CONFIG}");
-    let err = validate_config(&cfg, "secret").unwrap_err().to_string();
+fn validate_config_rejects_crypt_over_an_allowed_remote_name() {
+    let cfg = "[secret]\ntype = crypt\nremote = ovhcloud-rbx:bucket\n";
+    let err = validate_config(cfg, "secret").unwrap_err().to_string();
     assert!(err.contains("crypt"), "unexpected error: {err}");
+    assert!(err.contains("secret"), "error should name the offending remote: {err}");
 }
 
 #[test]
@@ -179,7 +219,7 @@ use testcontainers::{GenericImage, ImageExt};
 
 const BUCKET: &str = "portabase";
 
-async fn start_minio() -> (testcontainers::ContainerAsync<GenericImage>, String) {
+pub(super) async fn start_minio() -> (testcontainers::ContainerAsync<GenericImage>, String) {
     let container = GenericImage::new("coollabsio/minio", "latest")
         .with_exposed_port(9000.tcp())
         .with_wait_for(WaitFor::message_on_stderr("API:"))
@@ -208,7 +248,7 @@ fn minio_config(endpoint: &str) -> String {
     )
 }
 
-fn rclone_ok(config_path: &std::path::Path, args: &[&str]) -> Vec<u8> {
+pub(super) fn rclone_ok(config_path: &std::path::Path, args: &[&str]) -> Vec<u8> {
     let out = Command::new("rclone")
         .arg("--config")
         .arg(config_path)

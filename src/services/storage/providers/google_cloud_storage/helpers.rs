@@ -8,25 +8,26 @@ use google_cloud_storage::client::Storage;
 use google_cloud_storage::streaming_source::{SizeHint, StreamingSource};
 use std::pin::Pin;
 
-pub fn build_credentials(cfg: &GoogleCloudStorageProviderConfig) -> Result<Credentials> {
+/// Service-account key JSON (keys in alphabetical order so the rclone mapper
+/// emits byte-identical output to the dashboard's).
+pub fn service_account_key(cfg: &GoogleCloudStorageProviderConfig) -> serde_json::Value {
     // Service-account JSON stores the PEM with `\n` escape sequences. When the key is
     // carried through config as a JSON string those can arrive as literal two-char `\n`
-    // sequences rather than real newlines, so the PEM parser finds no `-----BEGIN-----`
-    // line ("no items found"). Normalize them back to real newlines. A PEM that already
-    // has real newlines contains no literal `\n` pairs, so this is a no-op for it.
+    // sequences rather than real newlines. Normalize them back to real newlines.
     let private_key = cfg.private_key.replace("\\n", "\n");
-
-    let key = serde_json::json!({
-        "type": "service_account",
-        "project_id": cfg.project_id,
+    serde_json::json!({
         "client_email": cfg.client_email,
         "private_key": private_key,
         "private_key_id": "",
+        "project_id": cfg.project_id,
         "token_uri": "https://oauth2.googleapis.com/token",
+        "type": "service_account",
         "universe_domain": "googleapis.com",
-    });
+    })
+}
 
-    google_cloud_auth::credentials::service_account::Builder::new(key)
+pub fn build_credentials(cfg: &GoogleCloudStorageProviderConfig) -> Result<Credentials> {
+    google_cloud_auth::credentials::service_account::Builder::new(service_account_key(cfg))
         .build()
         .context("failed to build GCS service account credentials")
 }

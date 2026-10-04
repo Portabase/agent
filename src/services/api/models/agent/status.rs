@@ -61,14 +61,29 @@ pub struct DatabaseData {
 pub struct BackupInfo {
     pub action: bool,
     pub cron: Option<String>,
+    /// "archive" | "restic"; absent from dashboards older than P2 (→ archive).
+    #[serde(default)]
+    pub engine: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct RestoreInfo {
     pub action: bool,
+    #[serde(default)]
     pub file: Option<String>,
-    #[serde(rename = "metaFile")]
+    #[serde(default, rename = "metaFile")]
     pub meta_file: Option<String>,
     #[serde(default, deserialize_with = "string_or_number_to_string")]
     pub size: Option<String>,
+    /// "restic" for a snapshot restore; absent for archives.
+    #[serde(default)]
+    pub engine: Option<String>,
+    #[serde(default, rename = "snapshotId")]
+    pub snapshot_id: Option<String>,
+    /// AES-GCM JSON array holding the snapshot's storage channel.
+    #[serde(default, rename = "storageCiphertext")]
+    pub storage_ciphertext: Option<String>,
+    /// Filled in memory from `storage_ciphertext`; never on the wire.
+    #[serde(skip)]
+    pub storage: Option<DatabaseStorage>,
 }

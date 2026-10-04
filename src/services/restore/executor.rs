@@ -1,6 +1,9 @@
+use super::models::RestoreResult;
 use super::service::RestoreService;
+use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
+use crate::services::restic;
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::Instant;
@@ -41,6 +44,42 @@ impl RestoreService {
             .into_entries();
         self.send_result(result, logs, duration_ms).await?;
 
+        Ok(())
+    }
+
+    pub async fn execute_restic_restore(
+        &self,
+        cfg: DatabaseConfig,
+        snapshot_id: Option<String>,
+        storage: Option<DatabaseStorage>,
+    ) -> Result<()> {
+        let logger = Arc::new(JobLogger::new());
+        let start = Instant::now();
+        logger.log("info", "Snapshot restore job started".to_string());
+
+        let outcome = match (snapshot_id, storage) {
+            (Some(id), Some(storage)) => {
+                restic::restore::run(&self.ctx.edge_key, &cfg, &id, &storage, &logger).await
+            }
+            _ => Err(anyhow::anyhow!(
+                "incomplete snapshot restore payload (snapshotId or storage missing)"
+            )),
+        };
+        let status = match outcome {
+            Ok(()) => {
+                logger.log("info", "Snapshot restore job finished".to_string());
+                "success"
+            }
+            Err(e) => {
+                logger.log("error", format!("Snapshot restore failed: {e:#}"));
+                "failed"
+            }
+        };
+
+        let duration_ms = start.elapsed().as_millis() as f64;
+        let logs = Arc::try_unwrap(logger).unwrap_or_else(|_| JobLogger::new()).into_entries();
+        let result = RestoreResult { generated_id: cfg.generated_id.clone(), status: status.into() };
+        self.send_result(result, logs, duration_ms).await?;
         Ok(())
     }
 }

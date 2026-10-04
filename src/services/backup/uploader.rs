@@ -49,6 +49,7 @@ impl BackupService {
                         generated_id.clone(),
                         storage_id.clone(),
                         backup_id,
+                        None,
                     )
                     .await
                 {

@@ -1,0 +1,52 @@
+{
+  "s3": {
+    "provider": "s3",
+    "config": { "endPointUrl": "s3.example.com", "accessKey": "AKIAEXAMPLE", "secretKey": "secretEXAMPLE", "bucketName": "my-bucket", "ssl": true, "region": "eu-west-1" },
+    "expected": { "remoteName": "s3", "basePath": "my-bucket" }
+  },
+  "s3-port-no-ssl": {
+    "provider": "s3",
+    "config": { "endPointUrl": "minio.local", "port": 9000, "accessKey": "minioadmin", "secretKey": "minioadmin", "bucketName": "backups", "ssl": false, "region": "   " },
+    "expected": { "remoteName": "s3", "basePath": "backups" }
+  },
+  "blob-account-key": {
+    "provider": "blob",
+    "config": { "authMode": "accountKey", "accountName": "myaccount", "accountKey": "a2V5LWJhc2U2NA==", "containerName": "backups" },
+    "expected": { "remoteName": "blob", "basePath": "backups" }
+  },
+  "blob-endpoint-url": {
+    "provider": "blob",
+    "config": { "authMode": "accountKey", "accountName": "devstoreaccount1", "accountKey": "a2V5", "containerName": "backups", "endpointUrl": "http://127.0.0.1:10000" },
+    "expected": { "remoteName": "blob", "basePath": "backups" }
+  },
+  "blob-connection-string": {
+    "provider": "blob",
+    "config": { "authMode": "connectionString", "connectionString": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=a2V5;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;", "containerName": "backups" },
+    "expected": { "remoteName": "blob", "basePath": "backups" }
+  },
+  "google-cloud-storage": {
+    "provider": "google-cloud-storage",
+    "config": { "projectId": "my-project", "bucketName": "my-gcs-bucket", "clientEmail": "svc@my-project.iam.gserviceaccount.com", "privateKey": "-----BEGIN PRIVATE KEY-----\\nMIIEexample\\n-----END PRIVATE KEY-----\\n", "apiEndpoint": "" },
+    "expected": { "remoteName": "google-cloud-storage", "basePath": "my-gcs-bucket" }
+  },
+  "google-cloud-storage-emulator": {
+    "provider": "google-cloud-storage",
+    "config": { "projectId": "test", "bucketName": "bucket", "clientEmail": "x@test", "privateKey": "", "apiEndpoint": "http://127.0.0.1:4443" },
+    "expected": { "remoteName": "google-cloud-storage", "basePath": "bucket" }
+  },
+  "google-drive": {
+    "provider": "google-drive",
+    "config": { "clientId": "cid.apps.googleusercontent.com", "clientSecret": "csecret", "refreshToken": "1//refresh", "folderId": "folder123" },
+    "expected": { "remoteName": "google-drive", "basePath": "" }
+  },
+  "rclone": {
+    "provider": "rclone",
+    "config": { "configText": "[ovh]\ntype = s3\nprovider = OVHcloud\naccess_key_id = a\nsecret_access_key = b\nendpoint = s3.gra.io.cloud.ovh.net\n", "remoteName": "ovh", "remotePath": "my-bucket" },
+    "expected": { "remoteName": "ovh", "basePath": "my-bucket" }
+  },
+  "sftp-key": {
+    "provider": "sftp",
+    "config": { "host": "sftp.example.com", "port": 2222, "username": "backup", "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----\n", "remotePath": "/srv/backups" },
+    "expected": { "remoteName": "sftp", "basePath": "/srv/backups" }
+  }
+}

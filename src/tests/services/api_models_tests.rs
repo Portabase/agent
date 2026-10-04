@@ -228,6 +228,72 @@ fn resolve_dashboard_config_noop_when_not_encrypted() {
     assert!(status.resolved_config.is_none());
 }
 
+#[test]
+fn ping_without_engine_fields_defaults_to_none() {
+    let status: DatabaseStatus = serde_json::from_value(json!({
+        "dbms": "files",
+        "generatedId": "16678159-ff7e-4c97-8c83-0adeff214681",
+        "encrypt": false,
+        "data": { "backup": { "action": false, "cron": null },
+                  "restore": { "action": false, "file": null, "metaFile": null, "size": null } }
+    }))
+    .unwrap();
+    assert!(status.data.backup.engine.is_none());
+    assert!(status.data.restore.engine.is_none());
+    assert!(status.data.restore.snapshot_id.is_none());
+    assert!(status.data.restore.storage.is_none());
+}
+
+#[test]
+fn resolve_restore_storage_decrypts_the_snapshot_channel() {
+    use crate::services::status::resolve_restore_storage;
+    use base64::{engine::general_purpose, Engine};
+
+    let master_key_b64 = general_purpose::STANDARD.encode([7u8; 32]);
+    let channel = r#"[{"id":"ch-1","provider":"s3","folderName":"backups","config":{"endPointUrl":"s3.example.com","bucketName":"b"}}]"#;
+    let snapshot_id = "ab".repeat(32);
+
+    let mut status: DatabaseStatus = serde_json::from_value(json!({
+        "dbms": "files",
+        "generatedId": "16678159-ff7e-4c97-8c83-0adeff214681",
+        "encrypt": false,
+        "data": {
+            "backup": { "action": false, "cron": "0 * * * *", "engine": "restic" },
+            "restore": { "action": true, "file": null, "metaFile": null, "size": null,
+                         "engine": "restic", "snapshotId": snapshot_id,
+                         "storageCiphertext": encrypt_json_gcm(channel.as_bytes(), &master_key_b64) }
+        }
+    }))
+    .unwrap();
+
+    assert_eq!(status.data.backup.engine.as_deref(), Some("restic"));
+    assert_eq!(status.data.restore.snapshot_id.as_deref(), Some(snapshot_id.as_str()));
+
+    resolve_restore_storage(&mut status, &master_key_b64).unwrap();
+
+    let storage = status.data.restore.storage.expect("decrypted");
+    assert_eq!(storage.id, "ch-1");
+    assert_eq!(storage.provider, "s3");
+    assert_eq!(storage.folder_name.as_deref(), Some("backups"));
+}
+
+#[test]
+fn resolve_restore_storage_rejects_a_bad_ciphertext() {
+    use crate::services::status::resolve_restore_storage;
+    use base64::{engine::general_purpose, Engine};
+
+    let mut status: DatabaseStatus = serde_json::from_value(json!({
+        "dbms": "files",
+        "generatedId": "16678159-ff7e-4c97-8c83-0adeff214681",
+        "encrypt": false,
+        "data": { "backup": { "action": false, "cron": null },
+                  "restore": { "action": true, "engine": "restic", "storageCiphertext": "bm9wZQ==" } }
+    }))
+    .unwrap();
+    assert!(resolve_restore_storage(&mut status, &general_purpose::STANDARD.encode([7u8; 32])).is_err());
+    assert!(status.data.restore.storage.is_none());
+}
+
 fn encrypt_json_gcm(plaintext: &[u8], master_key_b64: &str) -> String {
     use aes_gcm::aead::{Aead, KeyInit};
     use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -242,4 +308,40 @@ fn encrypt_json_gcm(plaintext: &[u8], master_key_b64: &str) -> String {
     let mut data = nonce_bytes.to_vec();
     data.extend_from_slice(&ct);
     general_purpose::STANDARD.encode(data)
+}
+
+#[test]
+fn ping_payload_sends_method_only_when_set() {
+    use crate::services::api::endpoints::status::DatabasePayload;
+    let payload = |method: Option<&'static str>| DatabasePayload {
+        name: "docs",
+        dbms: "files",
+        generated_id: "g",
+        ping_status: true,
+        method,
+    };
+    let with = serde_json::to_value(payload(Some("sync"))).unwrap();
+    assert_eq!(with["method"], "sync");
+    let without = serde_json::to_value(payload(None)).unwrap();
+    assert!(without.get("method").is_none(), "{without}");
+}
+
+#[test]
+fn upload_status_sends_sync_counters_only_when_set() {
+    use crate::services::api::endpoints::agent::backup::upload::status::StatusUploadRequest;
+    let request = |files_transferred: Option<u64>, files_deleted: Option<u64>| StatusUploadRequest {
+        generated_id: "g".into(),
+        backup_storage_id: "bs".into(),
+        status: "success".into(),
+        path: "p".into(),
+        size: 3,
+        backup_id: "b".into(),
+        files_transferred,
+        files_deleted,
+    };
+    let with = serde_json::to_value(request(Some(2), Some(1))).unwrap();
+    assert_eq!(with["filesTransferred"], 2);
+    assert_eq!(with["filesDeleted"], 1);
+    let without = serde_json::to_value(request(None, None)).unwrap();
+    assert!(without.get("filesTransferred").is_none() && without.get("filesDeleted").is_none(), "{without}");
 }

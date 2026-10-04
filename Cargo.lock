@@ -995,6 +995,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bb31b46c14244e20ee9984b11bf5c992b91fb6939fea616e3512c8baecdbe5f"
+dependencies = [
+ "memchr",
+ "serde_core",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1954,6 +1964,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2eecf2d5dc9b66b732b97707a0210906b1d30523eb773193ab777c0c84b3e8d5"
 dependencies = [
  "polyval",
+]
+
+[[package]]
+name = "globset"
+version = "0.4.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07c34a9410465b45bd9787443bc7370f37735bad04b0f0cd57ff1a3186c98988"
+dependencies = [
+ "aho-corasick",
+ "bstr",
+ "log",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]
@@ -3664,11 +3687,13 @@ dependencies = [
  "futures",
  "futures-util",
  "generic-array",
+ "globset",
  "google-cloud-auth",
  "google-cloud-storage",
  "hex",
  "hmac 0.12.1",
  "hyper 1.11.1",
+ "libc",
  "log",
  "mockall",
  "mongodb",
@@ -3702,6 +3727,7 @@ dependencies = [
  "typenum",
  "url",
  "uuid",
+ "walkdir",
  "wiremock",
 ]
 

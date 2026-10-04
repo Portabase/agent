@@ -42,6 +42,17 @@ volume:
         ]
       }
 
+# Extra volumes for the agent pod, e.g. a host directory used by a `files`
+# source. Mount it read-write: restores write into it.
+extraVolumes: []
+#  - name: shared-files
+#    hostPath:
+#      path: /srv/files
+#      type: Directory
+
+extraVolumeMounts: []
+#  - name: shared-files
+#    mountPath: /data/files   # use this path as the source `path`
 
 network:
   hostAliases:

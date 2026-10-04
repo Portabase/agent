@@ -20,7 +20,7 @@ log = "0.4.29"
 toml = "0.9.10"
 reqwest = { version = "0.13.1", features = ["json", "blocking", "multipart", "stream", "query"] }
 anyhow = "1.0.100"
-tokio = { version = "1.49.0", features = ["rt", "rt-multi-thread", "macros", "fs", "process", "io-util"] }
+tokio = { version = "1.49.0", features = ["rt", "rt-multi-thread", "macros", "fs", "process", "io-util", "time"] }
 async-trait = "0.1.89"
 tempfile = "3.24.0"
 hmac = "0.12"
@@ -62,6 +62,11 @@ url = "2.5.8"
 percent-encoding = "2.3.2"
 bollard = "0.20.0"
 rustls = "0.23"
+globset = "0.4"
+walkdir = "2.5"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

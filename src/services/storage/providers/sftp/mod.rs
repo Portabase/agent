@@ -6,8 +6,7 @@ use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::backup::models::{BackupResult, UploadResult};
 use crate::services::storage::StorageProvider;
 use crate::services::storage::providers::rclone::helpers::{rcat, remote_target, write_config};
-use crate::services::storage::providers::sftp::helpers::build_sftp_config;
-use crate::services::storage::providers::sftp::models::SftpProviderConfig;
+use crate::services::storage::providers::rclone::target::rclone_target;
 use crate::utils::common::BackupMethod;
 use crate::utils::file::{full_file_name, full_file_path};
 use crate::utils::stream::build_stream;
@@ -53,19 +52,13 @@ impl StorageProvider for SftpProvider {
             }
         };
 
-        let config: SftpProviderConfig = match storage.clone().config.try_into() {
-            Ok(c) => c,
+        // `target` owns the sftp key file: keep it alive until `rcat` returns.
+        let target = match rclone_target(storage) {
+            Ok(t) => t,
             Err(e) => {
-                error!("sftp config deserialization failed: {}", e);
-                return failed(&storage_id, e, Some(total_size));
-            }
-        };
-
-        let (config_text, _key_file) = match build_sftp_config(&config) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("sftp config build failed: {}", e);
-                return failed(&storage_id, e, Some(total_size));
+                // `{:#}` keeps the whole anyhow chain (the serde cause), which is what the user sees.
+                error!("sftp config build failed: {e:#}");
+                return failed(&storage_id, format!("{e:#}"), Some(total_size));
             }
         };
 
@@ -82,7 +75,7 @@ impl StorageProvider for SftpProvider {
         let file_name = full_file_name(encrypt);
         let remote_file_path = full_file_path(&file_name, storage.folder_name.as_deref());
 
-        let config_file = match write_config(&config_text) {
+        let config_file = match write_config(&target.config_text) {
             Ok(f) => f,
             Err(e) => {
                 error!("sftp config write failed: {}", e);
@@ -90,11 +83,11 @@ impl StorageProvider for SftpProvider {
             }
         };
 
-        let target = remote_target("sftp", &config.remote_path, &remote_file_path);
+        let remote = remote_target(&target.remote_name, &target.base_path, &remote_file_path);
 
-        info!("Starting sftp (rclone) upload to {}", target);
+        info!("Starting sftp (rclone) upload to {}", remote);
 
-        match rcat(config_file.path(), &target, upload.stream).await {
+        match rcat(config_file.path(), &remote, upload.stream).await {
             Ok(()) => {
                 info!("sftp upload successful: {}", remote_file_path);
                 UploadResult {

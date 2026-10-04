@@ -57,3 +57,23 @@ kubectl logs portabase-agent-6f7d4f5c6b-abc12
 ``` bash
 helm uninstall portabase-agent
 ```
+
+## Mount a directory for a `files` source
+
+A `files` source backs up a directory the agent can see. Mount it into the pod
+with `extraVolumes` and `extraVolumeMounts`:
+
+```yaml
+extraVolumes:
+  - name: shared-files
+    hostPath:
+      path: /srv/files
+      type: Directory
+
+extraVolumeMounts:
+  - name: shared-files
+    mountPath: /data/files
+```
+
+Mount it read-write: restores write into it. The `mountPath` (here `/data/files`)
+is the `path` to enter for the source in Portabase.

@@ -28,6 +28,7 @@ pub enum DbType {
     Mssql,
     #[serde(rename = "docker-volume")]
     DockerVolume,
+    Files,
 }
 
 impl DbType {
@@ -44,6 +45,7 @@ impl DbType {
             DbType::Firebird => "firebird",
             DbType::Mssql => "mssql",
             DbType::DockerVolume => "docker-volume",
+            DbType::Files => "files",
         }
     }
 }
@@ -112,6 +114,17 @@ fn optional<T: Clone + Default>(opt: &Option<T>) -> T {
     opt.clone().unwrap_or_default()
 }
 
+pub const FILES_METHODS: [&str; 3] = ["archive", "snapshot", "sync"];
+
+/// The method a files source declares in `options.method` (`archive` when absent).
+pub fn files_method(cfg: &DatabaseConfig) -> &'static str {
+    match cfg.options.get("method").and_then(|v| v.as_str()) {
+        Some("snapshot") => "snapshot",
+        Some("sync") => "sync",
+        _ => "archive",
+    }
+}
+
 pub fn build_config(db: InputDatabaseConfig) -> Result<DatabaseConfig, String> {
     if Uuid::parse_str(&db.generated_id).is_err() {
         return Err(format!("Invalid UUID for database '{}'", db.name));
@@ -143,7 +156,7 @@ pub fn build_config(db: InputDatabaseConfig) -> Result<DatabaseConfig, String> {
         | DbType::Firebird
         | DbType::Valkey
         | DbType::Mssql => required(&db.host, &db.name, "host")?,
-        DbType::Sqlite | DbType::DockerVolume => optional(&db.host),
+        DbType::Sqlite | DbType::DockerVolume | DbType::Files => optional(&db.host),
     };
 
     let port = match db.db_type {
@@ -155,11 +168,13 @@ pub fn build_config(db: InputDatabaseConfig) -> Result<DatabaseConfig, String> {
         | DbType::Firebird
         | DbType::Valkey
         | DbType::Mssql => required(&db.port, &db.name, "port")?,
-        DbType::MongoDB | DbType::Sqlite | DbType::DockerVolume => db.port.unwrap_or(0),
+        DbType::MongoDB | DbType::Sqlite | DbType::DockerVolume | DbType::Files => {
+            db.port.unwrap_or(0)
+        }
     };
 
     let database_name = match db.db_type {
-        DbType::Sqlite | DbType::Redis | DbType::Valkey | DbType::DockerVolume => {
+        DbType::Sqlite | DbType::Redis | DbType::Valkey | DbType::DockerVolume | DbType::Files => {
             optional(&db.database)
         }
         DbType::PostgresqlCluster => db
@@ -170,8 +185,28 @@ pub fn build_config(db: InputDatabaseConfig) -> Result<DatabaseConfig, String> {
     };
     let path_val = match db.db_type {
         DbType::Sqlite => required(&db.path, &db.name, "path")?,
+        DbType::Files => {
+            let p = required(&db.path, &db.name, "path")?;
+            if !p.starts_with('/') || p.trim_end_matches('/').is_empty() {
+                return Err(format!(
+                    "Path for files source '{}' must be absolute and not '/'",
+                    db.name
+                ));
+            }
+            p
+        }
         _ => optional(&db.path),
     };
+    if matches!(db.db_type, DbType::Files) {
+        if let Some(method) = db.options.as_ref().and_then(|o| o.get("method")) {
+            if !method.as_str().is_some_and(|m| FILES_METHODS.contains(&m)) {
+                return Err(format!(
+                    "Unknown method {method} for files source '{}' (expected archive, snapshot or sync)",
+                    db.name
+                ));
+            }
+        }
+    }
     let max_packet_size = match db.db_type {
         DbType::Mysql | DbType::Mariadb => db.max_packet_size.unwrap_or_else(|| "512M".to_string()),
         _ => String::new(),

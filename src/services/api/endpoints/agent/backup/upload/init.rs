@@ -12,6 +12,9 @@ pub struct InitUploadRequest {
     pub storage_channel_id: String,
     #[serde(rename = "backupId")]
     pub backup_id: String,
+    /// "restic" for snapshots; omitted for archives (older dashboards ignore it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engine: Option<String>,
 }
 
 impl ApiClient {
@@ -21,11 +24,13 @@ impl ApiClient {
         generated_id: impl Into<String>,
         storage_channel_id: impl Into<String>,
         backup_id: impl Into<String>,
+        engine: Option<&str>,
     ) -> Result<Option<BackupUploadResponse>, ApiError> {
         let body = InitUploadRequest {
             generated_id: generated_id.into(),
             storage_channel_id: storage_channel_id.into(),
             backup_id: backup_id.into(),
+            engine: engine.map(str::to_string),
         };
 
         let agent_id = agent_id.into();
