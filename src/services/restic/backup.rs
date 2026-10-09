@@ -1,6 +1,6 @@
 use super::command::{ResticRepo, short};
 use super::excludes::backup_excludes;
-use super::json::BackupSummary;
+use super::json::{BackupSummary, Snapshot, files_removed};
 use crate::core::context::Context as CoreContext;
 use crate::domain::files::matcher::{exclude_patterns, one_file_system};
 use crate::services::api::models::agent::status::DatabaseStorage;
@@ -27,14 +27,15 @@ pub async fn snapshot(
     }
     repo.ensure_initialized(logger).await?;
 
+    // Stable host: container hostnames change on recreate and would break
+    // parent-snapshot detection (full rescan every time).
+    let host = format!("portabase-{}", cfg.generated_id);
     let mut args: Vec<String> = vec![
         "backup".into(),
         root.to_string_lossy().into_owned(),
         "--json".into(),
-        // Stable host: container hostnames change on recreate and would break
-        // parent-snapshot detection (full rescan every time).
         "--host".into(),
-        format!("portabase-{}", cfg.generated_id),
+        host.clone(),
         "--tag".into(),
         "portabase".into(),
         "--tag".into(),
@@ -61,12 +62,22 @@ pub async fn snapshot(
         .context("unexpected restic backup summary")?;
 
     match (run.code, summary) {
-        (0, Some(s)) => {
+        (0, Some(mut s)) => {
+            s.files_removed = match removed(repo, &host, &s, logger).await {
+                Ok(removed) => removed,
+                Err(e) => {
+                    logger.log("warn", format!("Could not count removed files: {e:#}"));
+                    None
+                }
+            };
+            let removed = s.files_removed.map(|n| format!(", {n} removed")).unwrap_or_default();
             logger.log(
                 "info",
+                // data_added_packed: new file and directory blobs, compressed and encrypted. The
+                // repository grows a little more (pack headers, index and snapshot files).
                 format!(
-                    "Snapshot {}: {} new, {} changed, {} unmodified file(s), {} byte(s) added",
-                    short(&s.snapshot_id), s.files_new, s.files_changed, s.files_unmodified, s.data_added_packed
+                    "Snapshot {}: {} new, {} changed, {} unmodified{removed} file(s); {} byte(s) scanned, {} byte(s) of new data",
+                    short(&s.snapshot_id), s.files_new, s.files_changed, s.files_unmodified, s.total_bytes_processed, s.data_added_packed
                 ),
             );
             Ok(s)
@@ -98,6 +109,18 @@ pub async fn snapshot(
         }
         _ => Err(run.error("backup")),
     }
+}
+
+/// Removed files of snapshot `s`, against the parent restic actually used (one listing of
+/// the source's snapshots, no index load).
+async fn removed(repo: &ResticRepo, host: &str, s: &BackupSummary, logger: &JobLogger) -> Result<Option<u64>> {
+    let listed = repo.run(["snapshots", "--json", "--host", host], logger).await?;
+    if listed.code != 0 {
+        return Err(listed.error("snapshots"));
+    }
+    let snapshots: Vec<Snapshot> =
+        serde_json::from_str(listed.stdout.trim()).context("unexpected `restic snapshots` output")?;
+    Ok(files_removed(&snapshots, &s.snapshot_id, s.files_changed, s.files_unmodified))
 }
 
 /// Snapshots every storage in turn (one scan each, v1). Never errors: each
@@ -163,13 +186,13 @@ pub(crate) async fn one_storage(
     match outcome {
         Ok(summary) => match ctx
             .api
-            .backup_upload_status(
+            .backup_upload_success(
                 agent_id,
                 cfg.generated_id.clone(),
                 backup_storage_id,
-                "success",
                 summary.snapshot_id.clone(),
                 summary.data_added_packed,
+                summary.report(),
                 backup_id,
             )
             .await

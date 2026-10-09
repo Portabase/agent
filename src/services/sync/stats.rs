@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// Final `stats` object of `rclone --use-json-log --stats 1h --stats-log-level NOTICE`.
 #[derive(Debug, Default, Deserialize, PartialEq)]
@@ -14,6 +14,20 @@ pub struct SyncStats {
     pub errors: u64,
     #[serde(default, rename = "lastError")]
     pub last_error: Option<String>,
+    /// Replica size after a successful run, from `rclone size` on the destination (not an rclone stat).
+    #[serde(skip)]
+    pub replica_bytes: Option<u64>,
+}
+
+impl SyncStats {
+    /// Counters the dashboard shows for this run (`size` carries `bytes`).
+    pub fn report(&self) -> Value {
+        json!({
+            "filesTransferred": self.transfers,
+            "filesDeleted": self.deletes,
+            "replicaBytes": self.replica_bytes,
+        })
+    }
 }
 
 /// What `rclone sync` printed on stderr: its last stats object and its error

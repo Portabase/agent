@@ -115,7 +115,7 @@ pub(crate) async fn one_storage(
             let path = replica_path(storage, &cfg.generated_id);
             match ctx
                 .api
-                .backup_upload_sync_status(agent_id, cfg.generated_id.clone(), backup_storage_id, path.clone(), &stats, backup_id)
+                .backup_upload_success(agent_id, cfg.generated_id.clone(), backup_storage_id, path.clone(), stats.bytes, stats.report(), backup_id)
                 .await
             {
                 Ok(_) => UploadResult {
@@ -123,8 +123,8 @@ pub(crate) async fn one_storage(
                     success: true,
                     error: None,
                     remote_file_path: Some(path),
-                    // No total size: rclone does not report the replica's size (backups.file_size stays null).
-                    total_size: None,
+                    // backups.file_size: the replica's size, like an archive's file size.
+                    total_size: stats.replica_bytes,
                 },
                 Err(e) => {
                     logger.log("error", format!("Upload status update failed for {}: {e}", storage.id));

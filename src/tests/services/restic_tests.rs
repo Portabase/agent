@@ -136,6 +136,24 @@ fn backup_summary_deserializes_from_a_recorded_line() {
 }
 
 #[test]
+fn removed_files_come_from_the_parent_summary() {
+    use crate::services::restic::json::{Snapshot, files_removed};
+    let listing: Vec<Snapshot> = serde_json::from_value(serde_json::json!([
+        {"id": "p", "paths": ["/src"], "summary": {"total_files_processed": 3, "files_new": 3}},
+        {"id": "c", "paths": ["/src"], "parent": "p"},
+        {"id": "orphan", "paths": ["/src"], "parent": "forgotten"},
+        {"id": "old", "paths": ["/src"]},
+        {"id": "child-of-old", "paths": ["/src"], "parent": "old"},
+    ]))
+    .unwrap();
+    assert_eq!(files_removed(&listing, "c", 0, 2), Some(1));
+    assert_eq!(files_removed(&listing, "p", 0, 0), Some(0), "no parent");
+    assert_eq!(files_removed(&listing, "orphan", 0, 2), None, "parent not listed");
+    assert_eq!(files_removed(&listing, "child-of-old", 0, 2), None, "parent without summary");
+    assert_eq!(files_removed(&listing, "missing", 0, 2), None);
+}
+
+#[test]
 fn a_local_channel_opens_the_dashboard_rest_repository() {
     use crate::utils::edge_key::EdgeKey;
     let storage: DatabaseStorage =
@@ -214,12 +232,14 @@ async fn first_snapshot_initializes_the_repository_and_the_second_reuses_its_par
     let first = snapshot(&repo, &cfg, "bs-1", &logger).await.unwrap();
     assert_eq!(first.snapshot_id.len(), 64);
     assert_eq!(first.files_new, 4);
+    assert_eq!(first.files_removed, Some(0));
     assert!(base.path().join("repo/backups/restic").join(&cfg.generated_id).join("config").exists());
 
     fs::write(src.path().join("docs/a.txt"), "v2").unwrap();
     let second = snapshot(&repo, &cfg, "bs-2", &logger).await.unwrap();
     assert_eq!(second.files_changed, 1);
     assert_eq!(second.files_unmodified, 3);
+    assert_eq!(second.files_removed, Some(0));
 
     let tagged = repo.run(["snapshots", "--json", "--tag", "bs:bs-2"], &logger).await.unwrap();
     // The tag selects only the second snapshot, and its `parent` is the first
@@ -229,6 +249,12 @@ async fn first_snapshot_initializes_the_repository_and_the_second_reuses_its_par
     assert_eq!(listed.len(), 1, "{}", tagged.stdout);
     assert_eq!(listed[0]["id"], second.snapshot_id.as_str());
     assert_eq!(listed[0]["parent"], first.snapshot_id.as_str());
+
+    fs::remove_file(src.path().join("docs/b.txt")).unwrap();
+    let third = snapshot(&repo, &cfg, "bs-3", &logger).await.unwrap();
+    assert_eq!((third.files_new, third.files_changed, third.files_unmodified), (0, 0, 3));
+    assert_eq!(third.files_removed, Some(1));
+    assert_eq!(third.report()["filesRemoved"], 1);
 }
 
 #[tokio::test]

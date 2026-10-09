@@ -131,6 +131,38 @@
       "volume_name": "databases_sqlite-data",
       "generated_id": "16706126-ff7e-4c97-8c83-0adeff214690",
       "container_name": "db-sqlite"
+    },
+    {
+      "name": "Files - Archive",
+      "type": "files",
+      "path": "/data/files-archive",
+      "generated_id": "64aeaf80-e03b-4503-a5c1-00a1b829f0e5",
+      "options": {
+        "method": "archive",
+        "exclude": ["node_modules", "*.tmp", "/cache"],
+        "one_file_system": false
+      }
+    },
+    {
+      "name": "Files - Snapshots",
+      "type": "files",
+      "path": "/data/files-snapshot",
+      "generated_id": "9093ad85-3f67-489f-9759-aa369572b30d",
+      "options": {
+        "method": "snapshot",
+        "exclude": ["node_modules", "*.log", "/build"],
+        "one_file_system": true
+      }
+    },
+    {
+      "name": "Files - Sync",
+      "type": "files",
+      "path": "/data/files-sync",
+      "generated_id": "353ecc44-7c75-40e7-803e-ac07683c2c05",
+      "options": {
+        "method": "sync",
+        "exclude": ["*.tmp", "/cache"]
+      }
     }
   ]
 }

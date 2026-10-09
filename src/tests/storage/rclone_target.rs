@@ -270,7 +270,7 @@ async fn s3_targets_host_one_sync_replica_per_channel() {
         .await;
     Mock::given(method("PATCH"))
         .and(path("/agent/agent-1/backup/upload/status"))
-        .and(body_partial_json(json!({ "status": "success", "filesTransferred": 2, "filesDeleted": 0 })))
+        .and(body_partial_json(json!({ "status": "success", "size": 2, "stats": { "filesTransferred": 2, "filesDeleted": 0, "replicaBytes": 2 } })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "message": "ok", "backupStorage": { "id": "bs" } })))
         .expect(2)
         .mount(&server)
@@ -287,6 +287,7 @@ async fn s3_targets_host_one_sync_replica_per_channel() {
         let result = one_storage(&ctx, &cfg, c, "backup-1", &JobLogger::new()).await;
         assert!(result.success, "{:?}", result.error);
         assert_eq!(result.remote_file_path.as_deref(), Some(format!("backups/sync/{}/current", cfg.generated_id).as_str()));
+        assert_eq!(result.total_size, Some(2), "backups.file_size is the replica size");
     }
     for (c, bucket) in channels.iter().zip(["portabase", "portabase2"]) {
         let target = rclone_target(c).unwrap();

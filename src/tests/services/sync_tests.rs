@@ -59,7 +59,7 @@ fn parse_log_reads_the_final_stats_and_error_lines() {
     let log = parse_log(stderr);
     assert_eq!(
         log.stats,
-        Some(SyncStats { bytes: 0, transfers: 0, deletes: 0, errors: 1, last_error: Some("couldn't copy from /src/secret: errno -1".into()) })
+        Some(SyncStats { errors: 1, last_error: Some("couldn't copy from /src/secret: errno -1".into()), ..Default::default() })
     );
     assert_eq!(log.errors.len(), 2);
     assert_eq!(log.errors[1], "not deleting files as there were IO errors");
@@ -69,7 +69,7 @@ fn parse_log_reads_the_final_stats_and_error_lines() {
 fn parse_log_reads_a_successful_run() {
     let stderr = r#"{"level":"notice","msg":"\nTransferred: 2 B\n","source":"accounting/stats.go:1","stats":{"bytes":2,"checks":5,"deletes":1,"errors":0,"fatalError":false,"transfers":1},"time":"2026-10-03T19:45:10+02:00"}"#;
     let log = parse_log(stderr);
-    assert_eq!(log.stats, Some(SyncStats { bytes: 2, transfers: 1, deletes: 1, errors: 0, last_error: None }));
+    assert_eq!(log.stats, Some(SyncStats { bytes: 2, transfers: 1, deletes: 1, ..Default::default() }));
     assert!(log.errors.is_empty());
 }
 
@@ -167,6 +167,7 @@ async fn sync_mirrors_the_source_and_propagates_changes() {
 
     let first = sync_dir(&config, &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, &logger).await.unwrap();
     assert_eq!(first.transfers, 2);
+    assert_eq!(first.replica_bytes, Some(3), "excluded files are not counted");
     assert_eq!(files(&replica(store.path(), &cfg.generated_id)), vec!["docs/a.txt=v1", "docs/b.txt=b"]);
 
     fs::write(src.path().join("docs/a.txt"), "v2").unwrap();
@@ -176,7 +177,26 @@ async fn sync_mirrors_the_source_and_propagates_changes() {
     let second = sync_dir(&config, &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, &logger).await.unwrap();
     assert_eq!(second.transfers, 2);
     assert_eq!(second.deletes, 1);
+    assert_eq!(second.replica_bytes, Some(5));
     assert_eq!(files(&replica(store.path(), &cfg.generated_id)), vec!["docs/a.txt=v2", "new.txt=new"]);
+}
+
+#[tokio::test]
+async fn a_later_exclude_removes_files_from_the_replica() {
+    let store = TempDir::new().unwrap();
+    let src = TempDir::new().unwrap();
+    tree(src.path());
+    let cfg = files_config(src.path(), &["*.log", "/build"]);
+    let config = alias(store.path());
+    let dest = replica_target("pb", "", "backups", &cfg.generated_id);
+    sync_dir(&config, &dest, &cfg, &JobLogger::new()).await.unwrap();
+
+    let mut later = cfg.clone();
+    later.options = files_config(src.path(), &["*.log", "/build", "b.txt"]).options;
+    let stats = sync_dir(&config, &dest, &later, &JobLogger::new()).await.unwrap();
+    assert_eq!(stats.deletes, 1);
+    assert_eq!(stats.replica_bytes, Some(2));
+    assert_eq!(files(&replica(store.path(), &cfg.generated_id)), vec!["docs/a.txt=v1"]);
 }
 
 #[tokio::test]

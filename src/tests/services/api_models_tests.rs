@@ -327,21 +327,23 @@ fn ping_payload_sends_method_only_when_set() {
 }
 
 #[test]
-fn upload_status_sends_sync_counters_only_when_set() {
+fn upload_status_sends_stats_only_when_set() {
     use crate::services::api::endpoints::agent::backup::upload::status::StatusUploadRequest;
-    let request = |files_transferred: Option<u64>, files_deleted: Option<u64>| StatusUploadRequest {
+    use crate::services::sync::stats::SyncStats;
+    let request = |stats: Option<serde_json::Value>| StatusUploadRequest {
         generated_id: "g".into(),
         backup_storage_id: "bs".into(),
         status: "success".into(),
         path: "p".into(),
         size: 3,
         backup_id: "b".into(),
-        files_transferred,
-        files_deleted,
+        stats,
     };
-    let with = serde_json::to_value(request(Some(2), Some(1))).unwrap();
-    assert_eq!(with["filesTransferred"], 2);
-    assert_eq!(with["filesDeleted"], 1);
-    let without = serde_json::to_value(request(None, None)).unwrap();
-    assert!(without.get("filesTransferred").is_none() && without.get("filesDeleted").is_none(), "{without}");
+    let sync = SyncStats { transfers: 2, deletes: 1, replica_bytes: Some(8), ..Default::default() };
+    let with = serde_json::to_value(request(Some(sync.report()))).unwrap();
+    assert_eq!(with["stats"], serde_json::json!({"filesTransferred": 2, "filesDeleted": 1, "replicaBytes": 8}));
+    let unmeasured = SyncStats::default().report();
+    assert!(unmeasured["replicaBytes"].is_null(), "{unmeasured}");
+    let without = serde_json::to_value(request(None)).unwrap();
+    assert!(without.get("stats").is_none(), "{without}");
 }

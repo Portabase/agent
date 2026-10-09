@@ -77,3 +77,6 @@ test:
     docker compose -f docker-compose.test.yml exec -e CARGO_INCREMENTAL -e RUSTFLAGS -e LLVM_PROFILE_FILE agent-test bash -c "cargo test --verbose && sync"
     echo "Down volumes tests databases"
     docker compose -f docker-compose.test.yml down --volumes
+
+seed-files:
+    for d in archive snapshot sync; do mkdir -p test-files/$d && echo one > test-files/$d/a.txt && echo two > test-files/$d/b.txt; done

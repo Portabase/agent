@@ -5,6 +5,7 @@ use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use crate::services::storage::providers::rclone::helpers::{remote_target, write_config};
 use anyhow::{Context, Result, anyhow, bail};
+use std::path::Path;
 use std::process::Stdio;
 use tokio::process::Command;
 
@@ -13,7 +14,8 @@ pub fn replica_target(remote_name: &str, base_path: &str, folder: &str, generate
     remote_target(remote_name, base_path, &format!("{folder}/sync/{generated_id}/current"))
 }
 
-/// Mirrors `cfg.path` onto `dest` (`<remote>:<path>`). rclone skips its deletions when an error
+/// Mirrors `cfg.path` onto `dest` (`<remote>:<path>`); files matching an exclude are removed
+/// from the replica too (`--delete-excluded`). rclone skips its deletions when an error
 /// happens before the delete phase ("not deleting files as there were IO errors");
 /// an error during the delete phase can leave the replica partially updated.
 /// An empty source is refused so an unmounted volume cannot wipe the replica.
@@ -42,7 +44,7 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, logge
         .arg(&root)
         .arg(dest)
         .args([
-            "--links", "--use-json-log", "--stats", "1h", "--stats-log-level", "NOTICE", "--retries", "1",
+            "--links", "--delete-excluded", "--use-json-log", "--stats", "1h", "--stats-log-level", "NOTICE", "--retries", "1",
             // An unreachable endpoint fails in ~1–2 min instead of blocking the next runs.
             "--contimeout", "30s", "--low-level-retries", "3",
         ]);
@@ -77,10 +79,39 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, logge
             .unwrap_or_else(|| "no error message".to_string());
         bail!("rclone sync failed ({}): {reason}; the replica may be partially updated", out.status);
     }
-    let stats = log.stats.unwrap_or_default();
+    let mut stats = log.stats.unwrap_or_default();
+    // Measured on the replica itself, so it is what is stored, not inferred from the source.
+    stats.replica_bytes = match remote_size(config.path(), dest).await {
+        Ok(bytes) => Some(bytes),
+        Err(e) => {
+            logger.log("warn", format!("Could not measure the replica size: {e:#}"));
+            None
+        }
+    };
+    let replica = stats.replica_bytes.map(|b| format!("; replica holds {b} bytes")).unwrap_or_default();
     logger.log(
         "info",
-        format!("Synced: {} file(s) transferred ({} bytes), {} deleted", stats.transfers, stats.bytes, stats.deletes),
+        format!("Synced: {} file(s) transferred ({} bytes), {} deleted{replica}", stats.transfers, stats.bytes, stats.deletes),
     );
     Ok(stats)
+}
+
+/// Bytes stored under `target` (`<remote>:<path>`), per `rclone size`.
+async fn remote_size(config: &Path, target: &str) -> Result<u64> {
+    let out = Command::new("rclone")
+        .args(["--contimeout", "30s", "--low-level-retries", "3", "--config"])
+        .arg(config)
+        .arg("size")
+        .arg(target)
+        .arg("--json")
+        .stdin(Stdio::null())
+        .kill_on_drop(true)
+        .output()
+        .await
+        .context("failed to start rclone")?;
+    if !out.status.success() {
+        bail!("rclone size failed ({}): {}", out.status, String::from_utf8_lossy(&out.stderr).trim());
+    }
+    let size: serde_json::Value = serde_json::from_slice(&out.stdout).context("unexpected rclone size output")?;
+    size["bytes"].as_u64().context("rclone size returned no byte count")
 }
