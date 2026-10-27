@@ -114,13 +114,14 @@ fn optional<T: Clone + Default>(opt: &Option<T>) -> T {
     opt.clone().unwrap_or_default()
 }
 
-pub const FILES_METHODS: [&str; 3] = ["archive", "snapshot", "sync"];
+pub const FILES_METHODS: [&str; 4] = ["archive", "snapshot", "sync", "copy"];
 
 /// The method a files source declares in `options.method` (`archive` when absent).
 pub fn files_method(cfg: &DatabaseConfig) -> &'static str {
     match cfg.options.get("method").and_then(|v| v.as_str()) {
         Some("snapshot") => "snapshot",
         Some("sync") => "sync",
+        Some("copy") => "copy",
         _ => "archive",
     }
 }
@@ -201,7 +202,7 @@ pub fn build_config(db: InputDatabaseConfig) -> Result<DatabaseConfig, String> {
         if let Some(method) = db.options.as_ref().and_then(|o| o.get("method")) {
             if !method.as_str().is_some_and(|m| FILES_METHODS.contains(&m)) {
                 return Err(format!(
-                    "Unknown method {method} for files source '{}' (expected archive, snapshot or sync)",
+                    "Unknown method {method} for files source '{}' (expected archive, snapshot, sync or copy)",
                     db.name
                 ));
             }

@@ -419,6 +419,12 @@ fn files_method_reads_snapshot_and_sync() {
 }
 
 #[test]
+fn files_method_reads_copy() {
+    let copy = build_config(files_input(r#", "options": { "method": "copy" }"#)).unwrap();
+    assert_eq!(files_method(&copy), "copy");
+}
+
+#[test]
 fn unknown_files_method_refuses_the_source() {
     let err = build_config(files_input(r#", "options": { "method": "mirror" }"#)).unwrap_err();
     assert!(err.contains("Unknown method"), "{err}");

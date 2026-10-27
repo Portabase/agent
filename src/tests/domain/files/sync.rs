@@ -76,10 +76,10 @@ fn progress_formats_periodic_stats_and_ignores_other_lines() {
     let line = r#"{"level":"notice","msg":"stats","stats":{"bytes":536870912,"totalBytes":1073741824,"transfers":1200,"totalTransfers":2924,"checks":3,"totalChecks":10,"deletes":0,"speed":89128960.5,"eta":6}}"#;
     assert_eq!(
         progress(line).unwrap(),
-        "rclone sync: 512 MB / 1024 MB (50%), 1200/2924 transferred, 3/10 checked, 0 deleted, 85 MB/s, ETA 6s"
+        "512 MB / 1024 MB (50%), 1200/2924 transferred, 3/10 checked, 0 deleted, 85 MB/s, ETA 6s"
     );
     let idle = r#"{"level":"notice","stats":{"bytes":0,"totalBytes":0,"speed":0,"eta":null}}"#;
-    assert_eq!(progress(idle).unwrap(), "rclone sync: 0 B / 0 B (100%), 0/0 transferred, 0/0 checked, 0 deleted, 0 B/s");
+    assert_eq!(progress(idle).unwrap(), "0 B / 0 B (100%), 0/0 transferred, 0/0 checked, 0 deleted, 0 B/s");
     assert!(progress(r#"{"level":"error","msg":"boom"}"#).is_none());
     assert!(progress("plain text").is_none());
 }
@@ -122,7 +122,7 @@ fn sync_excludes_collapses_repeated_double_stars() {
 
 use crate::domain::files::platform::is_root;
 use crate::services::backup::logger::JobLogger;
-use crate::domain::files::sync::rclone::{replica_target, sync_dir};
+use crate::domain::files::sync::rclone::{Mode, replica_target, sync_dir};
 use crate::tests::domain::files::files_config;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -173,7 +173,7 @@ async fn sync_mirrors_the_source_and_propagates_changes() {
     let config = alias(store.path());
     let logger = JobLogger::new();
 
-    let first = sync_dir(&config, &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, &logger).await.unwrap();
+    let first = sync_dir(&config, &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, Mode::Sync, &logger).await.unwrap();
     assert_eq!(first.transfers, 2);
     assert_eq!(first.replica_bytes, Some(3), "excluded files are not counted");
     assert_eq!(files(&replica(store.path(), &cfg.generated_id)), vec!["docs/a.txt=v1", "docs/b.txt=b"]);
@@ -182,7 +182,7 @@ async fn sync_mirrors_the_source_and_propagates_changes() {
     fs::remove_file(src.path().join("docs/b.txt")).unwrap();
     fs::write(src.path().join("new.txt"), "new").unwrap();
 
-    let second = sync_dir(&config, &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, &logger).await.unwrap();
+    let second = sync_dir(&config, &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, Mode::Sync, &logger).await.unwrap();
     assert_eq!(second.transfers, 2);
     assert_eq!(second.deletes, 1);
     assert_eq!(second.replica_bytes, Some(5));
@@ -197,11 +197,11 @@ async fn a_later_exclude_removes_files_from_the_replica() {
     let cfg = files_config(src.path(), &["*.log", "/build"]);
     let config = alias(store.path());
     let dest = replica_target("pb", "", "backups", &cfg.generated_id);
-    sync_dir(&config, &dest, &cfg, &JobLogger::new()).await.unwrap();
+    sync_dir(&config, &dest, &cfg, Mode::Sync, &JobLogger::new()).await.unwrap();
 
     let mut later = cfg.clone();
     later.options = files_config(src.path(), &["*.log", "/build", "b.txt"]).options;
-    let stats = sync_dir(&config, &dest, &later, &JobLogger::new()).await.unwrap();
+    let stats = sync_dir(&config, &dest, &later, Mode::Sync, &JobLogger::new()).await.unwrap();
     assert_eq!(stats.deletes, 1);
     assert_eq!(stats.replica_bytes, Some(2));
     assert_eq!(files(&replica(store.path(), &cfg.generated_id)), vec!["docs/a.txt=v1"]);
@@ -218,13 +218,13 @@ async fn failed_sync_keeps_files_the_failed_run_would_delete() {
     tree(src.path());
     let cfg = files_config(src.path(), &[]);
     let config = alias(store.path());
-    sync_dir(&config, &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, &JobLogger::new()).await.unwrap();
+    sync_dir(&config, &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, Mode::Sync, &JobLogger::new()).await.unwrap();
 
     fs::remove_file(src.path().join("docs/b.txt")).unwrap();
     let locked = src.path().join("docs/a.txt");
     fs::write(&locked, "changed and now unreadable").unwrap();
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
-    let err = sync_dir(&config, &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, &JobLogger::new()).await.unwrap_err();
+    let err = sync_dir(&config, &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, Mode::Sync, &JobLogger::new()).await.unwrap_err();
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).unwrap();
 
     assert!(err.to_string().contains("rclone sync failed"), "{err:#}");
@@ -236,9 +236,68 @@ async fn empty_source_is_refused_and_the_replica_is_untouched() {
     let store = TempDir::new().unwrap();
     let src = TempDir::new().unwrap();
     let cfg = files_config(src.path(), &[]);
-    let err = sync_dir(&alias(store.path()), &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, &JobLogger::new()).await.unwrap_err();
+    let err = sync_dir(&alias(store.path()), &replica_target("pb", "", "backups", &cfg.generated_id), &cfg, Mode::Sync, &JobLogger::new()).await.unwrap_err();
     assert!(err.to_string().contains("is empty"), "{err:#}");
     assert!(!store.path().join("backups").exists());
+}
+
+#[tokio::test]
+async fn copy_keeps_files_deleted_from_the_source() {
+    let store = TempDir::new().unwrap();
+    let src = TempDir::new().unwrap();
+    tree(src.path());
+    let cfg = files_config(src.path(), &["*.log", "/build"]);
+    let config = alias(store.path());
+    let dest = replica_target("pb", "", "backups", &cfg.generated_id);
+    sync_dir(&config, &dest, &cfg, Mode::Copy, &JobLogger::new()).await.unwrap();
+
+    fs::write(src.path().join("docs/a.txt"), "v2").unwrap();
+    fs::remove_file(src.path().join("docs/b.txt")).unwrap();
+    fs::write(src.path().join("new.txt"), "new").unwrap();
+
+    let second = sync_dir(&config, &dest, &cfg, Mode::Copy, &JobLogger::new()).await.unwrap();
+    assert_eq!(second.transfers, 2);
+    assert_eq!(second.deletes, 0);
+    assert_eq!(second.replica_bytes, Some(6));
+    assert_eq!(
+        files(&replica(store.path(), &cfg.generated_id)),
+        vec!["docs/a.txt=v2", "docs/b.txt=b", "new.txt=new"]
+    );
+}
+
+#[tokio::test]
+async fn copy_keeps_files_matched_by_a_later_exclude() {
+    let store = TempDir::new().unwrap();
+    let src = TempDir::new().unwrap();
+    tree(src.path());
+    let cfg = files_config(src.path(), &["*.log", "/build"]);
+    let config = alias(store.path());
+    let dest = replica_target("pb", "", "backups", &cfg.generated_id);
+    sync_dir(&config, &dest, &cfg, Mode::Copy, &JobLogger::new()).await.unwrap();
+
+    let mut later = cfg.clone();
+    later.options = files_config(src.path(), &["*.log", "/build", "b.txt"]).options;
+    let stats = sync_dir(&config, &dest, &later, Mode::Copy, &JobLogger::new()).await.unwrap();
+    assert_eq!(stats.deletes, 0);
+    assert_eq!(files(&replica(store.path(), &cfg.generated_id)), vec!["docs/a.txt=v1", "docs/b.txt=b"]);
+}
+
+#[tokio::test]
+async fn copy_of_an_empty_source_succeeds_and_keeps_the_replica() {
+    let store = TempDir::new().unwrap();
+    let src = TempDir::new().unwrap();
+    tree(src.path());
+    let cfg = files_config(src.path(), &[]);
+    let config = alias(store.path());
+    let dest = replica_target("pb", "", "backups", &cfg.generated_id);
+    sync_dir(&config, &dest, &cfg, Mode::Copy, &JobLogger::new()).await.unwrap();
+
+    let empty = TempDir::new().unwrap();
+    let mut unmounted = cfg.clone();
+    unmounted.path = empty.path().to_string_lossy().into_owned();
+    let stats = sync_dir(&config, &dest, &unmounted, Mode::Copy, &JobLogger::new()).await.unwrap();
+    assert_eq!((stats.transfers, stats.deletes), (0, 0));
+    assert_eq!(files(&replica(store.path(), &cfg.generated_id)).len(), 4);
 }
 
 use crate::services::api::models::agent::status::DatabaseStorage;

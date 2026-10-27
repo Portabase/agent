@@ -4,6 +4,7 @@ use crate::core::context::Context as CoreContext;
 use crate::domain::files::restic::backup::snapshot;
 use crate::domain::files::restic::repo::ResticRepo;
 use crate::domain::files::sync::backup::{replica_path, replicate};
+use crate::domain::files::sync::rclone::Mode;
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::config::DatabaseConfig;
 use crate::utils::locks::{DbOpLock, FileLock};
@@ -14,6 +15,7 @@ use serde_json::Value;
 pub enum FilesEngine {
     Restic,
     Sync,
+    Copy,
 }
 
 impl FilesEngine {
@@ -21,6 +23,7 @@ impl FilesEngine {
         match engine {
             "restic" => Some(Self::Restic),
             "sync" => Some(Self::Sync),
+            "copy" => Some(Self::Copy),
             _ => None,
         }
     }
@@ -29,6 +32,7 @@ impl FilesEngine {
         match self {
             Self::Restic => "restic",
             Self::Sync => "sync",
+            Self::Copy => "copy",
         }
     }
 
@@ -36,6 +40,7 @@ impl FilesEngine {
         match self {
             Self::Restic => "Snapshot",
             Self::Sync => "Sync",
+            Self::Copy => "Copy",
         }
     }
 }
@@ -88,8 +93,9 @@ async fn transfer(
                 remote_path: summary.snapshot_id,
             })
         }
-        FilesEngine::Sync => {
-            let stats = replicate(&ctx.edge_key, cfg, storage, logger).await?;
+        FilesEngine::Sync | FilesEngine::Copy => {
+            let mode = if matches!(engine, FilesEngine::Copy) { Mode::Copy } else { Mode::Sync };
+            let stats = replicate(&ctx.edge_key, cfg, storage, mode, logger).await?;
             Ok(Transfer {
                 remote_path: replica_path(storage, &cfg.generated_id),
                 size: stats.bytes,

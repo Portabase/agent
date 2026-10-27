@@ -3,7 +3,7 @@ set -euo pipefail
 
 SIZE_MB=${SIZE_MB:-1024}
 ROOT=${ROOT:-./test-files}
-TARGETS=${TARGETS:-archive snapshot sync}
+TARGETS=${TARGETS:-archive snapshot sync copy}
 
 bytes() { echo $(( SIZE_MB * $1 / 100 * 1024 * 1024 )); }
 
