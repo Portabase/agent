@@ -3,7 +3,7 @@ use super::password::derive_password;
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::backup::logger::JobLogger;
 use crate::services::storage::providers::local::{LOCAL_STORAGE_USER, local_storage_password};
-use crate::services::storage::providers::rclone::helpers::{remote_target, write_config};
+use crate::services::storage::providers::rclone::helpers::{max_connections, remote_target, write_config};
 use crate::services::storage::providers::rclone::target::{RcloneTarget, rclone_target};
 use crate::settings::CONFIG;
 use crate::utils::edge_key::EdgeKey;
@@ -23,6 +23,7 @@ pub struct ResticRepo {
     cache_dir: Option<PathBuf>,
     config: Option<NamedTempFile>,
     rest_auth: Option<(String, String)>,
+    connections: Option<u32>,
     _target: Option<RcloneTarget>,
 }
 
@@ -106,6 +107,7 @@ impl ResticRepo {
             cache_dir: usable_cache_dir(cache_dir),
             config: Some(write_config(config_text)?),
             rest_auth: None,
+            connections: max_connections(config_text),
             _target: None,
         })
     }
@@ -117,6 +119,7 @@ impl ResticRepo {
             cache_dir: usable_cache_dir(cache_dir),
             config: None,
             rest_auth: Some((LOCAL_STORAGE_USER.to_string(), server_password.to_string())),
+            connections: None,
             _target: None,
         }
     }
@@ -134,7 +137,10 @@ impl ResticRepo {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        let args: Vec<OsString> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
+        let mut args: Vec<OsString> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
+        if let Some(n) = self.connections {
+            args.extend(["-o".into(), format!("rclone.connections={n}").into()]);
+        }
         let shown: Vec<String> = args.iter().map(|a| a.to_string_lossy().into_owned()).collect();
         logger.log("debug", format!("restic {}", shown.join(" ")));
 

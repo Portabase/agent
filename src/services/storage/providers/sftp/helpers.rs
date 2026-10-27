@@ -64,6 +64,8 @@ pub fn build_sftp_config(
         ("user", config.username.trim().to_string()),
         ("key_file", key_file_path),
         ("pass", pass),
+        ("connections", config.connections.map(|n| n.to_string()).unwrap_or_default()),
+        ("host_keys", config.host_keys.clone().unwrap_or_default()),
     ];
 
     let config_text = build_rclone_config("sftp", fields)?;

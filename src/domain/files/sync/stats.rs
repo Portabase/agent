@@ -72,7 +72,7 @@ pub fn progress(line: &str) -> Option<String> {
     let percent = if total > 0 { bytes * 100 / total } else { 100 };
     let eta = stats["eta"].as_u64().map(|s| format!(", ETA {s}s")).unwrap_or_default();
     Some(format!(
-        "rclone sync: {} / {} ({percent}%), {}/{} transferred, {}/{} checked, {} deleted, {}/s{eta}",
+        "{} / {} ({percent}%), {}/{} transferred, {}/{} checked, {} deleted, {}/s{eta}",
         human_size(bytes),
         human_size(total),
         n("transfers"),

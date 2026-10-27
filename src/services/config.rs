@@ -114,15 +114,22 @@ fn optional<T: Clone + Default>(opt: &Option<T>) -> T {
     opt.clone().unwrap_or_default()
 }
 
-pub const FILES_METHODS: [&str; 3] = ["archive", "snapshot", "sync"];
+pub const FILES_METHODS: [&str; 4] = ["archive", "snapshot", "sync", "copy"];
 
-/// The method a files source declares in `options.method` (`archive` when absent).
 pub fn files_method(cfg: &DatabaseConfig) -> &'static str {
     match cfg.options.get("method").and_then(|v| v.as_str()) {
         Some("snapshot") => "snapshot",
         Some("sync") => "sync",
+        Some("copy") => "copy",
         _ => "archive",
     }
+}
+
+fn is_size(value: &str) -> bool {
+    let number = value.strip_suffix(|suffix: char| "bkmgtp".contains(suffix.to_ascii_lowercase())).unwrap_or(value);
+    let (whole, fraction) = number.split_once('.').unwrap_or((number, "0"));
+    let all_digits = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    all_digits(whole) && all_digits(fraction)
 }
 
 pub fn build_config(db: InputDatabaseConfig) -> Result<DatabaseConfig, String> {
@@ -198,10 +205,26 @@ pub fn build_config(db: InputDatabaseConfig) -> Result<DatabaseConfig, String> {
         _ => optional(&db.path),
     };
     if matches!(db.db_type, DbType::Files) {
-        if let Some(method) = db.options.as_ref().and_then(|o| o.get("method")) {
+        if let Some(method) = db.options.as_ref().and_then(|options| options.get("method")) {
             if !method.as_str().is_some_and(|m| FILES_METHODS.contains(&m)) {
                 return Err(format!(
-                    "Unknown method {method} for files source '{}' (expected archive, snapshot or sync)",
+                    "Unknown method {method} for files source '{}' (expected archive, snapshot, sync or copy)",
+                    db.name
+                ));
+            }
+        }
+        if let Some(limit) = db.options.as_ref().and_then(|options| options.get("max_delete")) {
+            if !limit.is_u64() {
+                return Err(format!(
+                    "Invalid max_delete {limit} for files source '{}' (expected a whole number >= 0)",
+                    db.name
+                ));
+            }
+        }
+        if let Some(size) = db.options.as_ref().and_then(|options| options.get("max_delete_size")) {
+            if !size.as_str().is_some_and(is_size) {
+                return Err(format!(
+                    "Invalid max_delete_size {size} for files source '{}' (expected a size such as 500M or 10G)",
                     db.name
                 ));
             }

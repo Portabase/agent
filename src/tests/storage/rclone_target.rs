@@ -131,6 +131,16 @@ fn sftp_config_error_keeps_the_root_cause() {
 }
 
 #[test]
+fn sftp_connections_cap_the_rclone_remote() {
+    let target = rclone_target(&storage(
+        "sftp",
+        json!({ "host": "h", "username": "u", "password": "secret", "connections": 3 }),
+    ))
+    .unwrap();
+    assert!(target.config_text.ends_with("\nconnections = 3\n"), "{}", target.config_text);
+}
+
+#[test]
 fn sftp_password_only_has_pass_and_no_key_file() {
     let target = rclone_target(&storage(
         "sftp",
@@ -139,6 +149,18 @@ fn sftp_password_only_has_pass_and_no_key_file() {
     .unwrap();
     assert!(!target.config_text.contains("key_file"), "{}", target.config_text);
     assert!(target.config_text.lines().any(|l| l.starts_with("pass = ")), "{}", target.config_text);
+    assert!(!target.config_text.contains("host_keys"), "{}", target.config_text);
+}
+
+#[test]
+fn sftp_host_keys_pin_the_rclone_remote() {
+    let keys = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPXKNfB8,ssh-rsa AAAAB3NzaC1yc2EAAAADAQAB";
+    let target = rclone_target(&storage(
+        "sftp",
+        json!({ "host": "h", "username": "u", "password": "p", "remotePath": "", "hostKeys": keys }),
+    ))
+    .unwrap();
+    assert!(target.config_text.ends_with(&format!("\nhost_keys = {keys}\n")), "{}", target.config_text);
 }
 
 #[test]

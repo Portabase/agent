@@ -19,12 +19,13 @@ services:
       - ./test-files/archive:/data/files-archive
       - ./test-files/snapshot:/data/files-snapshot
       - ./test-files/sync:/data/files-sync
+      - ./test-files/copy:/data/files-copy
     environment:
       APP_ENV: development
       LOG: debug
       TZ: "Europe/Paris"
       #      TMPDIR: /scratch
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiMzM1YjcwZjYtMjQxNC00OGZiLTkxZDQtZjQzZjJjNTJlYzUzIiwibWFzdGVyS2V5QjY0IjoiOEdScEFNMzhDeE1seTAzeTFIbHpBSTdZbnRDYVhuYTV1bDBIYkxKSG81ND0ifQ=="
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiMzU4ODcxZTMtMTAwZC00YmM2LTgzNTEtYmY1YWU0YmEwNjZmIiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
       #CHUNK_SIZE_MB: "1"
       #POOLING: 1
       #RETRY_ATTEMPTS: 3

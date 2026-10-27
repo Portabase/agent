@@ -201,6 +201,21 @@ fn files(root: &Path) -> Vec<String> {
 }
 
 #[tokio::test]
+async fn an_rclone_connection_cap_limits_restic_requests() {
+    let base = TempDir::new().unwrap();
+    let dir = base.path().join("repo");
+    fs::create_dir_all(&dir).unwrap();
+    let config = format!("[pb]\ntype = alias\nremote = {}\nconnections = 2\n", dir.display());
+    let repo = ResticRepo::new(&config, "pb", "", "backups", "g1", "test-password", dir.join("cache")).unwrap();
+    let logger = JobLogger::new();
+
+    let run = repo.run(["cat", "config"], &logger).await.unwrap();
+    assert_eq!(run.code, 10, "{}", run.stderr_tail);
+    let logged: Vec<String> = logger.into_entries().into_iter().map(|e| e.message).collect();
+    assert!(logged.iter().any(|m| m.ends_with("-o rclone.connections=2")), "{logged:?}");
+}
+
+#[tokio::test]
 async fn first_snapshot_initializes_the_repository_and_the_second_reuses_its_parent() {
     let base = TempDir::new().unwrap();
     let src = TempDir::new().unwrap();

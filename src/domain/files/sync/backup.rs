@@ -1,4 +1,4 @@
-use super::rclone::{replica_target, sync_dir};
+use super::rclone::{Mode, replica_target, sync_dir};
 use super::stats::SyncStats;
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::backup::logger::JobLogger;
@@ -29,10 +29,10 @@ pub fn local_sync_config(edge_key: &EdgeKey) -> Result<String> {
     )
 }
 
-pub async fn replicate(edge_key: &EdgeKey, cfg: &DatabaseConfig, storage: &DatabaseStorage, logger: &JobLogger) -> Result<SyncStats> {
+pub async fn replicate(edge_key: &EdgeKey, cfg: &DatabaseConfig, storage: &DatabaseStorage, mode: Mode, logger: &JobLogger) -> Result<SyncStats> {
     if storage.provider == "local" {
         let dest = format!("{LOCAL_REMOTE}:{}/current", cfg.generated_id);
-        return sync_dir(&local_sync_config(edge_key)?, &dest, cfg, logger).await;
+        return sync_dir(&local_sync_config(edge_key)?, &dest, cfg, mode, logger).await;
     }
     let target = rclone_target(storage)?;
     let dest = replica_target(
@@ -41,5 +41,5 @@ pub async fn replicate(edge_key: &EdgeKey, cfg: &DatabaseConfig, storage: &Datab
         folder_or_default(storage.folder_name.as_deref()),
         &cfg.generated_id,
     );
-    sync_dir(&target.config_text, &dest, cfg, logger).await
+    sync_dir(&target.config_text, &dest, cfg, mode, logger).await
 }
