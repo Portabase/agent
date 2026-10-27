@@ -163,6 +163,16 @@
         "method": "sync",
         "exclude": ["*.tmp", "/cache"]
       }
+    },
+    {
+      "name": "Files - Copy",
+      "type": "files",
+      "path": "/data/files-copy",
+      "generated_id": "86b188ec-e091-496a-8273-05929f13a298",
+      "options": {
+        "method": "copy",
+        "exclude": ["*.tmp", "/cache"]
+      }
     }
   ]
 }

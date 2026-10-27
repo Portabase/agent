@@ -5,6 +5,7 @@ use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use crate::services::storage::providers::rclone::helpers::{remote_target, write_config};
 use anyhow::{Context, Result, anyhow, bail};
+use serde_json::Value;
 use std::path::Path;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -14,9 +15,25 @@ pub fn replica_target(remote_name: &str, base_path: &str, folder: &str, generate
     remote_target(remote_name, base_path, &format!("{folder}/sync/{generated_id}/current"))
 }
 
-pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, logger: &JobLogger) -> Result<SyncStats> {
+#[derive(Clone, Copy, PartialEq)]
+pub enum Mode {
+    Sync,
+    Copy,
+}
+
+impl Mode {
+    pub fn verb(self) -> &'static str {
+        match self {
+            Self::Sync => "sync",
+            Self::Copy => "copy",
+        }
+    }
+}
+
+pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, mode: Mode, logger: &JobLogger) -> Result<SyncStats> {
     let root = source_root(cfg)?;
-    if std::fs::read_dir(&root)
+    if mode == Mode::Sync
+        && std::fs::read_dir(&root)
         .with_context(|| format!("cannot read source directory {}", root.display()))?
         .next()
         .is_none()
@@ -27,44 +44,34 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, logge
         );
     }
     let config = write_config(config_text)?;
-
-    let mut cmd = Command::new("rclone");
-    cmd.arg("--config")
-        .arg(config.path())
-        .arg("sync")
-        .arg(&root)
-        .arg(dest)
-        .args([
-            "--links", "--delete-excluded", "--use-json-log", "--stats-log-level", "NOTICE", "--retries", "1",
-            "--contimeout", "30s", "--low-level-retries", "3",
-        ]);
-    if one_file_system(cfg) {
-        cmd.arg("--one-file-system");
-    }
-    for pattern in sync_excludes(&exclude_patterns(cfg)) {
-        cmd.arg("--exclude").arg(pattern);
+    let limits = if mode == Mode::Sync { delete_limits(cfg) } else { Vec::new() };
+    if !limits.is_empty() {
+        logger.log("info", "Checking the delete limits with a dry run");
+        preflight(config.path(), &root, dest, cfg, &limits).await?;
     }
 
+    let mut cmd = rclone_command(config.path(), mode, &root, dest, cfg, &limits);
     let debug = tracing::enabled!(tracing::Level::DEBUG);
-    cmd.args(["--stats", if debug { "5s" } else { "1h" }]);
+    cmd.args(["--stats-log-level", "NOTICE", "--stats", if debug { "5s" } else { "1h" }]);
 
-    logger.log("info", format!("Syncing {} to {dest}", root.display()));
+    let (doing, done) = match mode {
+        Mode::Sync => ("Syncing", "Synced"),
+        Mode::Copy => ("Copying", "Copied"),
+    };
+    logger.log("info", format!("{doing} {} to {dest}", root.display()));
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => anyhow!("rclone binary not found"),
-            _ => anyhow!(e).context("failed to start rclone"),
-        })?;
+        .map_err(spawn_error)?;
     let mut lines = BufReader::new(child.stderr.take().context("rclone stderr unavailable")?).lines();
     let mut stderr = String::new();
     while let Some(line) = lines.next_line().await.context("failed to read rclone output")? {
         if debug {
             if let Some(progress) = progress(&line) {
-                logger.log("debug", format!("progress: {progress}"));
+                logger.log("debug", format!("progress: rclone {}: {progress}", mode.verb()));
             }
         }
         stderr.push_str(&line);
@@ -83,7 +90,7 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, logge
             .and_then(|s| s.last_error.clone())
             .or_else(|| log.errors.last().cloned())
             .unwrap_or_else(|| "no error message".to_string());
-        bail!("rclone sync failed ({status}): {reason}; the replica may be partially updated");
+        bail!("rclone {} failed ({status}): {reason}; the replica may be partially updated", mode.verb());
     }
     let mut stats = log.stats.unwrap_or_default();
     stats.replica_bytes = match remote_size(config.path(), dest).await {
@@ -96,9 +103,80 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, logge
     let replica = stats.replica_bytes.map(|b| format!("; replica holds {b} bytes")).unwrap_or_default();
     logger.log(
         "info",
-        format!("Synced: {} file(s) transferred ({} bytes), {} deleted{replica}", stats.transfers, stats.bytes, stats.deletes),
+        format!("{done}: {} file(s) transferred ({} bytes), {} deleted{replica}", stats.transfers, stats.bytes, stats.deletes),
     );
     Ok(stats)
+}
+
+fn delete_limits(cfg: &DatabaseConfig) -> Vec<(&'static str, String)> {
+    let mut limits = Vec::new();
+    if let Some(max_delete) = cfg.options.get("max_delete").and_then(Value::as_u64) {
+        limits.push(("max-delete", max_delete.to_string()));
+    }
+    if let Some(max_delete_size) = cfg.options.get("max_delete_size").and_then(Value::as_str) {
+        limits.push(("max-delete-size", max_delete_size.to_string()));
+    }
+    limits
+}
+
+fn rclone_command(
+    config: &Path,
+    mode: Mode,
+    root: &Path,
+    dest: &str,
+    cfg: &DatabaseConfig,
+    limits: &[(&str, String)],
+) -> Command {
+    let mut cmd = Command::new("rclone");
+    cmd.arg("--config")
+        .arg(config)
+        .arg(mode.verb())
+        .arg(root)
+        .arg(dest)
+        .args(["--links", "--use-json-log", "--retries", "1", "--contimeout", "30s", "--low-level-retries", "3"]);
+    if mode == Mode::Sync {
+        cmd.arg("--delete-excluded");
+    }
+    for (flag, value) in limits {
+        cmd.arg(format!("--{flag}")).arg(value);
+    }
+    if one_file_system(cfg) {
+        cmd.arg("--one-file-system");
+    }
+    for pattern in sync_excludes(&exclude_patterns(cfg)) {
+        cmd.arg("--exclude").arg(pattern);
+    }
+    cmd
+}
+
+async fn preflight(config: &Path, root: &Path, dest: &str, cfg: &DatabaseConfig, limits: &[(&str, String)]) -> Result<()> {
+    let output = rclone_command(config, Mode::Sync, root, dest, cfg, limits)
+        .args(["--dry-run", "--log-level", "ERROR"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .kill_on_drop(true)
+        .output()
+        .await
+        .map_err(spawn_error)?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let log = parse_log(&String::from_utf8_lossy(&output.stderr));
+    if log.errors.iter().any(|error| error.contains("threshold reached")) {
+        let limits = limits.iter().map(|(flag, value)| format!("{flag} {value}")).collect::<Vec<_>>().join(", ");
+        bail!(
+            "sync would delete more than the limit ({limits}); nothing was deleted. Raise or clear the limit to accept the deletions"
+        );
+    }
+    let reason = log.errors.last().cloned().unwrap_or_else(|| "no error message".to_string());
+    bail!("rclone sync dry run failed ({}): {reason}", output.status);
+}
+
+fn spawn_error(error: std::io::Error) -> anyhow::Error {
+    match error.kind() {
+        std::io::ErrorKind::NotFound => anyhow!("rclone binary not found"),
+        _ => anyhow!(error).context("failed to start rclone"),
+    }
 }
 
 async fn remote_size(config: &Path, target: &str) -> Result<u64> {

@@ -19,6 +19,7 @@ services:
       - ./test-files/archive:/data/files-archive
       - ./test-files/snapshot:/data/files-snapshot
       - ./test-files/sync:/data/files-sync
+      - ./test-files/copy:/data/files-copy
     environment:
       APP_ENV: development
       LOG: debug
