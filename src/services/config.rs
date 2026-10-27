@@ -116,7 +116,6 @@ fn optional<T: Clone + Default>(opt: &Option<T>) -> T {
 
 pub const FILES_METHODS: [&str; 4] = ["archive", "snapshot", "sync", "copy"];
 
-/// The method a files source declares in `options.method` (`archive` when absent).
 pub fn files_method(cfg: &DatabaseConfig) -> &'static str {
     match cfg.options.get("method").and_then(|v| v.as_str()) {
         Some("snapshot") => "snapshot",
