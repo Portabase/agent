@@ -40,6 +40,7 @@ fn build_config_emits_key_file_for_key_auth() {
         private_key: Some("PEMDATA".into()),
         remote_path: String::new(),
         connections: None,
+        host_keys: None,
     };
     let (text, key) = build_sftp_config(&config).unwrap();
     let key = key.expect("key auth must produce a key file");
@@ -63,6 +64,7 @@ fn build_config_omits_port_when_absent() {
         private_key: Some("K".into()),
         remote_path: String::new(),
         connections: None,
+        host_keys: None,
     };
     let (text, _key) = build_sftp_config(&config).unwrap();
     assert!(!text.contains("port ="));
