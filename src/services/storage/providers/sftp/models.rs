@@ -13,4 +13,6 @@ pub struct SftpProviderConfig {
     pub private_key: Option<String>,
     #[serde(default)]
     pub remote_path: String,
+    #[serde(default)]
+    pub connections: Option<u32>,
 }

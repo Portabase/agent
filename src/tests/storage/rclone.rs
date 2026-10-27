@@ -59,6 +59,16 @@ fn build_rclone_config_skips_empty_and_rejects_line_breaks() {
 }
 
 #[test]
+fn max_connections_reads_the_rclone_sftp_cap() {
+    use crate::services::storage::providers::rclone::helpers::max_connections;
+
+    assert_eq!(max_connections("[sftp]\ntype = sftp\nconnections = 3\n"), Some(3));
+    assert_eq!(max_connections("[sftp]\ntype = sftp\n"), None);
+    assert_eq!(max_connections("[sftp]\nconnections = 0\n"), None); // rclone: 0 = unlimited
+    assert_eq!(max_connections("[sftp]\nconnections = many\n"), None);
+}
+
+#[test]
 fn validate_config_accepts_the_target_remote() {
     assert!(validate_config(OVH_CONFIG, "ovhcloud-rbx").is_ok());
 }
@@ -73,7 +83,6 @@ struct ValidationCase {
     error_contains: Option<String>,
 }
 
-/// The same file is verified against the dashboard validator: keep both in sync.
 #[test]
 fn validate_config_matches_the_shared_test_vectors() {
     let cases: Vec<ValidationCase> =
@@ -171,7 +180,6 @@ fn remote_path_is_a_prefix_ahead_of_the_backup_folder() {
         "ovhcloud-rbx:my-bucket/backups/2026-09-09/x.tar.gz"
     );
 
-    // Deeper prefixes nest the same way.
     assert_eq!(
         remote_target("ovhcloud-rbx", "my-bucket/portabase", "backups/2026-09-09/x.tar.gz"),
         "ovhcloud-rbx:my-bucket/portabase/backups/2026-09-09/x.tar.gz"

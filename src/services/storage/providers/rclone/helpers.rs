@@ -49,9 +49,6 @@ fn forbidden_key(key: &str) -> bool {
         || key.ends_with("_path")
 }
 
-/// Strict check for user-pasted rclone configs (never for configs Portabase builds itself).
-/// Exactly one `[remote]` of plain `key = value` lines: rclone and a naive parser must read it
-/// identically, and nothing may run a local command or read host credentials.
 pub fn validate_config(config_text: &str, remote_name: &str) -> Result<()> {
     let mut names = Vec::new();
     let mut pairs = Vec::new();
@@ -89,7 +86,6 @@ pub fn validate_config(config_text: &str, remote_name: &str) -> Result<()> {
             bail!("invalid rclone config key '{key}' (remote '{name}')");
         }
     }
-    // rclone (goconfig) unquotes `value` and `"""value"""` and drops what follows the closing quote.
     for (key, value) in &pairs {
         if value.starts_with('`') || value.starts_with("\"\"\"") {
             bail!("rclone config value for key '{key}' must not be quoted (remote '{name}')");
@@ -117,9 +113,6 @@ pub fn validate_config(config_text: &str, remote_name: &str) -> Result<()> {
     if BLOCKED_BACKEND_TYPES.contains(&compact.as_str()) {
         bail!("rclone backend type '{backend}' is not allowed (remote '{name}')");
     }
-    // The other OCI providers read the host's OCI config or instance identity. Exact match on
-    // purpose: rclone 1.75.1 compares the key and the value case-sensitively, and falls back to
-    // host credentials for `PROVIDER = no_auth` (key ignored) and `provider = NO_AUTH` (unknown value).
     if compact == "oracleobjectstorage" {
         if !pairs.contains(&("provider", "no_auth")) {
             bail!("rclone oracleobjectstorage remotes must use provider = no_auth (remote '{name}')");
@@ -132,7 +125,6 @@ pub fn validate_config(config_text: &str, remote_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// `rclone obscure -` reads the password from stdin, so it never shows up in argv.
 pub fn obscure_password(password: &str) -> Result<String> {
     let mut child = std::process::Command::new("rclone")
         .arg("obscure")
@@ -143,7 +135,6 @@ pub fn obscure_password(password: &str) -> Result<String> {
         .spawn()
         .context("failed to spawn rclone (is the binary installed in this image?)")?;
 
-    // Dropping the handle closes stdin, which is what ends rclone's read.
     child
         .stdin
         .take()
@@ -181,6 +172,15 @@ pub fn build_rclone_config(remote_name: &str, fields: &[(&str, String)]) -> Resu
     }
 
     Ok(lines.join("\n") + "\n")
+}
+
+pub fn max_connections(config_text: &str) -> Option<u32> {
+    config_text
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .find(|(key, _)| key.trim() == "connections")
+        .and_then(|(_, value)| value.trim().parse().ok())
+        .filter(|&n| n > 0)
 }
 
 /// `<remote>:<remote_path>/<remote_file_path>`
