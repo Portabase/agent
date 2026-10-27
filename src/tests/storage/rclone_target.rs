@@ -131,6 +131,16 @@ fn sftp_config_error_keeps_the_root_cause() {
 }
 
 #[test]
+fn sftp_connections_cap_the_rclone_remote() {
+    let target = rclone_target(&storage(
+        "sftp",
+        json!({ "host": "h", "username": "u", "password": "secret", "connections": 3 }),
+    ))
+    .unwrap();
+    assert!(target.config_text.ends_with("\nconnections = 3\n"), "{}", target.config_text);
+}
+
+#[test]
 fn sftp_password_only_has_pass_and_no_key_file() {
     let target = rclone_target(&storage(
         "sftp",
