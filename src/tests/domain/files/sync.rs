@@ -123,7 +123,9 @@ fn sync_excludes_collapses_repeated_double_stars() {
 use crate::domain::files::platform::is_root;
 use crate::services::backup::logger::JobLogger;
 use crate::domain::files::sync::rclone::{Mode, replica_target, sync_dir};
+use crate::services::config::DatabaseConfig;
 use crate::tests::domain::files::files_config;
+use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -300,9 +302,68 @@ async fn copy_of_an_empty_source_succeeds_and_keeps_the_replica() {
     assert_eq!(files(&replica(store.path(), &cfg.generated_id)).len(), 4);
 }
 
+fn with_limits(mut cfg: DatabaseConfig, max_delete: Option<u64>, max_delete_size: Option<&str>) -> DatabaseConfig {
+    if let Some(limit) = max_delete {
+        cfg.options.insert("max_delete".into(), json!(limit));
+    }
+    if let Some(size) = max_delete_size {
+        cfg.options.insert("max_delete_size".into(), json!(size));
+    }
+    cfg
+}
+
+async fn synced_tree_with(
+    removed: &[&str],
+    max_delete: Option<u64>,
+    max_delete_size: Option<&str>,
+) -> (TempDir, String, anyhow::Result<SyncStats>) {
+    let store = TempDir::new().unwrap();
+    let src = TempDir::new().unwrap();
+    tree(src.path());
+    let cfg = files_config(src.path(), &[]);
+    let config = alias(store.path());
+    let dest = replica_target("pb", "", "backups", &cfg.generated_id);
+    sync_dir(&config, &dest, &cfg, Mode::Sync, &JobLogger::new()).await.unwrap();
+    for path in removed {
+        fs::remove_file(src.path().join(path)).unwrap();
+    }
+    let limited = with_limits(cfg.clone(), max_delete, max_delete_size);
+    let result = sync_dir(&config, &dest, &limited, Mode::Sync, &JobLogger::new()).await;
+    (store, cfg.generated_id, result)
+}
+
+#[tokio::test]
+async fn max_delete_over_the_limit_deletes_nothing() {
+    let (store, generated_id, result) = synced_tree_with(&["docs/a.txt", "docs/b.txt", "app.log"], Some(2), None).await;
+    let error = result.unwrap_err().to_string();
+    assert!(error.contains("nothing was deleted") && error.contains("max-delete 2"), "{error}");
+    assert_eq!(files(&replica(store.path(), &generated_id)).len(), 4);
+}
+
+#[tokio::test]
+async fn max_delete_size_over_the_limit_deletes_nothing() {
+    let (store, generated_id, result) = synced_tree_with(&["docs/b.txt", "build/out.bin", "app.log"], None, Some("5B")).await;
+    let error = result.unwrap_err().to_string();
+    assert!(error.contains("nothing was deleted") && error.contains("max-delete-size 5B"), "{error}");
+    assert_eq!(files(&replica(store.path(), &generated_id)).len(), 4);
+}
+
+#[tokio::test]
+async fn max_delete_zero_refuses_any_deletion() {
+    let (store, generated_id, result) = synced_tree_with(&["docs/b.txt"], Some(0), None).await;
+    assert!(result.unwrap_err().to_string().contains("nothing was deleted"));
+    assert_eq!(files(&replica(store.path(), &generated_id)).len(), 4);
+}
+
+#[tokio::test]
+async fn deletions_under_the_limits_go_through() {
+    let (store, generated_id, result) = synced_tree_with(&["docs/b.txt", "app.log"], Some(2), Some("1K")).await;
+    assert_eq!(result.unwrap().deletes, 2);
+    assert_eq!(files(&replica(store.path(), &generated_id)), vec!["build/out.bin=out", "docs/a.txt=v1"]);
+}
+
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::domain::files::sync::backup::replica_path;
-use serde_json::json;
 
 #[test]
 fn replica_path_uses_the_channel_folder() {

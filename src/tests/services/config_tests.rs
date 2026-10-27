@@ -425,6 +425,21 @@ fn files_method_reads_copy() {
 }
 
 #[test]
+fn delete_limits_are_accepted() {
+    for options in [r#"{ "max_delete": 0 }"#, r#"{ "max_delete": 100, "max_delete_size": "10G" }"#, r#"{ "max_delete_size": "1.5g" }"#, r#"{ "max_delete_size": "512" }"#] {
+        assert!(build_config(files_input(&format!(r#", "options": {options}"#))).is_ok(), "{options}");
+    }
+}
+
+#[test]
+fn invalid_delete_limits_refuse_the_source() {
+    for options in [r#"{ "max_delete": -1 }"#, r#"{ "max_delete": 1.5 }"#, r#"{ "max_delete": "100" }"#, r#"{ "max_delete_size": "10X" }"#, r#"{ "max_delete_size": "1." }"#, r#"{ "max_delete_size": 10 }"#] {
+        let error = build_config(files_input(&format!(r#", "options": {options}"#))).unwrap_err();
+        assert!(error.contains("Invalid max_delete") && error.contains("docs"), "{options}: {error}");
+    }
+}
+
+#[test]
 fn unknown_files_method_refuses_the_source() {
     let err = build_config(files_input(r#", "options": { "method": "mirror" }"#)).unwrap_err();
     assert!(err.contains("Unknown method"), "{err}");

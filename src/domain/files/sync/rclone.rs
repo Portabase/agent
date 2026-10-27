@@ -5,6 +5,7 @@ use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use crate::services::storage::providers::rclone::helpers::{remote_target, write_config};
 use anyhow::{Context, Result, anyhow, bail};
+use serde_json::Value;
 use std::path::Path;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -43,8 +44,13 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, mode:
         );
     }
     let config = write_config(config_text)?;
+    let limits = if mode == Mode::Sync { delete_limits(cfg) } else { Vec::new() };
+    if !limits.is_empty() {
+        logger.log("info", "Checking the delete limits with a dry run");
+        preflight(config.path(), &root, dest, cfg, &limits).await?;
+    }
 
-    let mut cmd = rclone_command(config.path(), mode, &root, dest, cfg);
+    let mut cmd = rclone_command(config.path(), mode, &root, dest, cfg, &limits);
     let debug = tracing::enabled!(tracing::Level::DEBUG);
     cmd.args(["--stats-log-level", "NOTICE", "--stats", if debug { "5s" } else { "1h" }]);
 
@@ -102,7 +108,25 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, mode:
     Ok(stats)
 }
 
-fn rclone_command(config: &Path, mode: Mode, root: &Path, dest: &str, cfg: &DatabaseConfig) -> Command {
+fn delete_limits(cfg: &DatabaseConfig) -> Vec<(&'static str, String)> {
+    let mut limits = Vec::new();
+    if let Some(max_delete) = cfg.options.get("max_delete").and_then(Value::as_u64) {
+        limits.push(("max-delete", max_delete.to_string()));
+    }
+    if let Some(max_delete_size) = cfg.options.get("max_delete_size").and_then(Value::as_str) {
+        limits.push(("max-delete-size", max_delete_size.to_string()));
+    }
+    limits
+}
+
+fn rclone_command(
+    config: &Path,
+    mode: Mode,
+    root: &Path,
+    dest: &str,
+    cfg: &DatabaseConfig,
+    limits: &[(&str, String)],
+) -> Command {
     let mut cmd = Command::new("rclone");
     cmd.arg("--config")
         .arg(config)
@@ -113,6 +137,9 @@ fn rclone_command(config: &Path, mode: Mode, root: &Path, dest: &str, cfg: &Data
     if mode == Mode::Sync {
         cmd.arg("--delete-excluded");
     }
+    for (flag, value) in limits {
+        cmd.arg(format!("--{flag}")).arg(value);
+    }
     if one_file_system(cfg) {
         cmd.arg("--one-file-system");
     }
@@ -120,6 +147,29 @@ fn rclone_command(config: &Path, mode: Mode, root: &Path, dest: &str, cfg: &Data
         cmd.arg("--exclude").arg(pattern);
     }
     cmd
+}
+
+async fn preflight(config: &Path, root: &Path, dest: &str, cfg: &DatabaseConfig, limits: &[(&str, String)]) -> Result<()> {
+    let output = rclone_command(config, Mode::Sync, root, dest, cfg, limits)
+        .args(["--dry-run", "--log-level", "ERROR"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .kill_on_drop(true)
+        .output()
+        .await
+        .map_err(spawn_error)?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let log = parse_log(&String::from_utf8_lossy(&output.stderr));
+    if log.errors.iter().any(|error| error.contains("threshold reached")) {
+        let limits = limits.iter().map(|(flag, value)| format!("{flag} {value}")).collect::<Vec<_>>().join(", ");
+        bail!(
+            "sync would delete more than the limit ({limits}); nothing was deleted. Raise or clear the limit to accept the deletions"
+        );
+    }
+    let reason = log.errors.last().cloned().unwrap_or_else(|| "no error message".to_string());
+    bail!("rclone sync dry run failed ({}): {reason}", output.status);
 }
 
 fn spawn_error(error: std::io::Error) -> anyhow::Error {
