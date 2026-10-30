@@ -89,7 +89,7 @@ async fn scheduler_loop_skips_malformed_due_task_without_panicking() {
         .unwrap();
     let _: () = conn.zadd(SCHEDULE_KEY, &redis_key, now).await.unwrap();
 
-    let handle = tokio::spawn(scheduler_loop(conn));
+    let handle = tokio::spawn(scheduler_loop(conn.clone()));
     let abort_handle = handle.abort_handle();
 
     // Before the fix this unwrapped serde_json::from_str inside the loop body
@@ -103,6 +103,10 @@ async fn scheduler_loop_skips_malformed_due_task_without_panicking() {
     match outcome {
         Err(_elapsed) => {
             // Still running after processing the due tick: it survived the bad payload.
+            let score: Option<i64> = conn.zscore(SCHEDULE_KEY, &redis_key).await.unwrap();
+            assert_eq!(score, None, "malformed entry should be removed");
+            let exists: bool = conn.exists(&redis_key).await.unwrap();
+            assert!(!exists, "malformed task hash should be removed");
         }
         Ok(join_result) => {
             panic!("scheduler_loop exited instead of continuing to loop: {join_result:?}");

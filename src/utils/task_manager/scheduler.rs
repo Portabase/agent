@@ -36,6 +36,12 @@ pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
                 Ok(task) => task,
                 Err(e) => {
                     error!("Failed to parse task data for key={}: {:?}", key, e);
+                    // Otherwise it stays due and fails every tick; the next sync recreates it.
+                    let mut pipe = redis::pipe();
+                    pipe.atomic().zrem(SCHEDULE_KEY, &key).del(&key);
+                    if let Err(e) = pipe.query_async::<()>(&mut conn).await {
+                        error!("Failed to remove malformed task key={}: {:?}", key, e);
+                    }
                     continue;
                 }
             };

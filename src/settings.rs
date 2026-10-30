@@ -122,7 +122,8 @@ pub(crate) fn parse_max_concurrent_backups(value: Result<String, env::VarError>)
 
             Some(parsed)
         }
-        Err(_) => None,
+        Err(env::VarError::NotPresent) => None,
+        Err(env::VarError::NotUnicode(_)) => panic!("MAX_CONCURRENT_BACKUPS must be valid Unicode"),
     }
 }
 
@@ -153,6 +154,12 @@ mod tests {
     #[test]
     fn surrounding_whitespace_is_trimmed() {
         assert_eq!(parse_max_concurrent_backups(Ok(" 2 ".to_string())), Some(2));
+    }
+
+    #[test]
+    #[should_panic(expected = "must be valid Unicode")]
+    fn non_unicode_value_panics() {
+        parse_max_concurrent_backups(Err(VarError::NotUnicode("\u{fffd}".into())));
     }
 
     #[test]
