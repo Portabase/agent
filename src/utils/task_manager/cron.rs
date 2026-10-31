@@ -42,42 +42,47 @@ pub async fn check_and_update_cron(
             let cron = normalize_cron(&raw_cron);
             debug!("Task cron normalized: unix \"{}\" -> crate \"{}\"", raw_cron, cron);
 
-            if exists {
-                let raw: String = match conn.hget(&redis_key, "data").await {
+            let stored: Option<models::PeriodicTask> = if exists {
+                let raw: Option<String> = match conn.hget(&redis_key, "data").await {
                     Ok(raw) => raw,
                     Err(e) => {
                         tracing::error!("Failed to load task data for {}: {:?}", task_name, e);
                         return;
                     }
                 };
-                let stored: models::PeriodicTask = match serde_json::from_str(&raw) {
-                    Ok(stored) => stored,
-                    Err(e) => {
-                        tracing::error!("Failed to parse task data for {}: {:?}", task_name, e);
-                        return;
-                    }
-                };
+                raw.and_then(|raw| {
+                    serde_json::from_str(&raw)
+                        .inspect_err(|e| {
+                            tracing::error!("Failed to parse task data for {}: {:?}", task_name, e)
+                        })
+                        .ok()
+                })
+            } else {
+                None
+            };
 
-                let cron_changed = stored.cron != cron;
-                let args_changed = stored.args != args;
-                let metadata_changed = stored.metadata != metadata;
+            match stored {
+                Some(stored) => {
+                    let cron_changed = stored.cron != cron;
+                    let args_changed = stored.args != args;
+                    let metadata_changed = stored.metadata != metadata;
 
-                if cron_changed || args_changed || metadata_changed {
-                    match upsert_task(conn, &task_name, task, &cron, args.clone(), metadata).await {
-                        Ok(()) => info!(
-                            "Task {} updated (cron: {}, args: {}, metadata: {})",
-                            task_name, cron_changed, args_changed, metadata_changed
-                        ),
-                        Err(e) => {
-                            tracing::error!("Failed to update task {}: {:?}", task_name, e)
+                    if cron_changed || args_changed || metadata_changed {
+                        match upsert_task(conn, &task_name, task, &cron, args, metadata).await {
+                            Ok(()) => info!(
+                                "Task {} updated (cron: {}, args: {}, metadata: {})",
+                                task_name, cron_changed, args_changed, metadata_changed
+                            ),
+                            Err(e) => {
+                                tracing::error!("Failed to update task {}: {:?}", task_name, e)
+                            }
                         }
                     }
                 }
-            } else {
-                match upsert_task(conn, &task_name, task, &cron, args, metadata).await {
+                None => match upsert_task(conn, &task_name, task, &cron, args, metadata).await {
                     Ok(()) => info!("Task {} created", task_name),
                     Err(e) => tracing::error!("Failed to create task {}: {:?}", task_name, e),
-                }
+                },
             }
         }
     }

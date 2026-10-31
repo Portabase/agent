@@ -13,6 +13,7 @@ env:
   LOG: "info"
   RETRY_ATTEMPTS: "3"
   RETRY_BACKOFF_MS: "1000"
+  MAX_CONCURRENT_BACKUPS: "" # empty = unlimited
 
 resources:
   limits:

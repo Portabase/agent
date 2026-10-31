@@ -25,22 +25,26 @@ pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
             }
         };
         for key in due {
-            let raw: String = match conn.hget(&key, "data").await {
+            let raw: Option<String> = match conn.hget(&key, "data").await {
                 Ok(raw) => raw,
                 Err(e) => {
                     error!("Failed to load task data for key={}: {:?}", key, e);
                     continue;
                 }
             };
-            let task: PeriodicTask = match serde_json::from_str(&raw) {
+            let parsed = raw
+                .ok_or_else(|| "task data missing".to_string())
+                .and_then(|raw| {
+                    serde_json::from_str::<PeriodicTask>(&raw).map_err(|e| e.to_string())
+                });
+            let task = match parsed {
                 Ok(task) => task,
                 Err(e) => {
-                    error!("Failed to parse task data for key={}: {:?}", key, e);
-                    // Otherwise it stays due and fails every tick; the next sync recreates it.
+                    error!("Dropping unreadable task key={}: {}", key, e);
                     let mut pipe = redis::pipe();
                     pipe.atomic().zrem(SCHEDULE_KEY, &key).del(&key);
                     if let Err(e) = pipe.query_async::<()>(&mut conn).await {
-                        error!("Failed to remove malformed task key={}: {:?}", key, e);
+                        error!("Failed to remove unreadable task key={}: {:?}", key, e);
                     }
                     continue;
                 }

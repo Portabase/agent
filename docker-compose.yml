@@ -30,6 +30,7 @@ services:
       #POOLING: 1
       #RETRY_ATTEMPTS: 3
       #RETRY_BACKOFF_MS: 1000
+      #MAX_CONCURRENT_BACKUPS: 2
       #DATABASES_CONFIG_FILE: "config.toml"
     extra_hosts:
       - "localhost:host-gateway"

@@ -1,5 +1,6 @@
 use crate::tests::init_tracing_for_test;
 use crate::utils::task_manager::cron::check_and_update_cron;
+use crate::utils::task_manager::models::PeriodicTask;
 use crate::utils::task_manager::scheduler::{execute_task, scheduler_loop};
 use crate::utils::task_manager::tasks::SCHEDULE_KEY;
 use redis::AsyncCommands;
@@ -49,7 +50,7 @@ async fn start_redis() -> (ContainerAsync<Redis>, MultiplexedConnection) {
 }
 
 #[tokio::test]
-async fn check_and_update_cron_does_not_panic_on_malformed_stored_data() {
+async fn check_and_update_cron_rewrites_malformed_stored_data() {
     init_tracing_for_test();
     let (_container, mut conn) = start_redis().await;
 
@@ -61,8 +62,6 @@ async fn check_and_update_cron_does_not_panic_on_malformed_stored_data() {
         .await
         .unwrap();
 
-    // Before the fix this unwrapped serde_json::from_str and panicked. It should
-    // now log the parse failure and return gracefully instead.
     check_and_update_cron(
         &mut conn,
         Some("*/5 * * * *".to_string()),
@@ -72,41 +71,43 @@ async fn check_and_update_cron_does_not_panic_on_malformed_stored_data() {
         None,
     )
     .await;
+
+    let raw: String = conn.hget(&redis_key, "data").await.unwrap();
+    assert!(serde_json::from_str::<PeriodicTask>(&raw).is_ok());
+    let score: Option<i64> = conn.zscore(SCHEDULE_KEY, &redis_key).await.unwrap();
+    assert!(score.is_some(), "rewritten task should be scheduled");
 }
 
 #[tokio::test]
-async fn scheduler_loop_skips_malformed_due_task_without_panicking() {
+async fn scheduler_loop_drops_unreadable_due_tasks_without_panicking() {
     init_tracing_for_test();
     let (_container, mut conn) = start_redis().await;
 
-    let task_name = "malformed-due-task";
-    let redis_key = format!("redbeat:{task_name}");
+    let malformed_key = "redbeat:malformed-due-task";
+    let missing_key = "redbeat:missing-due-task";
     let now = chrono::Local::now().timestamp();
 
     let _: () = conn
-        .hset(&redis_key, "data", "not-valid-json")
+        .hset(malformed_key, "data", "not-valid-json")
         .await
         .unwrap();
-    let _: () = conn.zadd(SCHEDULE_KEY, &redis_key, now).await.unwrap();
+    let _: () = conn.zadd(SCHEDULE_KEY, malformed_key, now).await.unwrap();
+    let _: () = conn.zadd(SCHEDULE_KEY, missing_key, now).await.unwrap();
 
     let handle = tokio::spawn(scheduler_loop(conn.clone()));
     let abort_handle = handle.abort_handle();
 
-    // Before the fix this unwrapped serde_json::from_str inside the loop body
-    // (not a spawned subtask), so the panic would unwind scheduler_loop itself
-    // and the JoinHandle would resolve within the timeout. Post-fix it logs the
-    // parse failure, continues, and keeps looping forever, so the timeout should
-    // elapse instead.
     let outcome = tokio::time::timeout(Duration::from_millis(1500), handle).await;
     abort_handle.abort();
 
     match outcome {
         Err(_elapsed) => {
-            // Still running after processing the due tick: it survived the bad payload.
-            let score: Option<i64> = conn.zscore(SCHEDULE_KEY, &redis_key).await.unwrap();
-            assert_eq!(score, None, "malformed entry should be removed");
-            let exists: bool = conn.exists(&redis_key).await.unwrap();
-            assert!(!exists, "malformed task hash should be removed");
+            for key in [malformed_key, missing_key] {
+                let score: Option<i64> = conn.zscore(SCHEDULE_KEY, key).await.unwrap();
+                assert_eq!(score, None, "{key} should be unscheduled");
+                let exists: bool = conn.exists(key).await.unwrap();
+                assert!(!exists, "{key} hash should be removed");
+            }
         }
         Ok(join_result) => {
             panic!("scheduler_loop exited instead of continuing to loop: {join_result:?}");
