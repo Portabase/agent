@@ -17,13 +17,38 @@ pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
     loop {
         let now = chrono::Local::now().timestamp();
 
-        let due: Vec<String> = conn
-            .zrangebyscore(SCHEDULE_KEY, 0, now)
-            .await
-            .unwrap_or_default();
+        let due: Vec<String> = match conn.zrangebyscore(SCHEDULE_KEY, 0, now).await {
+            Ok(due) => due,
+            Err(e) => {
+                error!("Failed to fetch due tasks from {}: {:?}", SCHEDULE_KEY, e);
+                Vec::new()
+            }
+        };
         for key in due {
-            let raw: String = conn.hget(&key, "data").await.unwrap();
-            let task: PeriodicTask = serde_json::from_str(&raw).unwrap();
+            let raw: Option<String> = match conn.hget(&key, "data").await {
+                Ok(raw) => raw,
+                Err(e) => {
+                    error!("Failed to load task data for key={}: {:?}", key, e);
+                    continue;
+                }
+            };
+            let parsed = raw
+                .ok_or_else(|| "task data missing".to_string())
+                .and_then(|raw| {
+                    serde_json::from_str::<PeriodicTask>(&raw).map_err(|e| e.to_string())
+                });
+            let task = match parsed {
+                Ok(task) => task,
+                Err(e) => {
+                    error!("Dropping unreadable task key={}: {}", key, e);
+                    let mut pipe = redis::pipe();
+                    pipe.atomic().zrem(SCHEDULE_KEY, &key).del(&key);
+                    if let Err(e) = pipe.query_async::<()>(&mut conn).await {
+                        error!("Failed to remove unreadable task key={}: {:?}", key, e);
+                    }
+                    continue;
+                }
+            };
 
             if !task.enabled {
                 continue;
@@ -48,7 +73,14 @@ pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
                 }
                 match next_run_timestamp(&task_clone.cron) {
                     Some(next_ts) => {
-                        let _: () = conn_clone.zadd(SCHEDULE_KEY, &key, next_ts).await.unwrap();
+                        let result: redis::RedisResult<()> =
+                            conn_clone.zadd(SCHEDULE_KEY, &key, next_ts).await;
+                        if let Err(e) = result {
+                            error!(
+                                "Failed to reschedule task={} key={}: {:?}",
+                                task_clone.task, key, e
+                            );
+                        }
                     }
                     None => {
                         error!(
@@ -78,8 +110,12 @@ pub async fn execute_task(
 ) -> Result<(), anyhow::Error> {
     match task {
         "tasks.database.periodic_backup" => {
-            let generated_id = &args[0];
-            let dbms = &args[1];
+            let generated_id = args
+                .first()
+                .ok_or_else(|| anyhow::anyhow!("Missing generated_id argument"))?;
+            let dbms = args
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("Missing dbms argument"))?;
             info!("{} | {}", generated_id, dbms);
 
             let ctx = Arc::new(Context::new());

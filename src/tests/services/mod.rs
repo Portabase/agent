@@ -1,5 +1,6 @@
 mod api_client_tests;
 mod api_models_tests;
+mod backup_dispatcher_tests;
 mod backup_runner_tests;
 pub(crate) mod backup_uploader_tests;
 mod config_tests;

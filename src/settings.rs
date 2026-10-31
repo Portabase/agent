@@ -1,6 +1,7 @@
 use dotenvy::dotenv;
 use once_cell::sync::Lazy;
 use std::env;
+use tokio::sync::Semaphore;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -12,31 +13,33 @@ pub struct Settings {
     pub databases_config_file: String,
     pub data_path: String,
     pub pg_bin_dir: String,
-    pub pooling: usize,
+    pub polling: usize,
     pub timezone: String,
     pub log: String,
     pub chunk_size: usize, // bytes
     pub retry_attempts: u32,
     pub retry_backoff_ms: u64,
+    pub max_concurrent_backups: Option<usize>, // None = unlimited
 }
 
 impl Settings {
     fn from_env() -> Self {
         dotenv().ok();
 
-        let pooling_seconds = env::var("POOLING")
+        let polling_seconds = env::var("POLLING")
+            .or_else(|_| env::var("POOLING")) // legacy name, kept for backward compat
             .unwrap_or_else(|_| "5".to_string())
             .parse::<usize>()
-            .expect("POOLING must be a valid positive integer");
+            .expect("POLLING must be a valid positive integer");
 
-        if pooling_seconds < 1 || pooling_seconds > 600 {
-            panic!("POOLING must be between 1 second and 600 seconds (10 minutes)");
+        if polling_seconds < 1 || polling_seconds > 600 {
+            panic!("POLLING must be between 1 second and 600 seconds (10 minutes)");
         }
 
-        if pooling_seconds < 5 {
+        if polling_seconds < 5 {
             eprintln!(
-                "[WARNING] POOLING is set to {}s. Values under 5s are not recommended for production.",
-                pooling_seconds
+                "[WARNING] POLLING is set to {}s. Values under 5s are not recommended for production.",
+                polling_seconds
             );
         }
 
@@ -69,6 +72,9 @@ impl Settings {
             panic!("RETRY_BACKOFF_MS must be between 100 and 30000 milliseconds");
         }
 
+        let max_concurrent_backups =
+            parse_max_concurrent_backups(env::var("MAX_CONCURRENT_BACKUPS"));
+
         let tz = env::var("TZ").unwrap_or_else(|_| "UTC".to_string());
 
         Self {
@@ -81,14 +87,41 @@ impl Settings {
                 .unwrap_or_else(|_| "config.json".into()),
             data_path: env::var("DATA_PATH").unwrap_or_else(|_| "/config".into()),
             pg_bin_dir: env::var("PG_BIN_DIR").unwrap_or_default(),
-            pooling: pooling_seconds,
+            polling: polling_seconds,
             timezone: tz,
             log: env::var("LOG").unwrap_or_else(|_| "info".into()),
             chunk_size,
             retry_attempts,
             retry_backoff_ms,
+            max_concurrent_backups,
         }
     }
 }
 
 pub static CONFIG: Lazy<Settings> = Lazy::new(Settings::from_env);
+
+pub(crate) fn parse_max_concurrent_backups(value: Result<String, env::VarError>) -> Option<usize> {
+    match value {
+        Ok(val) if val.trim().is_empty() => None,
+        Ok(val) => {
+            let parsed = val
+                .trim()
+                .parse::<usize>()
+                .expect("MAX_CONCURRENT_BACKUPS must be a valid positive integer");
+
+            if parsed == 0 {
+                panic!("MAX_CONCURRENT_BACKUPS must be at least 1");
+            }
+            if parsed > Semaphore::MAX_PERMITS {
+                panic!(
+                    "MAX_CONCURRENT_BACKUPS must not exceed {}",
+                    Semaphore::MAX_PERMITS
+                );
+            }
+
+            Some(parsed)
+        }
+        Err(env::VarError::NotPresent) => None,
+        Err(env::VarError::NotUnicode(_)) => panic!("MAX_CONCURRENT_BACKUPS must be valid Unicode"),
+    }
+}

@@ -45,8 +45,8 @@ pub fn init_logger() {
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set global subscriber");
 
     tracing::info!(
-        "Logger initialized | TZ={} | POOLING={}s",
+        "Logger initialized | TZ={} | POLLING={}s",
         CONFIG.timezone,
-        CONFIG.pooling
+        CONFIG.polling
     );
 }
