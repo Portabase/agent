@@ -15,7 +15,7 @@ services:
       #      - cargo-target:/app/target
       - databases_sqlite-data:/sqlite-data/workspace/data
       - ./scripts/sqlite/test-db:/sqlite-data-2/workspace/data
-    #      - /bigdisk:/scratch
+      #      - /bigdisk:/scratch
       - ./test-files/archive:/data/files-archive
       - ./test-files/snapshot:/data/files-snapshot
       - ./test-files/sync:/data/files-sync
@@ -25,11 +25,12 @@ services:
       LOG: debug
       TZ: "Europe/Paris"
       #      TMPDIR: /scratch
-      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiMzU4ODcxZTMtMTAwZC00YmM2LTgzNTEtYmY1YWU0YmEwNjZmIiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
+      EDGE_KEY: "eyJzZXJ2ZXJVcmwiOiJodHRwOi8vbG9jYWxob3N0Ojg4ODciLCJhZ2VudElkIjoiMTM1ZmFiM2QtZGQ2Yy00MjVjLWI1YTMtMzRmMTBhYTBmNDU0IiwibWFzdGVyS2V5QjY0IjoiQlhWM1hvbEM2NTZTVjdkTmdjV1BHUWxrKytycExJNmxHRGk3Q1BCNWllbz0ifQ=="
       #CHUNK_SIZE_MB: "1"
       #POOLING: 1
       #RETRY_ATTEMPTS: 3
       #RETRY_BACKOFF_MS: 1000
+      #MAX_CONCURRENT_BACKUPS: 2
       #DATABASES_CONFIG_FILE: "config.toml"
     extra_hosts:
       - "localhost:host-gateway"

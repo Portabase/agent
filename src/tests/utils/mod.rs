@@ -6,3 +6,4 @@ mod file_tests;
 mod normalize_cron_tests;
 mod retry_tests;
 mod stream_tests;
+mod task_manager_tests;

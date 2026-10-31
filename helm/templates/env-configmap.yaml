@@ -10,3 +10,4 @@ data:
   LOG: {{ .Values.env.LOG | quote }}
   RETRY_ATTEMPTS: {{ .Values.env.RETRY_ATTEMPTS | quote }}
   RETRY_BACKOFF_MS: {{ .Values.env.RETRY_BACKOFF_MS | quote }}
+  MAX_CONCURRENT_BACKUPS: {{ .Values.env.MAX_CONCURRENT_BACKUPS | quote }}

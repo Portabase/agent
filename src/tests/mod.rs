@@ -1,5 +1,6 @@
 mod domain;
 mod services;
+mod settings_tests;
 mod storage;
 mod utils;
 

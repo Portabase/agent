@@ -1,6 +1,7 @@
 use dotenvy::dotenv;
 use once_cell::sync::Lazy;
 use std::env;
+use tokio::sync::Semaphore;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -18,6 +19,7 @@ pub struct Settings {
     pub chunk_size: usize, // bytes
     pub retry_attempts: u32,
     pub retry_backoff_ms: u64,
+    pub max_concurrent_backups: Option<usize>, // None = unlimited
 }
 
 impl Settings {
@@ -69,6 +71,9 @@ impl Settings {
             panic!("RETRY_BACKOFF_MS must be between 100 and 30000 milliseconds");
         }
 
+        let max_concurrent_backups =
+            parse_max_concurrent_backups(env::var("MAX_CONCURRENT_BACKUPS"));
+
         let tz = env::var("TZ").unwrap_or_else(|_| "UTC".to_string());
 
         Self {
@@ -87,8 +92,35 @@ impl Settings {
             chunk_size,
             retry_attempts,
             retry_backoff_ms,
+            max_concurrent_backups,
         }
     }
 }
 
 pub static CONFIG: Lazy<Settings> = Lazy::new(Settings::from_env);
+
+pub(crate) fn parse_max_concurrent_backups(value: Result<String, env::VarError>) -> Option<usize> {
+    match value {
+        Ok(val) if val.trim().is_empty() => None,
+        Ok(val) => {
+            let parsed = val
+                .trim()
+                .parse::<usize>()
+                .expect("MAX_CONCURRENT_BACKUPS must be a valid positive integer");
+
+            if parsed == 0 {
+                panic!("MAX_CONCURRENT_BACKUPS must be at least 1");
+            }
+            if parsed > Semaphore::MAX_PERMITS {
+                panic!(
+                    "MAX_CONCURRENT_BACKUPS must not exceed {}",
+                    Semaphore::MAX_PERMITS
+                );
+            }
+
+            Some(parsed)
+        }
+        Err(env::VarError::NotPresent) => None,
+        Err(env::VarError::NotUnicode(_)) => panic!("MAX_CONCURRENT_BACKUPS must be valid Unicode"),
+    }
+}
