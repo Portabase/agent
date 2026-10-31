@@ -19,6 +19,6 @@ pub async fn ping_server() {
                 e
             );
         }
-        tokio::time::sleep(Duration::from_secs(CONFIG.pooling as u64)).await;
+        tokio::time::sleep(Duration::from_secs(CONFIG.polling as u64)).await;
     }
 }

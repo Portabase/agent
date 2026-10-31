@@ -13,7 +13,7 @@ pub struct Settings {
     pub databases_config_file: String,
     pub data_path: String,
     pub pg_bin_dir: String,
-    pub pooling: usize,
+    pub polling: usize,
     pub timezone: String,
     pub log: String,
     pub chunk_size: usize, // bytes
@@ -26,19 +26,20 @@ impl Settings {
     fn from_env() -> Self {
         dotenv().ok();
 
-        let pooling_seconds = env::var("POOLING")
+        let polling_seconds = env::var("POLLING")
+            .or_else(|_| env::var("POOLING")) // legacy name, kept for backward compat
             .unwrap_or_else(|_| "5".to_string())
             .parse::<usize>()
-            .expect("POOLING must be a valid positive integer");
+            .expect("POLLING must be a valid positive integer");
 
-        if pooling_seconds < 1 || pooling_seconds > 600 {
-            panic!("POOLING must be between 1 second and 600 seconds (10 minutes)");
+        if polling_seconds < 1 || polling_seconds > 600 {
+            panic!("POLLING must be between 1 second and 600 seconds (10 minutes)");
         }
 
-        if pooling_seconds < 5 {
+        if polling_seconds < 5 {
             eprintln!(
-                "[WARNING] POOLING is set to {}s. Values under 5s are not recommended for production.",
-                pooling_seconds
+                "[WARNING] POLLING is set to {}s. Values under 5s are not recommended for production.",
+                polling_seconds
             );
         }
 
@@ -86,7 +87,7 @@ impl Settings {
                 .unwrap_or_else(|_| "config.json".into()),
             data_path: env::var("DATA_PATH").unwrap_or_else(|_| "/config".into()),
             pg_bin_dir: env::var("PG_BIN_DIR").unwrap_or_default(),
-            pooling: pooling_seconds,
+            polling: polling_seconds,
             timezone: tz,
             log: env::var("LOG").unwrap_or_else(|_| "info".into()),
             chunk_size,
