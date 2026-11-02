@@ -4,6 +4,7 @@ pub mod dispatcher;
 pub mod executor;
 pub mod files_engine;
 pub mod helpers;
+pub mod hooks;
 pub mod models;
 pub mod result;
 pub mod runner;

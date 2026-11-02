@@ -46,6 +46,7 @@ async fn create_config() -> (ContainerAsync<Postgres>, DatabaseConfig) {
         volume_name: "".to_string(),
         container_name: None,
         options: std::collections::HashMap::new(),
+        hooks: None,
     };
 
     (container, config)
@@ -190,6 +191,7 @@ async fn postgres_password_with_slash_test() {
         volume_name: "".to_string(),
         container_name: None,
         options: std::collections::HashMap::new(),
+        hooks: None,
     };
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
@@ -948,6 +950,7 @@ mod clean_mode_tests {
             volume_name: "".into(),
             container_name: None,
             options,
+            hooks: None,
         }
     }
 
