@@ -12,7 +12,7 @@ BEGIN
     IF ISNULL(HAS_PERMS_BY_NAME(NULL, 'DATABASE', 'CREATE DATABASE'), 0) = 0
         THROW 50000, N'Restore needs CREATE DATABASE permission (dbcreator) to recreate the target database; nothing was dropped', 1;
     DECLARE @single bit = 0;
-    IF CAST(SERVERPROPERTY('EngineEdition') AS int) <> 5
+    IF CAST(SERVERPROPERTY('EngineEdition') AS int) NOT IN (5, 8)
     BEGIN
         EXEC(N'ALTER DATABASE ' + @q + N' SET SINGLE_USER WITH ROLLBACK IMMEDIATE');
         SET @single = 1;
