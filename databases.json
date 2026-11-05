@@ -49,7 +49,11 @@
       "type": "mongodb",
       "port": 27017,
       "host": "db-mongodb",
-      "generated_id": "16678147-ff7e-4c97-8c83-0adeff214681"
+      "generated_id": "16678147-ff7e-4c97-8c83-0adeff214681",
+      "options": {
+        "exclude_collections": ["events", "sessions"],
+        "exclude_collections_with_prefix": ["cache_", "tmp_"]
+      }
     },
     {
       "name": "Test database 5 - SQLite DB",
