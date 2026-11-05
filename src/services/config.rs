@@ -125,6 +125,26 @@ pub fn files_method(cfg: &DatabaseConfig) -> &'static str {
     }
 }
 
+pub fn list_option_args(cfg: &DatabaseConfig, flags: &[(&'static str, &str)]) -> (Vec<String>, Vec<&'static str>) {
+    let mut args = Vec::new();
+    let mut invalid = Vec::new();
+    for &(key, flag) in flags {
+        match cfg.options.get(key).map(|v| v.as_array()) {
+            None => {}
+            Some(Some(items)) => args.extend(
+                items
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .map(|p| format!("{flag}={p}")),
+            ),
+            Some(None) => invalid.push(key),
+        }
+    }
+    (args, invalid)
+}
+
 fn is_size(value: &str) -> bool {
     let number = value.strip_suffix(|suffix: char| "bkmgtp".contains(suffix.to_ascii_lowercase())).unwrap_or(value);
     let (whole, fraction) = number.split_once('.').unwrap_or((number, "0"));

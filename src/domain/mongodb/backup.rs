@@ -1,6 +1,6 @@
 use crate::domain::mongodb::connection::{get_mongo_uri, select_mongo_path};
 use crate::services::backup::logger::JobLogger;
-use crate::services::config::DatabaseConfig;
+use crate::services::config::{DatabaseConfig, list_option_args};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::process::Command;
@@ -20,11 +20,26 @@ pub async fn run(
         let mongodump = select_mongo_path().join("mongodump");
         let uri = get_mongo_uri(cfg.clone())?;
 
+        let (excludes, invalid) = list_option_args(
+            &cfg,
+            &[
+                ("exclude_collections", "--excludeCollection"),
+                ("exclude_collections_with_prefix", "--excludeCollectionsWithPrefix"),
+            ],
+        );
+        for key in invalid {
+            logger.log("warn", format!("Ignoring options.{} for {}: expected a list of strings", key, cfg.name));
+        }
+        if !excludes.is_empty() {
+            logger.log("info", format!("Excluding from dump of {}: {}", cfg.name, excludes.join(" ")));
+        }
+
         logger.log("info", format!("Running mongodump for {}", cfg.name));
 
         let start = Instant::now();
         let output = Command::new(mongodump)
             .arg(format!("--uri={}", uri))
+            .args(&excludes)
             .arg(format!("--archive={}", file_path.display()))
             .arg("--gzip")
             .arg("--verbose")
