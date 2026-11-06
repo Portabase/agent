@@ -1,4 +1,5 @@
 use super::format::MssqlFormat;
+use super::native;
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
@@ -12,11 +13,17 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogg
 
     let Some(format) = MssqlFormat::from_path(&restore_file) else {
         let message = format!(
-            "Unsupported MSSQL backup file {}: expected .bacpac or .dacpac",
+            "Unsupported MSSQL backup file {}: expected .bacpac, .dacpac or .bak",
             restore_file.display()
         );
         logger.log("error", message.clone());
         anyhow::bail!(message);
+    };
+
+    let sqlpackage_args: &'static [&'static str] = match format {
+        MssqlFormat::Bak => return native::restore(&cfg, &restore_file, logger).await,
+        MssqlFormat::Dacpac => &["/a:Publish", "/p:AllowIncompatiblePlatform=True"],
+        MssqlFormat::Bacpac => &["/a:Import"],
     };
 
     logger.log("info", format!("Replacing MSSQL database {} (drop if it exists, then recreate from the backup)", cfg.database));
@@ -39,12 +46,8 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogg
         ));
 
         let start = Instant::now();
-        let mut command = Command::new("sqlpackage");
-        match format {
-            MssqlFormat::Dacpac => command.args(["/a:Publish", "/p:AllowIncompatiblePlatform=True"]),
-            MssqlFormat::Bacpac => command.arg("/a:Import"),
-        };
-        let output = command
+        let output = Command::new("sqlpackage")
+            .args(sqlpackage_args)
             .arg(format!("/tcs:{}", connection_string))
             .arg(format!("/sf:{}", restore_file.display()))
             .output()

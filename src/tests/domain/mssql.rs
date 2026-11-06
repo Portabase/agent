@@ -1,21 +1,25 @@
+use crate::domain::docker_volume::docker::{client, parse_container_id};
 use crate::domain::factory::DatabaseFactory;
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::{DatabaseConfig, DbType};
 use crate::tests::init_tracing_for_test;
 use crate::utils::compress::{compress_to_tar_gz_large, decompress_large_tar_gz};
-use std::path::PathBuf;
+use bollard::query_parameters::InspectContainerOptions;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 use tiberius::{AuthMethod, Client, Config};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
-use testcontainers::core::IntoContainerPort;
+use testcontainers::core::{IntoContainerPort, Mount};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use tracing::{error, info};
 
 const SA_PASSWORD: &str = "Test!Str0ng1";
+const BAK_SERVER_PATH: &str = "/var/opt/mssql/backup";
 
 async fn start_container() -> ContainerAsync<GenericImage> {
     GenericImage::new("mcr.microsoft.com/azure-sql-edge", "latest")
@@ -325,7 +329,7 @@ async fn mssql_restore_rejects_unknown_extension_test() {
         .restore(&file_path, Arc::new(JobLogger::new()))
         .await;
 
-    assert!(result.unwrap_err().to_string().contains("expected .bacpac or .dacpac"));
+    assert!(result.unwrap_err().to_string().contains("expected .bacpac, .dacpac or .bak"));
     assert_eq!(
         scalar(&host, port, "master", "sa", SA_PASSWORD, "SELECT CASE WHEN DB_ID('keepdb') IS NULL THEN 0 ELSE 1 END").await,
         1
@@ -459,9 +463,269 @@ async fn mssql_restore_refuses_system_database_test() {
     );
 }
 
+async fn shared_folder() -> (String, TempDir) {
+    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
+    let cgroup = std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+    let container_id = parse_container_id(&mountinfo, &cgroup).expect("tests run inside a container");
+    let inspected = client()
+        .unwrap()
+        .inspect_container(&container_id, None::<InspectContainerOptions>)
+        .await
+        .unwrap();
+    let app_mount = inspected
+        .mounts
+        .unwrap()
+        .into_iter()
+        .find(|mount| mount.destination.as_deref() == Some("/app"))
+        .expect("/app is bind-mounted from the host");
+
+    std::fs::create_dir_all("/app/target").unwrap();
+    let agent_folder = tempfile::Builder::new().prefix("mssql-bak-").tempdir_in("/app/target").unwrap();
+    std::fs::set_permissions(agent_folder.path(), std::fs::Permissions::from_mode(0o777)).unwrap();
+    let relative_path = agent_folder.path().strip_prefix("/app").unwrap().display().to_string();
+    (format!("{}/{}", app_mount.source.unwrap(), relative_path), agent_folder)
+}
+
+async fn start_with_shared_folder() -> (ContainerAsync<GenericImage>, String, u16, TempDir) {
+    let (host_path, agent_folder) = shared_folder().await;
+    let container = GenericImage::new("mcr.microsoft.com/azure-sql-edge", "latest")
+        .with_exposed_port(1433.tcp())
+        .with_env_var("ACCEPT_EULA", "Y")
+        .with_env_var("MSSQL_SA_PASSWORD", SA_PASSWORD)
+        .with_mount(Mount::bind_mount(host_path, BAK_SERVER_PATH))
+        .start()
+        .await
+        .expect("azure-sql-edge container started");
+    tokio::time::sleep(Duration::from_secs(30)).await;
+    let host = container.get_host().await.unwrap().to_string();
+    let port = container.get_host_port_ipv4(1433).await.unwrap();
+    (container, host, port, agent_folder)
+}
+
+fn with_bak(mut config: DatabaseConfig, agent_path: &Path) -> DatabaseConfig {
+    config.options.insert("backup_format".to_string(), serde_json::json!("bak"));
+    config.options.insert("bak_server_path".to_string(), serde_json::json!(BAK_SERVER_PATH));
+    config.options.insert("bak_agent_path".to_string(), serde_json::json!(agent_path.display().to_string()));
+    config
+}
+
+async fn bak_backup(config: &DatabaseConfig, work_dir: &Path) -> anyhow::Result<PathBuf> {
+    DatabaseFactory::create_for_backup(config.clone())
+        .await
+        .backup(work_dir, Arc::new(JobLogger::new()))
+        .await
+}
+
+async fn bak_restore(config: &DatabaseConfig, restore_file: &Path) -> anyhow::Result<()> {
+    DatabaseFactory::create_for_restore(config.clone(), restore_file)
+        .await
+        .restore(restore_file, Arc::new(JobLogger::new()))
+        .await
+}
+
+async fn extract_bak(archive: &Path, work_dir: &Path) -> PathBuf {
+    assert!(archive.to_string_lossy().ends_with(".tar.gz"), "got {}", archive.display());
+    let extracted = decompress_large_tar_gz(archive, work_dir).await.unwrap();
+    assert_eq!(extracted.len(), 1);
+    assert_eq!(extracted[0].extension().and_then(|extension| extension.to_str()), Some("bak"));
+    extracted[0].clone()
+}
+
+fn assert_folder_empty(agent_path: &Path) {
+    assert_eq!(std::fs::read_dir(agent_path).unwrap().count(), 0, "shared folder must be left empty");
+}
+
+async fn assert_multi_user(host: &str, port: u16, database: &str) {
+    let sql = format!("SELECT CASE WHEN DATABASEPROPERTYEX('{database}', 'UserAccess') = 'MULTI_USER' THEN 1 ELSE 0 END");
+    assert_eq!(scalar(host, port, "master", "sa", SA_PASSWORD, &sql).await, 1);
+}
+
+#[tokio::test]
+async fn mssql_bak_cross_database_test() {
+    init_tracing_for_test();
+    let (_container, host, port, agent_folder) = start_with_shared_folder().await;
+    let agent_path = agent_folder.path();
+    create_user_database(&host, port, "config_db").await;
+    create_user_database(&host, port, "company_db").await;
+    exec(&host, port, "config_db", "CREATE TABLE dbo.Settings (id INT PRIMARY KEY); INSERT dbo.Settings VALUES (1);").await;
+    exec(&host, port, "company_db", "CREATE TABLE dbo.t (id INT PRIMARY KEY); INSERT dbo.t VALUES (1), (2);").await;
+    exec(&host, port, "company_db", "CREATE VIEW dbo.v_settings AS SELECT id FROM config_db.dbo.Settings;").await;
+    exec(&host, port, "company_db", "CREATE VIEW dbo.v_master AS SELECT name FROM master.dbo.spt_values;").await;
+
+    let config = make_config(host.clone(), port, "company_db", "5a445eb4-c2c6-4bde-a423-ee1385dcf6e0");
+    let work_dir = TempDir::new().unwrap();
+
+    let bacpac = bak_backup(&with_backup_format(config.clone(), "bacpac"), work_dir.path()).await;
+    assert!(bacpac.unwrap_err().to_string().contains("SQL71561"));
+
+    let bak_config = with_bak(config, agent_path);
+    let archive = bak_backup(&bak_config, work_dir.path()).await.unwrap();
+    let bak_file = extract_bak(&archive, work_dir.path()).await;
+    assert_folder_empty(agent_path);
+
+    exec(&host, port, "master", "DROP DATABASE company_db; DROP DATABASE config_db;").await;
+
+    bak_restore(&bak_config, &bak_file).await.unwrap();
+    assert_folder_empty(agent_path);
+    assert_eq!(scalar(&host, port, "company_db", "sa", SA_PASSWORD, "SELECT COUNT(*) FROM dbo.t").await, 2);
+    assert_eq!(scalar(&host, port, "company_db", "sa", SA_PASSWORD, "SELECT COUNT(*) FROM sys.views").await, 2);
+}
+
+#[tokio::test]
+async fn mssql_bak_restore_over_existing_test() {
+    init_tracing_for_test();
+    let (_container, host, port, agent_folder) = start_with_shared_folder().await;
+    let agent_path = agent_folder.path();
+    create_user_database(&host, port, "appdb").await;
+    exec(&host, port, "master", "CREATE LOGIN app_login WITH PASSWORD = 'App!Str0ng1'").await;
+    exec(
+        &host,
+        port,
+        "appdb",
+        "CREATE TABLE dbo.users (id INT PRIMARY KEY, email NVARCHAR(100) NOT NULL); \
+         INSERT dbo.users VALUES (1, 'a@x'), (2, 'b@x'), (3, 'c@x'); \
+         CREATE USER app_user FOR LOGIN app_login; \
+         GRANT SELECT ON dbo.users TO app_user;",
+    )
+    .await;
+
+    let generated_id = "5a445eb4-c2c6-4bde-a423-ee1385dcf6e1";
+    let mut config = with_bak(make_config(host.clone(), port, "appdb", generated_id), agent_path);
+    config.options.insert("bak_verify".to_string(), serde_json::json!(true));
+
+    let leftover = agent_path.join(format!("{generated_id}.bak"));
+    std::fs::write(&leftover, b"not a backup").unwrap();
+    std::fs::set_permissions(&leftover, std::fs::Permissions::from_mode(0o666)).unwrap();
+
+    let work_dir = TempDir::new().unwrap();
+    let archive = bak_backup(&config, work_dir.path()).await.unwrap();
+    let bak_file = extract_bak(&archive, work_dir.path()).await;
+    assert_folder_empty(agent_path);
+
+    exec(
+        &host,
+        port,
+        "appdb",
+        "DELETE FROM dbo.users WHERE id = 1; INSERT dbo.users VALUES (4, 'd@x'); CREATE TABLE dbo.extra (id INT);",
+    )
+    .await;
+
+    let held_session = connect_as(&host, port, "appdb", "sa", SA_PASSWORD).await;
+    bak_restore(&config, &bak_file).await.unwrap();
+    drop(held_session);
+
+    assert_folder_empty(agent_path);
+    assert_multi_user(&host, port, "appdb").await;
+    assert_eq!(
+        scalar(&host, port, "appdb", "sa", SA_PASSWORD, "SELECT COUNT(*) FROM dbo.users WHERE id IN (1, 2, 3)").await,
+        3
+    );
+    assert_eq!(scalar(&host, port, "appdb", "sa", SA_PASSWORD, "SELECT COUNT(*) FROM dbo.users").await, 3);
+    assert_eq!(
+        scalar(&host, port, "appdb", "sa", SA_PASSWORD, "SELECT CASE WHEN OBJECT_ID('dbo.extra') IS NULL THEN 1 ELSE 0 END").await,
+        1
+    );
+    assert_eq!(scalar(&host, port, "appdb", "app_login", "App!Str0ng1", "SELECT COUNT(*) FROM dbo.users").await, 3);
+}
+
+#[tokio::test]
+async fn mssql_bak_restore_into_other_database_test() {
+    init_tracing_for_test();
+    let (_container, host, port, agent_folder) = start_with_shared_folder().await;
+    let agent_path = agent_folder.path();
+    create_user_database(&host, port, "sourcedb").await;
+    create_user_database(&host, port, "otherdb").await;
+    exec(&host, port, "sourcedb", "CREATE TABLE dbo.t (id INT PRIMARY KEY); INSERT dbo.t VALUES (1), (2);").await;
+
+    let config = with_bak(make_config(host.clone(), port, "sourcedb", "5a445eb4-c2c6-4bde-a423-ee1385dcf6e2"), agent_path);
+    let work_dir = TempDir::new().unwrap();
+    let archive = bak_backup(&config, work_dir.path()).await.unwrap();
+    let bak_file = extract_bak(&archive, work_dir.path()).await;
+
+    for target in ["copydb", "otherdb"] {
+        let mut target_config = config.clone();
+        target_config.database = target.to_string();
+        bak_restore(&target_config, &bak_file).await.unwrap();
+        assert_eq!(scalar(&host, port, target, "sa", SA_PASSWORD, "SELECT COUNT(*) FROM dbo.t").await, 2);
+        let moved = format!(
+            "SELECT COUNT(*) FROM sys.master_files WHERE database_id = DB_ID('{target}') \
+             AND physical_name LIKE '/var/opt/mssql/data/{target}[_]sourcedb%'"
+        );
+        assert_eq!(scalar(&host, port, "master", "sa", SA_PASSWORD, &moved).await, 2);
+        assert_multi_user(&host, port, target).await;
+    }
+
+    assert_eq!(scalar(&host, port, "sourcedb", "sa", SA_PASSWORD, "SELECT COUNT(*) FROM dbo.t").await, 2);
+    assert_multi_user(&host, port, "sourcedb").await;
+}
+
+#[tokio::test]
+async fn mssql_bak_failures_leave_target_intact_test() {
+    init_tracing_for_test();
+    let (_container, host, port, agent_folder) = start_with_shared_folder().await;
+    let agent_path = agent_folder.path();
+    create_user_database(&host, port, "keepdb").await;
+    exec(&host, port, "keepdb", "CREATE TABLE dbo.t (id INT PRIMARY KEY); INSERT dbo.t VALUES (1), (2);").await;
+
+    let generated_id = "5a445eb4-c2c6-4bde-a423-ee1385dcf6e3";
+    let plain_config = make_config(host.clone(), port, "keepdb", generated_id);
+    let config = with_bak(plain_config.clone(), agent_path);
+    let work_dir = TempDir::new().unwrap();
+
+    let no_paths = bak_backup(&with_backup_format(plain_config.clone(), "bak"), work_dir.path()).await;
+    assert!(no_paths.unwrap_err().to_string().contains("bak_server_path"));
+
+    let mut missing_database = config.clone();
+    missing_database.database = "nosuchdb".to_string();
+    let backup_error = bak_backup(&missing_database, work_dir.path()).await.unwrap_err().to_string();
+    assert!(backup_error.contains("nosuchdb"), "SQL Server text must reach the job log: {backup_error}");
+
+    let other_folder = TempDir::new().unwrap();
+    let wrong_path_config = with_bak(plain_config.clone(), other_folder.path());
+    let wrong_path = bak_backup(&wrong_path_config, work_dir.path()).await;
+    assert!(wrong_path.unwrap_err().to_string().contains("bak_agent_path"));
+    std::fs::remove_file(agent_path.join(format!("{generated_id}.bak"))).unwrap();
+
+    let archive = bak_backup(&config, work_dir.path()).await.unwrap();
+    let bak_file = extract_bak(&archive, work_dir.path()).await;
+
+    let corrupt_file = work_dir.path().join("corrupt.bak");
+    std::fs::write(&corrupt_file, b"not a backup").unwrap();
+    assert!(bak_restore(&config, &corrupt_file).await.is_err());
+    assert_folder_empty(agent_path);
+
+    let mut system_config = config.clone();
+    system_config.database = "msdb".to_string();
+    let system_error = bak_restore(&system_config, &bak_file).await.unwrap_err();
+    assert!(format!("{:#}", system_error).contains("system database"));
+    assert_multi_user(&host, port, "msdb").await;
+
+    exec(
+        &host,
+        port,
+        "master",
+        "CREATE DATABASE blockerdb ON (NAME = blocker, FILENAME = '/var/opt/mssql/data/occupied_keepdb.mdf') \
+         LOG ON (NAME = blocker_log, FILENAME = '/var/opt/mssql/data/blocker_log.ldf');",
+    )
+    .await;
+    create_user_database(&host, port, "occupied").await;
+    exec(&host, port, "occupied", "CREATE TABLE dbo.t (id INT PRIMARY KEY); INSERT dbo.t VALUES (9);").await;
+    let mut occupied_config = config.clone();
+    occupied_config.database = "occupied".to_string();
+    assert!(bak_restore(&occupied_config, &bak_file).await.is_err());
+    assert_multi_user(&host, port, "occupied").await;
+    assert_eq!(scalar(&host, port, "occupied", "sa", SA_PASSWORD, "SELECT COUNT(*) FROM dbo.t WHERE id = 9").await, 1);
+
+    assert_folder_empty(agent_path);
+    assert_multi_user(&host, port, "keepdb").await;
+    assert_eq!(scalar(&host, port, "keepdb", "sa", SA_PASSWORD, "SELECT COUNT(*) FROM dbo.t").await, 2);
+}
+
 mod format_tests {
     use super::{make_config, with_backup_format};
     use crate::domain::mssql::format::MssqlFormat;
+    use crate::domain::mssql::native::{BackupFile, join_server_path, target_path};
+    use std::collections::HashMap;
     use std::path::Path;
 
     #[test]
@@ -477,6 +741,10 @@ mod format_tests {
             (MssqlFormat::Bacpac, None)
         );
         assert_eq!(
+            MssqlFormat::from_config(&with_backup_format(cfg.clone(), "bak")),
+            (MssqlFormat::Bak, None)
+        );
+        assert_eq!(
             MssqlFormat::from_config(&with_backup_format(cfg, "zip")),
             (MssqlFormat::Dacpac, Some("zip".to_string()))
         );
@@ -486,9 +754,33 @@ mod format_tests {
     fn from_path_reads_extension() {
         assert_eq!(MssqlFormat::from_path(Path::new("/tmp/a.dacpac")), Some(MssqlFormat::Dacpac));
         assert_eq!(MssqlFormat::from_path(Path::new("/tmp/a.BACPAC")), Some(MssqlFormat::Bacpac));
+        assert_eq!(MssqlFormat::from_path(Path::new("/tmp/a.BAK")), Some(MssqlFormat::Bak));
         assert_eq!(MssqlFormat::from_path(Path::new("/tmp/backup.dump")), None);
         assert_eq!(MssqlFormat::from_path(Path::new("/tmp/noext")), None);
         assert_eq!(MssqlFormat::Dacpac.extension(), ".dacpac");
         assert_eq!(MssqlFormat::Bacpac.extension(), ".bacpac");
+        assert_eq!(MssqlFormat::Bak.extension(), ".bak");
+    }
+
+    #[test]
+    fn join_server_path_keeps_the_server_separator() {
+        assert_eq!(join_server_path(r"D:\Backups", "a.bak"), r"D:\Backups\a.bak");
+        assert_eq!(join_server_path(r"D:\Backups\", "a.bak"), r"D:\Backups\a.bak");
+        assert_eq!(join_server_path(r"D:\", "a.bak"), r"D:\a.bak");
+        assert_eq!(join_server_path(r"\\nas\sql", "a.bak"), r"\\nas\sql\a.bak");
+        assert_eq!(join_server_path("/var/opt/mssql/backup", "a.bak"), "/var/opt/mssql/backup/a.bak");
+        assert_eq!(join_server_path("/var/opt/mssql/backup/", "a.bak"), "/var/opt/mssql/backup/a.bak");
+    }
+
+    #[test]
+    fn target_path_keeps_existing_files_and_moves_the_others() {
+        let existing = HashMap::from([("app".to_string(), r"E:\Data\app.mdf".to_string())]);
+        let backup_file = |logical_name, physical_name, kind| BackupFile { logical_name, physical_name, kind };
+        let resolve = |file: &BackupFile| target_path("target", file, &existing, r"D:\Data\", r"L:\Logs\");
+
+        assert_eq!(resolve(&backup_file("app", r"C:\Old\app.mdf", "D")), r"E:\Data\app.mdf");
+        assert_eq!(resolve(&backup_file("other", r"C:\Old\other.ndf", "D")), r"D:\Data\target_other.ndf");
+        assert_eq!(resolve(&backup_file("app_log", "/var/opt/mssql/data/app_log.ldf", "L")), r"L:\Logs\target_app_log.ldf");
+        assert_eq!(resolve(&backup_file("stream", r"C:\Old\stream", "S")), r"D:\Data\target_stream");
     }
 }

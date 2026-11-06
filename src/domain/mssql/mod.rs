@@ -4,3 +4,4 @@ mod connection;
 mod ping;
 mod backup;
 mod restore;
+pub(crate) mod native;
