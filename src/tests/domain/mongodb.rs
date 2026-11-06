@@ -29,7 +29,7 @@ async fn create_config() -> (ContainerAsync<Mongo>, DatabaseConfig) {
         password: "".to_string(),
         port,
         host: host.to_string(),
-        generated_id: "96d30a9f-ff4b-47c9-aaab-f3147bb34f16".to_string(),
+        generated_id: uuid::Uuid::new_v4().to_string(),
         path: "".to_string(),
         max_packet_size: "".to_string(),
         volume_name: "".to_string(),
