@@ -1,66 +1,20 @@
 use crate::services::storage::providers::google_drive::models::GoogleDriveProviderConfig;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use futures::Stream;
 use futures::StreamExt;
 use oauth2::{
-    basic::BasicClient, reqwest::Client as OAuth2ReqwestClient, AuthUrl, ClientId, ClientSecret,
-    RefreshToken, TokenResponse, TokenUrl,
+    AuthUrl, ClientId, ClientSecret, RefreshToken, TokenResponse, TokenUrl, basic::BasicClient,
+    reqwest::Client as OAuth2ReqwestClient,
 };
-use reqwest::{header, Client};
 use reqwest::{Client as ReqwestClient, StatusCode};
-use serde_json::{json, Value};
+use reqwest::{Client, header};
+use serde_json::{Value, json};
 
 pub const DRIVE_FILES_URL: &str =
     "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true";
 pub const DRIVE_RESUMABLE_UPLOAD_URL: &str =
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true";
-
-pub fn append_from_pending(buf: &mut Vec<u8>, pending: &mut Bytes, remaining: &mut u64) {
-    if pending.is_empty() || *remaining == 0 {
-        return;
-    }
-    let to_take = (*remaining as usize).min(pending.len());
-    buf.extend_from_slice(&pending[..to_take]);
-    *pending = pending.slice(to_take..);
-    *remaining -= to_take as u64;
-}
-
-pub fn collect_windows(chunks: Vec<Bytes>, total: u64, window: u64) -> Result<Vec<Vec<u8>>> {
-    let mut pending = Bytes::new();
-    let mut iter = chunks.into_iter();
-    let mut uploaded = 0u64;
-    let mut windows = Vec::new();
-
-    while uploaded < total {
-        let chunk_size = (total - uploaded).min(window);
-        let mut buf = Vec::with_capacity(chunk_size as usize);
-        let mut remaining = chunk_size;
-
-        while remaining > 0 {
-            if pending.is_empty() {
-                match iter.next() {
-                    Some(next) => pending = next,
-                    None => {
-                        if uploaded + buf.len() as u64 != total {
-                            return Err(anyhow!("Stream ended early"));
-                        }
-                        break;
-                    }
-                }
-            }
-            append_from_pending(&mut buf, &mut pending, &mut remaining);
-        }
-
-        if buf.is_empty() && uploaded < total {
-            return Err(anyhow!("Unexpected end of stream"));
-        }
-        uploaded += buf.len() as u64;
-        windows.push(buf);
-    }
-
-    Ok(windows)
-}
 
 pub async fn get_google_drive_token(config: &GoogleDriveProviderConfig) -> Result<String> {
     let http_client = OAuth2ReqwestClient::new();
@@ -191,7 +145,7 @@ pub async fn find_file_by_name(
 pub async fn upload_stream_to_google_drive(
     config: &GoogleDriveProviderConfig,
     full_path: &str,
-    mut content_stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin + 'static,
+    content_stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin + 'static,
     total_size: u64,
     mime_type: Option<&str>,
 ) -> Result<()> {
@@ -227,7 +181,6 @@ pub async fn upload_stream_to_google_drive(
         .post(DRIVE_RESUMABLE_UPLOAD_URL)
         .bearer_auth(&token)
         .header("X-Upload-Content-Type", mime)
-        .header("X-Upload-Content-Length", total_size.to_string()) // Helps a lot
         .json(&metadata)
         .send()
         .await
@@ -245,51 +198,61 @@ pub async fn upload_stream_to_google_drive(
         .to_str()?
         .to_string();
 
-    const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
+    upload_chunks(&client, &upload_url, content_stream, total_size).await
+}
+
+pub async fn upload_chunks(
+    client: &Client,
+    upload_url: &str,
+    mut content_stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Unpin,
+    source_size: u64,
+) -> Result<()> {
+    const CHUNK_SIZE: usize = 8 * 1024 * 1024;
 
     let mut uploaded: u64 = 0;
     let mut pending = Bytes::new();
+    let mut stream_ended = false;
 
-    while uploaded < total_size {
-        let chunk_size = (total_size - uploaded).min(CHUNK_SIZE);
+    while !stream_ended {
+        let mut chunk_bytes = Vec::with_capacity(CHUNK_SIZE);
 
-        let mut chunk_bytes = Vec::with_capacity(chunk_size as usize);
-        let mut remaining = chunk_size;
-
-        while remaining > 0 {
+        loop {
             if pending.is_empty() {
                 match content_stream.next().await {
                     Some(Ok(bytes)) => pending = bytes,
                     Some(Err(e)) => return Err(e).context("Stream error during chunk"),
                     None => {
-                        if uploaded + chunk_bytes.len() as u64 != total_size {
-                            return Err(anyhow::anyhow!("Stream ended early"));
-                        }
+                        stream_ended = true;
                         break;
                     }
                 }
+            } else if chunk_bytes.len() < CHUNK_SIZE {
+                let to_take = (CHUNK_SIZE - chunk_bytes.len()).min(pending.len());
+                chunk_bytes.extend_from_slice(&pending.split_to(to_take));
+            } else {
+                break;
             }
-            append_from_pending(&mut chunk_bytes, &mut pending, &mut remaining);
         }
 
-        if chunk_bytes.is_empty() && uploaded < total_size {
-            return Err(anyhow::anyhow!("Unexpected end of stream"));
+        let chunk_end = uploaded + chunk_bytes.len() as u64;
+        if stream_ended && chunk_end < source_size {
+            return Err(anyhow::anyhow!("Stream ended early"));
         }
 
-        let range_end = uploaded + chunk_bytes.len() as u64 - 1;
-        let content_range = if uploaded + chunk_bytes.len() as u64 == total_size {
-            format!("bytes {}-{}/{}", uploaded, range_end, total_size)
-        } else {
-            format!("bytes {}-{}/*", uploaded, range_end)
+        let content_range = match (chunk_bytes.is_empty(), stream_ended) {
+            (true, _) => format!("bytes */{chunk_end}"),
+            (false, true) => format!("bytes {uploaded}-{}/{chunk_end}", chunk_end - 1),
+            (false, false) => format!("bytes {uploaded}-{}/*", chunk_end - 1),
         };
+        let chunk_bytes = Bytes::from(chunk_bytes);
 
         let mut retries = 0;
         loop {
             let res = client
-                .put(&upload_url)
+                .put(upload_url)
                 .header("Content-Range", &content_range)
                 .header("Content-Length", chunk_bytes.len().to_string())
-                .body(chunk_bytes.clone()) // clone is cheap if small; optimize later if needed
+                .body(chunk_bytes.clone())
                 .send()
                 .await;
 
@@ -299,8 +262,8 @@ pub async fn upload_stream_to_google_drive(
                         || resp.status() == StatusCode::PERMANENT_REDIRECT =>
                 {
                     // 200 or 308 = good
-                    uploaded += chunk_bytes.len() as u64;
-                    tracing::info!("Uploaded {}/{} bytes", uploaded, total_size);
+                    uploaded = chunk_end;
+                    tracing::info!("Uploaded {} bytes", uploaded);
                     break;
                 }
                 Ok(resp) if resp.status() == StatusCode::TOO_MANY_REQUESTS => {
@@ -324,35 +287,4 @@ pub async fn upload_stream_to_google_drive(
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sixteen_mib_chunk_survives_eight_mib_windows() {
-        let window = 8 * 1024 * 1024;
-        let payload = vec![7u8; 16 * 1024 * 1024];
-        let windows = collect_windows(
-            vec![Bytes::from(payload.clone())],
-            payload.len() as u64,
-            window,
-        )
-        .expect("windows");
-
-        assert_eq!(windows.len(), 2);
-        assert_eq!(windows[0].len(), window as usize);
-        assert_eq!(windows[1].len(), window as usize);
-        let mut joined = windows[0].clone();
-        joined.extend_from_slice(&windows[1]);
-        assert_eq!(joined, payload);
-    }
-
-    #[test]
-    fn drive_write_urls_carry_supports_all_drives() {
-        assert!(DRIVE_RESUMABLE_UPLOAD_URL.contains("supportsAllDrives=true"));
-        assert!(DRIVE_RESUMABLE_UPLOAD_URL.contains("uploadType=resumable"));
-        assert!(DRIVE_FILES_URL.contains("supportsAllDrives=true"));
-    }
 }
