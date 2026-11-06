@@ -8,7 +8,7 @@ use std::time::Instant;
 use super::connection::{select_pg_path, server_version};
 use super::format::PostgresDumpFormat;
 use crate::services::backup::logger::JobLogger;
-use crate::services::config::DatabaseConfig;
+use crate::services::config::{DatabaseConfig, list_option_args};
 
 pub async fn run(
     cfg: DatabaseConfig,
@@ -163,21 +163,5 @@ pub async fn run(
 }
 
 pub(crate) fn exclude_args(cfg: &DatabaseConfig) -> (Vec<String>, Vec<&'static str>) {
-    let mut args = Vec::new();
-    let mut invalid = Vec::new();
-    for (key, flag) in [("exclude_tables", "--exclude-table"), ("exclude_schemas", "--exclude-schema")] {
-        match cfg.options.get(key).map(|v| v.as_array()) {
-            None => {}
-            Some(Some(items)) => args.extend(
-                items
-                    .iter()
-                    .filter_map(|v| v.as_str())
-                    .map(str::trim)
-                    .filter(|p| !p.is_empty())
-                    .map(|p| format!("{flag}={p}")),
-            ),
-            Some(None) => invalid.push(key),
-        }
-    }
-    (args, invalid)
+    list_option_args(cfg, &[("exclude_tables", "--exclude-table"), ("exclude_schemas", "--exclude-schema")])
 }
