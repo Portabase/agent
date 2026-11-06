@@ -1,4 +1,4 @@
-mod helpers;
+pub mod helpers;
 pub mod models;
 
 use crate::core::context::Context;
