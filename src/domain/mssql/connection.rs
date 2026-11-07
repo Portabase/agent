@@ -17,8 +17,10 @@ IF DB_ID(@P1) IS NOT NULL
     AND ISNULL(IS_SRVROLEMEMBER('dbcreator'), 0) = 0
     THROW 50000, N'Restore needs CONTROL on the target database, or ALTER ANY DATABASE, to replace it; nothing was changed', 1;
 SELECT CASE WHEN DB_ID(@P1) IS NULL THEN 0 ELSE 1 END;";
-const LEFTOVER_SIDE_DATABASES_SQL: &str = "SELECT name FROM sys.databases WHERE CHARINDEX(@P1, name) > 0";
-const RENAME_DATABASE_SQL: &str = "DECLARE @from nvarchar(258) = QUOTENAME(@P1), @to nvarchar(258) = QUOTENAME(@P2);
+const LEFTOVER_SIDE_DATABASES_SQL: &str =
+    "SELECT name FROM sys.databases WHERE CHARINDEX(@P1, name) > 0";
+const RENAME_DATABASE_SQL: &str =
+    "DECLARE @from nvarchar(258) = QUOTENAME(@P1), @to nvarchar(258) = QUOTENAME(@P2);
 DECLARE @single bit = 0;
 IF CAST(SERVERPROPERTY('EngineEdition') AS int) NOT IN (5, 8)
 BEGIN
@@ -58,7 +60,10 @@ BEGIN
     END CATCH
 END";
 
-pub async fn build_client(cfg: &DatabaseConfig, database: Option<&str>) -> Result<Client<Compat<TcpStream>>> {
+pub async fn build_client(
+    cfg: &DatabaseConfig,
+    database: Option<&str>,
+) -> Result<Client<Compat<TcpStream>>> {
     let mut config = Config::new();
     config.host(&cfg.host);
     config.port(cfg.port);
@@ -67,8 +72,6 @@ pub async fn build_client(cfg: &DatabaseConfig, database: Option<&str>) -> Resul
     }
     config.authentication(AuthMethod::sql_server(&cfg.username, &cfg.password));
     config.trust_cert();
-    // BACKUP/RESTORE DATABASE send nothing until they finish; tiberius 0.13's
-    // default 30 s per-round-trip bound would abort them on large databases.
     config.command_timeout(None);
 
     let tcp = TcpStream::connect(config.get_addr()).await?;
