@@ -148,16 +148,12 @@ async fn docker_volume_backup_captures_files() {
 }
 
 async fn tar_entry_names(tar_path: &std::path::Path) -> Vec<String> {
-    use tokio_stream::StreamExt;
-    let f = tokio::fs::File::open(tar_path).await.unwrap();
-    let mut archive = tokio_tar::Archive::new(f);
-    let mut names = Vec::new();
-    let mut entries = archive.entries().unwrap();
-    while let Some(e) = entries.next().await {
-        let e = e.unwrap();
-        names.push(e.path().unwrap().to_string_lossy().to_string());
-    }
-    names
+    let mut archive = tar::Archive::new(std::fs::File::open(tar_path).unwrap());
+    archive
+        .entries()
+        .unwrap()
+        .map(|e| e.unwrap().path().unwrap().to_string_lossy().to_string())
+        .collect()
 }
 
 #[tokio::test]

@@ -44,8 +44,6 @@ azure_core = "1.0.0"
 azure_storage_blob = "1.0.0"
 google-cloud-storage = "1.15"
 google-cloud-auth = "1.13"
-async-compression = { version = "0.4.37", features = ["tokio", "gzip"] }
-tokio-tar = "0.3.1"
 aes-gcm = "0.11"
 futures-util = "0.3.31"
 tokio-stream = "0.1.18"

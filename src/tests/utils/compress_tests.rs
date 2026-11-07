@@ -74,18 +74,15 @@ async fn decompress_multiple_files() -> Result<()> {
 
 #[tokio::test]
 async fn compress_tar_is_not_double_wrapped() -> Result<()> {
-    use tokio_tar::Builder as TarBuilder;
-
     let tmp = tempdir()?;
     // Build a real tar containing a single entry "payload.txt".
     let payload = tmp.path().join("payload.txt");
     write(&payload, b"volume-bytes").await?;
     let tar_path = tmp.path().join("volume.tar");
     {
-        let f = tokio::fs::File::create(&tar_path).await?;
-        let mut b = TarBuilder::new(f);
-        b.append_path_with_name(&payload, "payload.txt").await?;
-        b.finish().await?;
+        let mut b = tar::Builder::new(std::fs::File::create(&tar_path)?);
+        b.append_path_with_name(&payload, "payload.txt")?;
+        b.finish()?;
     }
 
     let result = compress_to_tar_gz_large(
@@ -123,5 +120,47 @@ async fn gunzip_to_file_restores_tar_byte_for_byte() -> Result<()> {
 
     assert_eq!(read(&out_tar).await?, original);
 
+    Ok(())
+}
+
+fn write_tar_gz_with_raw_name(archive: &std::path::Path, name: &[u8]) -> Result<()> {
+    let gz = flate2::write::GzEncoder::new(std::fs::File::create(archive)?, flate2::Compression::default());
+    let mut builder = tar::Builder::new(gz);
+    let body = b"pwned";
+    let mut header = tar::Header::new_gnu();
+    // set_path refuses "..", so write the raw name bytes.
+    header.as_gnu_mut().unwrap().name[..name.len()].copy_from_slice(name);
+    header.set_size(body.len() as u64);
+    header.set_mode(0o644);
+    header.set_cksum();
+    builder.append(&header, &body[..])?;
+    builder.into_inner()?.finish()?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn decompress_rejects_entries_that_escape_the_output_dir() -> Result<()> {
+    let tmp = tempdir()?;
+    let archive = tmp.path().join("evil.tar.gz");
+    write_tar_gz_with_raw_name(&archive, b"../escape.txt")?;
+    let out = tmp.path().join("out");
+    tokio::fs::create_dir_all(&out).await?;
+
+    let result = decompress_large_tar_gz(&archive, &out).await;
+
+    assert!(!tmp.path().join("escape.txt").exists(), "entry was written outside the output dir");
+    assert!(result.is_err(), "archive with an escaping entry must be rejected");
+    Ok(())
+}
+
+#[tokio::test]
+async fn decompress_rejects_absolute_entry_paths() -> Result<()> {
+    let tmp = tempdir()?;
+    let archive = tmp.path().join("absolute.tar.gz");
+    write_tar_gz_with_raw_name(&archive, b"/abs-escape.txt")?;
+    let out = tmp.path().join("out");
+    tokio::fs::create_dir_all(&out).await?;
+
+    assert!(decompress_large_tar_gz(&archive, &out).await.is_err());
     Ok(())
 }
