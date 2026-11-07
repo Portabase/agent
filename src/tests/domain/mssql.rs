@@ -1,9 +1,10 @@
 use crate::domain::factory::DatabaseFactory;
+use crate::domain::mssql::connection;
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::{DatabaseConfig, DbType};
 use crate::tests::init_tracing_for_test;
 use crate::utils::compress::{compress_to_tar_gz_large, decompress_large_tar_gz};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -374,7 +375,7 @@ async fn mssql_restore_refuses_without_create_database_test() {
 }
 
 #[tokio::test]
-async fn mssql_restore_failed_drop_keeps_multi_user_test() {
+async fn mssql_restore_refuses_without_drop_permission_test() {
     init_tracing_for_test();
     let (_container, host, port) = start().await;
     create_user_database(&host, port, "alterdb").await;
@@ -406,7 +407,8 @@ async fn mssql_restore_failed_drop_keeps_multi_user_test() {
         .restore(&file_path, Arc::new(JobLogger::new()))
         .await;
 
-    assert!(!format!("{:#}", result.unwrap_err()).contains("nothing was dropped"));
+    assert!(format!("{:#}", result.unwrap_err()).contains("CONTROL"));
+    assert_eq!(scalar(&host, port, "alterdb", "sa", SA_PASSWORD, "SELECT COUNT(*) FROM dbo.t").await, 1);
     assert_eq!(
         scalar(&host, port, "master", "sa", SA_PASSWORD, "SELECT CASE WHEN DB_ID('alterdb') IS NULL THEN 0 ELSE 1 END").await,
         1
@@ -457,6 +459,186 @@ async fn mssql_restore_refuses_system_database_test() {
         .await,
         1
     );
+}
+
+async fn backup_package(config: &DatabaseConfig, work_dir: &Path) -> PathBuf {
+    DatabaseFactory::create_for_backup(config.clone())
+        .await
+        .backup(work_dir, Arc::new(JobLogger::new()))
+        .await
+        .unwrap()
+}
+
+async fn restore_package(config: &DatabaseConfig, package: &Path) -> anyhow::Result<()> {
+    DatabaseFactory::create_for_restore(config.clone(), package)
+        .await
+        .restore(package, Arc::new(JobLogger::new()))
+        .await
+}
+
+async fn row_count(host: &str, port: u16, database: &str) -> i32 {
+    scalar(host, port, database, "sa", SA_PASSWORD, "SELECT COUNT(*) FROM dbo.t").await
+}
+
+async fn database_exists(host: &str, port: u16, database: &str) -> bool {
+    let sql = format!("SELECT CASE WHEN DB_ID('{database}') IS NULL THEN 0 ELSE 1 END");
+    scalar(host, port, "master", "sa", SA_PASSWORD, &sql).await == 1
+}
+
+async fn assert_multi_user_named(host: &str, port: u16, database: &str) {
+    let multi_user = format!("SELECT CASE WHEN DATABASEPROPERTYEX('{database}', 'UserAccess') = 'MULTI_USER' THEN 1 ELSE 0 END");
+    assert_eq!(scalar(host, port, "master", "sa", SA_PASSWORD, &multi_user).await, 1);
+}
+
+async fn assert_target_intact(host: &str, port: u16, database: &str, expected_rows: i32) {
+    assert_eq!(row_count(host, port, database).await, expected_rows);
+    assert_multi_user_named(host, port, database).await;
+    let side_databases = "SELECT COUNT(*) FROM sys.databases WHERE name LIKE '%[_]restore[_]%-%'";
+    assert_eq!(scalar(host, port, "master", "sa", SA_PASSWORD, side_databases).await, 0);
+}
+
+#[tokio::test]
+async fn mssql_restore_failure_keeps_target_test() {
+    init_tracing_for_test();
+    let (_container, host, port) = start().await;
+    create_user_database(&host, port, "config_db").await;
+    create_user_database(&host, port, "company_db").await;
+    exec(&host, port, "config_db", "CREATE TABLE dbo.Settings (id INT PRIMARY KEY); INSERT dbo.Settings VALUES (1);").await;
+    exec(&host, port, "company_db", "CREATE TABLE dbo.t (id INT PRIMARY KEY); INSERT dbo.t VALUES (1), (2);").await;
+    exec(&host, port, "company_db", "CREATE VIEW dbo.v_settings AS SELECT id FROM config_db.dbo.Settings;").await;
+    exec(&host, port, "company_db", "CREATE PROCEDURE dbo.p_t AS SELECT id FROM dbo.t;").await;
+
+    let config = make_config(host.clone(), port, "company_db", "5a445eb4-c2c6-4bde-a423-ee1385dcf6e4");
+    let work_dir = TempDir::new().unwrap();
+    let package = backup_package(&config, work_dir.path()).await;
+
+    exec(&host, port, "company_db", "INSERT dbo.t VALUES (3);").await;
+    exec(&host, port, "master", "ALTER DATABASE config_db MODIFY NAME = config_hidden;").await;
+
+    assert!(restore_package(&config, &package).await.is_err());
+    assert_target_intact(&host, port, "company_db", 3).await;
+    assert_eq!(scalar(&host, port, "company_db", "sa", SA_PASSWORD, "SELECT COUNT(*) FROM sys.views").await, 1);
+    assert_eq!(scalar(&host, port, "company_db", "sa", SA_PASSWORD, "SELECT COUNT(*) FROM sys.procedures").await, 1);
+
+    let mut fresh_config = config.clone();
+    fresh_config.database = "fresh_db".to_string();
+    assert!(restore_package(&fresh_config, &package).await.is_err());
+    assert!(!database_exists(&host, port, "fresh_db").await, "a failed restore must not leave a partial database");
+
+    for extension in ["dacpac", "bacpac"] {
+        let corrupt_file = work_dir.path().join(format!("corrupt.{extension}"));
+        std::fs::write(&corrupt_file, b"not a package").unwrap();
+        assert!(restore_package(&config, &corrupt_file).await.is_err());
+        assert_target_intact(&host, port, "company_db", 3).await;
+    }
+
+    exec(&host, port, "master", "ALTER DATABASE config_hidden MODIFY NAME = config_db;").await;
+    restore_package(&config, &package).await.unwrap();
+    assert_target_intact(&host, port, "company_db", 2).await;
+    assert_eq!(scalar(&host, port, "company_db", "sa", SA_PASSWORD, "SELECT COUNT(*) FROM dbo.v_settings").await, 1);
+}
+
+#[tokio::test]
+async fn mssql_restore_repeats_and_sweeps_leftovers_test() {
+    init_tracing_for_test();
+    let (_container, host, port) = start().await;
+    let generated_id = "5a445eb4-c2c6-4bde-a423-ee1385dcf6e5";
+    let leftover = format!("appdb_restore_{generated_id}_deadbeef");
+    create_user_database(&host, port, "appdb").await;
+    create_user_database(&host, port, &leftover).await;
+    create_user_database(&host, port, "appdb_restore_old").await;
+    exec(&host, port, "appdb", "CREATE TABLE dbo.t (id INT PRIMARY KEY); INSERT dbo.t VALUES (1), (2);").await;
+
+    let config = make_config(host.clone(), port, "appdb", generated_id);
+    let work_dir = TempDir::new().unwrap();
+    let package = backup_package(&config, work_dir.path()).await;
+
+    for _ in 0..2 {
+        exec(&host, port, "appdb", "INSERT dbo.t VALUES (3);").await;
+        restore_package(&config, &package).await.unwrap();
+        assert_target_intact(&host, port, "appdb", 2).await;
+    }
+
+    let side_named_files = "SELECT COUNT(*) FROM sys.master_files WHERE database_id = DB_ID('appdb') AND physical_name LIKE '%appdb[_]restore[_]%'";
+    assert_eq!(scalar(&host, port, "master", "sa", SA_PASSWORD, side_named_files).await, 2);
+    assert!(!database_exists(&host, port, &leftover).await, "a side database from a crashed run must be removed");
+    assert!(database_exists(&host, port, "appdb_restore_old").await, "a user database must not be swept");
+
+    let long_name = "l".repeat(123);
+    create_user_database(&host, port, &long_name).await;
+    exec(&host, port, &long_name, "CREATE TABLE dbo.t (id INT PRIMARY KEY); INSERT dbo.t VALUES (1), (2);").await;
+    let long_config = make_config(host.clone(), port, &long_name, generated_id);
+    let long_package = backup_package(&long_config, work_dir.path()).await;
+    exec(&host, port, &long_name, "INSERT dbo.t VALUES (3);").await;
+    restore_package(&long_config, &long_package).await.unwrap();
+    assert_target_intact(&host, port, &long_name, 2).await;
+}
+
+#[tokio::test]
+async fn mssql_restore_accepts_owner_and_dbcreator_test() {
+    init_tracing_for_test();
+    let (_container, host, port) = start().await;
+    let work_dir = TempDir::new().unwrap();
+    exec(
+        &host,
+        port,
+        "master",
+        "CREATE LOGIN owner_login WITH PASSWORD = 'Owner!Str0ng1'; GRANT CREATE ANY DATABASE TO owner_login; \
+         CREATE LOGIN creator_login WITH PASSWORD = 'Creator!Str0ng1'; ALTER SERVER ROLE dbcreator ADD MEMBER creator_login;",
+    )
+    .await;
+
+    for (database, login, password) in [("ownerdb", "owner_login", "Owner!Str0ng1"), ("creatordb", "creator_login", "Creator!Str0ng1")] {
+        create_user_database(&host, port, database).await;
+        exec(&host, port, database, "CREATE TABLE dbo.t (id INT PRIMARY KEY); INSERT dbo.t VALUES (1), (2);").await;
+        let mut config = make_config(host.clone(), port, database, "5a445eb4-c2c6-4bde-a423-ee1385dcf6e6");
+        let package = backup_package(&config, work_dir.path()).await;
+        exec(&host, port, database, "INSERT dbo.t VALUES (3);").await;
+        if login == "owner_login" {
+            exec(&host, port, database, "CREATE USER owner_user FOR LOGIN owner_login; ALTER ROLE db_owner ADD MEMBER owner_user;").await;
+        }
+
+        config.username = login.to_string();
+        config.password = password.to_string();
+        restore_package(&config, &package).await.unwrap();
+        assert_target_intact(&host, port, database, 2).await;
+    }
+}
+
+#[tokio::test]
+async fn mssql_restore_failed_drop_keeps_target_test() {
+    init_tracing_for_test();
+    let (_container, host, port) = start().await;
+    create_user_database(&host, port, "appdb").await;
+    exec(&host, port, "appdb", "CREATE TABLE dbo.t (id INT PRIMARY KEY); INSERT dbo.t VALUES (1), (2);").await;
+
+    let config = make_config(host.clone(), port, "appdb", "5a445eb4-c2c6-4bde-a423-ee1385dcf6e7");
+    let work_dir = TempDir::new().unwrap();
+    let package = backup_package(&config, work_dir.path()).await;
+
+    exec(&host, port, "appdb", "INSERT dbo.t VALUES (3);").await;
+    exec(
+        &host,
+        port,
+        "master",
+        "CREATE TRIGGER block_appdb_drop ON ALL SERVER FOR DROP_DATABASE AS \
+         IF EVENTDATA().value('(/EVENT_INSTANCE/DatabaseName)[1]', 'nvarchar(128)') = 'appdb' \
+         BEGIN ROLLBACK; THROW 50001, 'blocked by test', 1; END",
+    )
+    .await;
+
+    assert!(restore_package(&config, &package).await.is_err());
+    assert_target_intact(&host, port, "appdb", 3).await;
+
+    exec(&host, port, "master", "DROP TRIGGER block_appdb_drop ON ALL SERVER;").await;
+    restore_package(&config, &package).await.unwrap();
+    assert_target_intact(&host, port, "appdb", 2).await;
+
+    create_user_database(&host, port, "side_db").await;
+    let held_session = connect_as(&host, port, "side_db", "sa", SA_PASSWORD).await;
+    connection::rename_database(&config, "side_db", "renamed_db").await.unwrap();
+    drop(held_session);
+    assert_multi_user_named(&host, port, "renamed_db").await;
 }
 
 mod format_tests {
