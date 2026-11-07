@@ -1,5 +1,5 @@
 use dotenvy::dotenv;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use std::env;
 use tokio::sync::Semaphore;
 
@@ -98,7 +98,7 @@ impl Settings {
     }
 }
 
-pub static CONFIG: Lazy<Settings> = Lazy::new(Settings::from_env);
+pub static CONFIG: LazyLock<Settings> = LazyLock::new(Settings::from_env);
 
 pub(crate) fn parse_max_concurrent_backups(value: Result<String, env::VarError>) -> Option<usize> {
     match value {

@@ -3,17 +3,17 @@ use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::config::DatabasesConfig;
 use crate::settings::CONFIG;
 use crate::utils::common::BackupMethod;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use std::collections::HashSet;
 use std::future::Future;
 use std::sync::Mutex;
 use tokio::sync::Semaphore;
 use tracing::{error, warn};
 
-pub(crate) static BACKUP_SEMAPHORE: Lazy<Option<Semaphore>> =
-    Lazy::new(|| CONFIG.max_concurrent_backups.map(Semaphore::new));
+pub(crate) static BACKUP_SEMAPHORE: LazyLock<Option<Semaphore>> =
+    LazyLock::new(|| CONFIG.max_concurrent_backups.map(Semaphore::new));
 
-static IN_FLIGHT_AUTOMATIC: Lazy<Mutex<HashSet<String>>> = Lazy::new(Default::default);
+static IN_FLIGHT_AUTOMATIC: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 
 pub(crate) struct InFlightBackup(String);
 

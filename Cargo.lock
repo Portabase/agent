@@ -3199,7 +3199,6 @@ dependencies = [
  "hmac 0.12.1",
  "libc",
  "mongodb",
- "once_cell",
  "percent-encoding",
  "rand 0.9.5",
  "redis",
