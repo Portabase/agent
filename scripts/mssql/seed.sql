@@ -1,3 +1,6 @@
+EXEC master.dbo.xp_create_subdir N'/var/opt/mssql/backup';
+GO
+
 IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'myappdb')
     CREATE DATABASE [myappdb];
 GO
@@ -14,7 +17,10 @@ IF OBJECT_ID('users', 'U') IS NULL
     );
 GO
 
-INSERT INTO users (email, name) VALUES ('alice@example.com', 'Alice');
-INSERT INTO users (email, name) VALUES ('bob@example.com',   'Bob');
-INSERT INTO users (email, name) VALUES ('charlie@example.com', 'Charlie');
+IF NOT EXISTS (SELECT 1 FROM users)
+BEGIN
+    INSERT INTO users (email, name) VALUES ('alice@example.com', 'Alice');
+    INSERT INTO users (email, name) VALUES ('bob@example.com',   'Bob');
+    INSERT INTO users (email, name) VALUES ('charlie@example.com', 'Charlie');
+END
 GO
