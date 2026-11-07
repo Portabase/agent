@@ -5,6 +5,7 @@ use std::path::Path;
 pub enum MssqlFormat {
     Dacpac,
     Bacpac,
+    Bak,
 }
 
 impl MssqlFormat {
@@ -12,6 +13,7 @@ impl MssqlFormat {
         match cfg.options.get("backup_format").and_then(|v| v.as_str()) {
             None | Some("dacpac") => (Self::Dacpac, None),
             Some("bacpac") => (Self::Bacpac, None),
+            Some("bak") => (Self::Bak, None),
             Some(other) => (Self::Dacpac, Some(other.to_string())),
         }
     }
@@ -20,6 +22,7 @@ impl MssqlFormat {
         match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
             "dacpac" => Some(Self::Dacpac),
             "bacpac" => Some(Self::Bacpac),
+            "bak" => Some(Self::Bak),
             _ => None,
         }
     }
@@ -28,6 +31,7 @@ impl MssqlFormat {
         match self {
             Self::Dacpac => ".dacpac",
             Self::Bacpac => ".bacpac",
+            Self::Bak => ".bak",
         }
     }
 }

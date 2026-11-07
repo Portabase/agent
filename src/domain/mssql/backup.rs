@@ -1,4 +1,5 @@
 use super::format::MssqlFormat;
+use super::native;
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
@@ -13,12 +14,24 @@ pub async fn run(
     file_extension: &'static str,
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
-    tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        let (format, unknown_format) = MssqlFormat::from_config(&cfg);
-        if let Some(v) = unknown_format {
-            logger.log("warn", format!("Unknown backup_format '{}' for {}, falling back to 'dacpac'", v, cfg.name));
-        }
+    let (format, unknown_format) = MssqlFormat::from_config(&cfg);
+    if let Some(v) = unknown_format {
+        logger.log("warn", format!("Unknown backup_format '{}' for {}, falling back to 'dacpac'", v, cfg.name));
+    }
 
+    let sqlpackage_args: &'static [&'static str] = match format {
+        MssqlFormat::Bak => return native::backup(&cfg, &backup_dir, logger).await,
+        MssqlFormat::Dacpac => &[
+            "/a:Extract",
+            "/p:ExtractAllTableData=True",
+            "/p:ExtractReferencedServerScopedElements=False",
+            "/p:IgnorePermissions=False",
+            "/p:IgnoreUserLoginMappings=False",
+        ],
+        MssqlFormat::Bacpac => &["/a:Export"],
+    };
+
+    tokio::task::spawn_blocking(move || -> Result<PathBuf> {
         logger.log("info", format!("Starting MSSQL {} backup for database {}", &format.extension()[1..], cfg.name));
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
@@ -30,18 +43,8 @@ pub async fn run(
         logger.log("info", format!("MSSQL backup: {}:{}/{} → {}", cfg.host, cfg.port, cfg.database, file_path.display()));
 
         let start = Instant::now();
-        let mut command = Command::new("sqlpackage");
-        match format {
-            MssqlFormat::Dacpac => command.args([
-                "/a:Extract",
-                "/p:ExtractAllTableData=True",
-                "/p:ExtractReferencedServerScopedElements=False",
-                "/p:IgnorePermissions=False",
-                "/p:IgnoreUserLoginMappings=False",
-            ]),
-            MssqlFormat::Bacpac => command.arg("/a:Export"),
-        };
-        let output = command
+        let output = Command::new("sqlpackage")
+            .args(sqlpackage_args)
             .arg(format!("/scs:{}", connection_string))
             .arg(format!("/tf:{}", file_path.display()))
             .output()

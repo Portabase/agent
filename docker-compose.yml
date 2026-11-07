@@ -14,6 +14,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       #      - cargo-target:/app/target
       - databases_sqlite-data:/sqlite-data/workspace/data
+      - databases_mssql-data:/mssql-shared
       - ./scripts/sqlite/test-db:/sqlite-data-2/workspace/data
       #      - /bigdisk:/scratch
       - ./test-files/archive:/data/files-archive
@@ -47,6 +48,8 @@ volumes:
   cargo-git:
   #  cargo-target:
   databases_sqlite-data:
+    external: true
+  databases_mssql-data:
     external: true
 
 networks:
