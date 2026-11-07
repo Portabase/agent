@@ -9,7 +9,7 @@ use crate::utils::common::BackupMethod;
 use crate::utils::file::{full_file_name, full_file_path};
 use crate::utils::stream::build_stream;
 use async_trait::async_trait;
-use aws_config::retry::RetryConfig;
+use aws_sdk_s3::config::retry::RetryConfig;
 use aws_sdk_s3 as s3;
 use aws_sdk_s3::config::BehaviorVersion;
 use aws_sdk_s3::config::Region;
