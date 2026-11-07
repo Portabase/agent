@@ -101,7 +101,13 @@ async fn provider_uploads_a_backup_that_reads_back_identically() {
     let key = result.remote_file_path.expect("remote path");
     assert!(key.starts_with("backups/"), "unexpected key {key}");
 
-    let object = client.get_object().bucket(BUCKET).key(&key).send().await.unwrap();
+    let object = client
+        .get_object()
+        .bucket(BUCKET)
+        .key(&key)
+        .send()
+        .await
+        .unwrap();
     let body = object.body.collect().await.unwrap().into_bytes();
     assert_eq!(body.as_ref(), payload.as_slice());
 }
@@ -129,7 +135,11 @@ async fn provider_reports_failure_for_a_missing_bucket() {
     assert!(!result.success);
     assert!(result.remote_file_path.is_none());
     assert!(
-        result.error.as_deref().unwrap_or_default().contains("NoSuchBucket"),
+        result
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("NoSuchBucket"),
         "unexpected error: {:?}",
         result.error
     );

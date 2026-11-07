@@ -178,9 +178,13 @@ async fn refresh_token_is_exchanged_for_an_access_token() {
         .mount(&server)
         .await;
 
-    let token = exchange_refresh_token(&Client::new(), &format!("{}/token", server.uri()), &drive_config())
-        .await
-        .unwrap();
+    let token = exchange_refresh_token(
+        &Client::new(),
+        &format!("{}/token", server.uri()),
+        &drive_config(),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(token, "at-1");
 }
@@ -197,9 +201,13 @@ async fn rejected_refresh_token_surfaces_the_oauth_error() {
         .mount(&server)
         .await;
 
-    let error = exchange_refresh_token(&Client::new(), &format!("{}/token", server.uri()), &drive_config())
-        .await
-        .unwrap_err();
+    let error = exchange_refresh_token(
+        &Client::new(),
+        &format!("{}/token", server.uri()),
+        &drive_config(),
+    )
+    .await
+    .unwrap_err();
 
     assert!(format!("{error:#}").contains("invalid_grant"), "{error:#}");
 }

@@ -36,9 +36,14 @@ pub(crate) async fn exchange_refresh_token(
         .context("failed to exchange refresh token")?;
 
     let status = response.status();
-    let body = response.text().await.context("failed to read token response")?;
+    let body = response
+        .text()
+        .await
+        .context("failed to read token response")?;
     if !status.is_success() {
-        return Err(anyhow!("failed to exchange refresh token: {status}: {body}"));
+        return Err(anyhow!(
+            "failed to exchange refresh token: {status}: {body}"
+        ));
     }
 
     let token: Value = serde_json::from_str(&body).context("invalid token response")?;

@@ -17,18 +17,28 @@ pub struct CompressionResult {
     pub compressed_path: PathBuf,
 }
 
-async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
-    tokio::task::spawn_blocking(work).await.context("compression task panicked")?
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T> + Send + 'static,
+) -> Result<T> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .context("compression task panicked")?
 }
 
-pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Arc<JobLogger>) -> Result<CompressionResult> {
+pub async fn compress_to_tar_gz_large(
+    file: &PathBuf,
+    logger: Arc<JobLogger>,
+) -> Result<CompressionResult> {
     if file
         .file_name()
         .and_then(|n| n.to_str())
         .map(|n| n.ends_with(".tar.gz"))
         .unwrap_or(false)
     {
-        logger.log("info", format!("File {:?} is already a tar.gz, skipping compression", file));
+        logger.log(
+            "info",
+            format!("File {:?} is already a tar.gz, skipping compression", file),
+        );
         return Ok(CompressionResult {
             compressed_path: file.clone(),
         });
@@ -41,7 +51,10 @@ pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Arc<JobLogger>) ->
         .unwrap_or(false)
     {
         let gz_path = PathBuf::from(format!("{}.gz", file.display()));
-        logger.log("info", format!("Input {:?} is a raw tar, gzipping directly", file));
+        logger.log(
+            "info",
+            format!("Input {:?} is a raw tar, gzipping directly", file),
+        );
 
         let (input_path, output_path) = (file.clone(), gz_path.clone());
         blocking(move || {
@@ -51,8 +64,11 @@ pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Arc<JobLogger>) ->
                 .map_err(|e| anyhow!("Failed to create {:?}: {}", output_path, e))?;
             let mut encoder = GzEncoder::new(BufWriter::new(output), Compression::default());
 
-            io::copy(&mut BufReader::with_capacity(BUFFER_SIZE, input), &mut encoder)
-                .map_err(|e| anyhow!("Gzip copy failed: {}", e))?;
+            io::copy(
+                &mut BufReader::with_capacity(BUFFER_SIZE, input),
+                &mut encoder,
+            )
+            .map_err(|e| anyhow!("Gzip copy failed: {}", e))?;
             encoder
                 .finish()
                 .and_then(|mut writer| writer.flush())
@@ -75,21 +91,31 @@ pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Arc<JobLogger>) ->
 }
 
 pub async fn tar_gz_file_to(file: &Path, tar_gz_path: &Path, logger: Arc<JobLogger>) -> Result<()> {
-    let (input_path, output_path, task_logger) = (file.to_path_buf(), tar_gz_path.to_path_buf(), logger.clone());
+    let (input_path, output_path, task_logger) = (
+        file.to_path_buf(),
+        tar_gz_path.to_path_buf(),
+        logger.clone(),
+    );
     blocking(move || {
         let fail = |message: String| {
             task_logger.log("error", message.clone());
             anyhow!(message)
         };
 
-        let output = File::create(&output_path)
-            .map_err(|e| fail(format!("Failed to create output file {:?}: {}", output_path, e)))?;
+        let output = File::create(&output_path).map_err(|e| {
+            fail(format!(
+                "Failed to create output file {:?}: {}",
+                output_path, e
+            ))
+        })?;
         let file_name = input_path
             .file_name()
             .ok_or_else(|| fail(format!("Cannot get file name for {:?}", input_path)))?;
 
-        let mut tar_builder =
-            tar::Builder::new(GzEncoder::new(BufWriter::new(output), Compression::default()));
+        let mut tar_builder = tar::Builder::new(GzEncoder::new(
+            BufWriter::new(output),
+            Compression::default(),
+        ));
         tar_builder
             .append_path_with_name(&input_path, file_name)
             .map_err(|e| fail(format!("Failed to append path: {}", e)))?;
@@ -105,7 +131,10 @@ pub async fn tar_gz_file_to(file: &Path, tar_gz_path: &Path, logger: Arc<JobLogg
     })
     .await?;
 
-    logger.log("info", format!("Compressed {:?} to {:?}", &file, &tar_gz_path));
+    logger.log(
+        "info",
+        format!("Compressed {:?} to {:?}", &file, &tar_gz_path),
+    );
 
     Ok(())
 }
@@ -117,7 +146,8 @@ pub async fn decompress_large_tar_gz(
     let (archive_path, target_dir) = (tar_gz_path.to_path_buf(), output_dir.to_path_buf());
     let extracted_files = blocking(move || {
         let file = File::open(&archive_path)?;
-        let mut archive = tar::Archive::new(GzDecoder::new(BufReader::with_capacity(BUFFER_SIZE, file)));
+        let mut archive =
+            tar::Archive::new(GzDecoder::new(BufReader::with_capacity(BUFFER_SIZE, file)));
 
         let mut extracted_files = Vec::new();
         for entry in archive.entries()? {
@@ -148,7 +178,10 @@ pub async fn gunzip_to_file(gz_path: &Path, out_path: &Path) -> Result<()> {
             .with_context(|| format!("Failed to create {}", output_path.display()))?;
         let mut writer = BufWriter::new(out);
 
-        io::copy(&mut GzDecoder::new(BufReader::with_capacity(BUFFER_SIZE, file)), &mut writer)?;
+        io::copy(
+            &mut GzDecoder::new(BufReader::with_capacity(BUFFER_SIZE, file)),
+            &mut writer,
+        )?;
         writer.flush()?;
         Ok(())
     })

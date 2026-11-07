@@ -1,6 +1,6 @@
 use dotenvy::dotenv;
-use std::sync::LazyLock;
 use std::env;
+use std::sync::LazyLock;
 use tokio::sync::Semaphore;
 
 #[derive(Debug)]

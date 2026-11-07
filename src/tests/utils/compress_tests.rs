@@ -124,7 +124,10 @@ async fn gunzip_to_file_restores_tar_byte_for_byte() -> Result<()> {
 }
 
 fn write_tar_gz_with_raw_name(archive: &std::path::Path, name: &[u8]) -> Result<()> {
-    let gz = flate2::write::GzEncoder::new(std::fs::File::create(archive)?, flate2::Compression::default());
+    let gz = flate2::write::GzEncoder::new(
+        std::fs::File::create(archive)?,
+        flate2::Compression::default(),
+    );
     let mut builder = tar::Builder::new(gz);
     let body = b"pwned";
     let mut header = tar::Header::new_gnu();
@@ -148,8 +151,14 @@ async fn decompress_rejects_entries_that_escape_the_output_dir() -> Result<()> {
 
     let result = decompress_large_tar_gz(&archive, &out).await;
 
-    assert!(!tmp.path().join("escape.txt").exists(), "entry was written outside the output dir");
-    assert!(result.is_err(), "archive with an escaping entry must be rejected");
+    assert!(
+        !tmp.path().join("escape.txt").exists(),
+        "entry was written outside the output dir"
+    );
+    assert!(
+        result.is_err(),
+        "archive with an escaping entry must be rejected"
+    );
     Ok(())
 }
 
