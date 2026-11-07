@@ -3191,7 +3191,6 @@ dependencies = [
  "dotenvy",
  "flate2",
  "futures",
- "futures-util",
  "globset",
  "google-cloud-auth",
  "google-cloud-storage",

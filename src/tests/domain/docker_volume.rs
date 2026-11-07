@@ -67,7 +67,7 @@ fn volume_config(volume_name: &str) -> crate::services::config::DatabaseConfig {
 
 async fn ensure_image(docker: &bollard::Docker, image: &str) {
     use bollard::query_parameters::CreateImageOptionsBuilder;
-    use futures_util::StreamExt;
+    use futures::StreamExt;
 
     let (name, tag) = image.split_once(':').unwrap_or((image, "latest"));
     let opts = CreateImageOptionsBuilder::default()
@@ -86,7 +86,7 @@ async fn seed_volume(docker: &bollard::Docker, volume: &str, filename: &str, con
         CreateContainerOptions, RemoveContainerOptions, StartContainerOptions,
         WaitContainerOptions,
     };
-    use futures_util::StreamExt;
+    use futures::StreamExt;
 
     ensure_image(docker, "busybox").await;
 

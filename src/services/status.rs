@@ -9,7 +9,7 @@ use crate::services::api::models::agent::status::PingResult;
 use crate::services::config::{build_config, files_method, DatabaseConfig, DbType, InputDatabaseConfig};
 use crate::settings::CONFIG;
 use crate::utils::file::decrypt_json_gcm;
-use futures_util::future::try_join_all;
+use futures::future::try_join_all;
 use reqwest::Client;
 use std::collections::HashSet;
 use std::error::Error;

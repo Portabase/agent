@@ -5,7 +5,7 @@ use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
 use bollard::query_parameters::DownloadFromContainerOptions;
-use futures_util::StreamExt;
+use futures::StreamExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
