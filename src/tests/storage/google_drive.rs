@@ -1,6 +1,7 @@
 use crate::services::storage::providers::google_drive::helpers::{
-    DRIVE_FILES_URL, DRIVE_RESUMABLE_UPLOAD_URL, upload_chunks,
+    DRIVE_FILES_URL, DRIVE_RESUMABLE_UPLOAD_URL, exchange_refresh_token, upload_chunks,
 };
+use crate::services::storage::providers::google_drive::models::GoogleDriveProviderConfig;
 use crate::tests::services::local_storage_tests::MASTER_KEY_B64;
 use crate::utils::file::decrypt_file_stream_gcm;
 use crate::utils::stream::build_stream;
@@ -9,7 +10,7 @@ use bytes::Bytes;
 use futures::stream;
 use reqwest::Client;
 use tempfile::TempDir;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const WINDOW: usize = 8 * 1024 * 1024;
@@ -148,4 +149,57 @@ fn drive_write_urls_carry_supports_all_drives() {
     assert!(DRIVE_RESUMABLE_UPLOAD_URL.contains("supportsAllDrives=true"));
     assert!(DRIVE_RESUMABLE_UPLOAD_URL.contains("uploadType=resumable"));
     assert!(DRIVE_FILES_URL.contains("supportsAllDrives=true"));
+}
+
+fn drive_config() -> GoogleDriveProviderConfig {
+    GoogleDriveProviderConfig {
+        client_id: "cid".to_string(),
+        client_secret: "secret".to_string(),
+        refresh_token: "rt-1".to_string(),
+        folder_id: "root".to_string(),
+    }
+}
+
+#[tokio::test]
+async fn refresh_token_is_exchanged_for_an_access_token() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .and(body_string_contains("grant_type=refresh_token"))
+        .and(body_string_contains("refresh_token=rt-1"))
+        .and(body_string_contains("client_id=cid"))
+        .and(body_string_contains("client_secret=secret"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "access_token": "at-1",
+            "expires_in": 3599,
+            "token_type": "Bearer"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let token = exchange_refresh_token(&Client::new(), &format!("{}/token", server.uri()), &drive_config())
+        .await
+        .unwrap();
+
+    assert_eq!(token, "at-1");
+}
+
+#[tokio::test]
+async fn rejected_refresh_token_surfaces_the_oauth_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "Token has been expired or revoked."
+        })))
+        .mount(&server)
+        .await;
+
+    let error = exchange_refresh_token(&Client::new(), &format!("{}/token", server.uri()), &drive_config())
+        .await
+        .unwrap_err();
+
+    assert!(format!("{error:#}").contains("invalid_grant"), "{error:#}");
 }
