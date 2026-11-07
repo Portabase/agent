@@ -4,10 +4,10 @@ mod settings_tests;
 mod storage;
 mod utils;
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use tracing_subscriber;
 
-static TRACING: Lazy<()> = Lazy::new(|| {
+static TRACING: LazyLock<()> = LazyLock::new(|| {
     let _ = tracing_subscriber::fmt()
         .with_test_writer()
         .with_env_filter("debug")
@@ -15,5 +15,5 @@ static TRACING: Lazy<()> = Lazy::new(|| {
 });
 
 fn init_tracing_for_test() -> () {
-    Lazy::force(&TRACING);
+    LazyLock::force(&TRACING);
 }

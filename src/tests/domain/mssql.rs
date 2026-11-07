@@ -123,6 +123,19 @@ async fn mssql_ping_test() {
 }
 
 #[tokio::test]
+async fn mssql_client_survives_a_command_longer_than_thirty_seconds_test() {
+    init_tracing_for_test();
+    let (_container, host, port) = start().await;
+    let config = make_config(host, port, "master", "8f0e8a4e-0d1c-4d43-9a8b-3f5c2d1e7a60");
+
+    let mut client = connection::build_client(&config, Some("master")).await.unwrap();
+
+    // BACKUP/RESTORE DATABASE send no tokens until they finish (no STATS);
+    // a 35 s WAITFOR stands in for one.
+    client.execute("WAITFOR DELAY '00:00:35'", &[]).await.unwrap();
+}
+
+#[tokio::test]
 async fn mssql_backup_test() {
     init_tracing_for_test();
 

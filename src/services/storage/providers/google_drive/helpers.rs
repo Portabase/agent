@@ -3,10 +3,6 @@ use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use futures::Stream;
 use futures::StreamExt;
-use oauth2::{
-    AuthUrl, ClientId, ClientSecret, RefreshToken, TokenResponse, TokenUrl, basic::BasicClient,
-    reqwest::Client as OAuth2ReqwestClient,
-};
 use reqwest::{Client as ReqwestClient, StatusCode};
 use reqwest::{Client, header};
 use serde_json::{Value, json};
@@ -15,28 +11,46 @@ pub const DRIVE_FILES_URL: &str =
     "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true";
 pub const DRIVE_RESUMABLE_UPLOAD_URL: &str =
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true";
+const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 
 pub async fn get_google_drive_token(config: &GoogleDriveProviderConfig) -> Result<String> {
-    let http_client = OAuth2ReqwestClient::new();
+    exchange_refresh_token(&ReqwestClient::new(), GOOGLE_TOKEN_URL, config).await
+}
 
-    let oauth_client = BasicClient::new(ClientId::new(config.client_id.clone()))
-        .set_client_secret(ClientSecret::new(config.client_secret.clone()))
-        .set_auth_uri(
-            AuthUrl::new("https://accounts.google.com/o/oauth2/auth".to_string())
-                .context("invalid auth uri")?,
-        )
-        .set_token_uri(
-            TokenUrl::new("https://oauth2.googleapis.com/token".to_string())
-                .context("invalid token uri")?,
-        );
-
-    let token_result = oauth_client
-        .exchange_refresh_token(&RefreshToken::new(config.refresh_token.clone()))
-        .request_async(&http_client)
+/// OAuth 2.0 refresh-token grant (RFC 6749 §6), client credentials in the body.
+pub(crate) async fn exchange_refresh_token(
+    client: &Client,
+    token_url: &str,
+    config: &GoogleDriveProviderConfig,
+) -> Result<String> {
+    let response = client
+        .post(token_url)
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", config.refresh_token.as_str()),
+            ("client_id", config.client_id.as_str()),
+            ("client_secret", config.client_secret.as_str()),
+        ])
+        .send()
         .await
         .context("failed to exchange refresh token")?;
 
-    Ok(token_result.access_token().secret().clone())
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("failed to read token response")?;
+    if !status.is_success() {
+        return Err(anyhow!(
+            "failed to exchange refresh token: {status}: {body}"
+        ));
+    }
+
+    let token: Value = serde_json::from_str(&body).context("invalid token response")?;
+    token["access_token"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| anyhow!("token response has no access_token"))
 }
 
 pub async fn ensure_folder_path(

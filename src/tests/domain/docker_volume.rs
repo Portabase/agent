@@ -67,7 +67,7 @@ fn volume_config(volume_name: &str) -> crate::services::config::DatabaseConfig {
 
 async fn ensure_image(docker: &bollard::Docker, image: &str) {
     use bollard::query_parameters::CreateImageOptionsBuilder;
-    use futures_util::StreamExt;
+    use futures::StreamExt;
 
     let (name, tag) = image.split_once(':').unwrap_or((image, "latest"));
     let opts = CreateImageOptionsBuilder::default()
@@ -86,7 +86,7 @@ async fn seed_volume(docker: &bollard::Docker, volume: &str, filename: &str, con
         CreateContainerOptions, RemoveContainerOptions, StartContainerOptions,
         WaitContainerOptions,
     };
-    use futures_util::StreamExt;
+    use futures::StreamExt;
 
     ensure_image(docker, "busybox").await;
 
@@ -148,16 +148,12 @@ async fn docker_volume_backup_captures_files() {
 }
 
 async fn tar_entry_names(tar_path: &std::path::Path) -> Vec<String> {
-    use tokio_stream::StreamExt;
-    let f = tokio::fs::File::open(tar_path).await.unwrap();
-    let mut archive = tokio_tar::Archive::new(f);
-    let mut names = Vec::new();
-    let mut entries = archive.entries().unwrap();
-    while let Some(e) = entries.next().await {
-        let e = e.unwrap();
-        names.push(e.path().unwrap().to_string_lossy().to_string());
-    }
-    names
+    let mut archive = tar::Archive::new(std::fs::File::open(tar_path).unwrap());
+    archive
+        .entries()
+        .unwrap()
+        .map(|e| e.unwrap().path().unwrap().to_string_lossy().to_string())
+        .collect()
 }
 
 #[tokio::test]

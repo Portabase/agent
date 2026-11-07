@@ -67,6 +67,9 @@ pub async fn build_client(cfg: &DatabaseConfig, database: Option<&str>) -> Resul
     }
     config.authentication(AuthMethod::sql_server(&cfg.username, &cfg.password));
     config.trust_cert();
+    // BACKUP/RESTORE DATABASE send nothing until they finish; tiberius 0.13's
+    // default 30 s per-round-trip bound would abort them on large databases.
+    config.command_timeout(None);
 
     let tcp = TcpStream::connect(config.get_addr()).await?;
     tcp.set_nodelay(true)?;
