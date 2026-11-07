@@ -39,7 +39,7 @@ async-stream = "0.3.6"
 uuid = { version = "1.20.0", features = ["v4"] }
 tokio-util = { version = "0.7.18", features = ["compat", "io"] }
 tiberius = { version = "0.12", default-features = false, features = ["rustls", "chrono"] }
-aws-sdk-s3 = { version = "1.122.0", features = ["behavior-version-latest"] }
+aws-sdk-s3 = { version = "1.122.0", default-features = false, features = ["behavior-version-latest", "sigv4a", "http-1x", "default-https-client", "rt-tokio"] }
 azure_core = "1.0.0"
 azure_storage_blob = "1.0.0"
 google-cloud-storage = "1.15"
