@@ -322,3 +322,45 @@ async fn s3_targets_host_one_sync_replica_per_channel() {
         assert!(listed.contains("a.txt") && listed.contains("docs/b.txt"), "{bucket}: {listed}");
     }
 }
+
+#[tokio::test]
+async fn drive_target_lets_rclone_refresh_the_access_token() {
+    use wiremock::matchers::{body_string_contains, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let token_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .and(body_string_contains("grant_type=refresh_token"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(json!({ "error": "invalid_grant" })))
+        .mount(&token_server)
+        .await;
+
+    let target = rclone_target(&storage(
+        "google-drive",
+        json!({
+            "clientId": "cid.apps.googleusercontent.com",
+            "clientSecret": "csecret",
+            "refreshToken": "1//refresh",
+            "folderId": "folder123",
+        }),
+    ))
+    .unwrap();
+    // Point the OAuth refresh at the mock instead of Google.
+    let config = write_config(&format!("{}token_url = {}/token\n", target.config_text, token_server.uri())).unwrap();
+
+    let output = tokio::process::Command::new("rclone")
+        .arg("--config")
+        .arg(config.path())
+        .args(["--retries", "1", "--low-level-retries", "1", "lsd", "google-drive:"])
+        .output()
+        .await
+        .expect("rclone binary");
+
+    let refresh_attempts = token_server.received_requests().await.unwrap().len();
+    assert!(
+        refresh_attempts > 0,
+        "rclone never tried to refresh the token: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

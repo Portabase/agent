@@ -105,9 +105,12 @@ fn gcs(c: GoogleCloudStorageProviderConfig) -> Result<RcloneTarget> {
 }
 
 fn drive(c: GoogleDriveProviderConfig) -> Result<RcloneTarget> {
+    // rclone only refreshes a token that has an access token and a past expiry: an
+    // empty access token reads as "no refresh token", and a zero expiry as "never
+    // expires". Hand it an already-expired placeholder so it refreshes first.
     let token = serde_json::json!({
-        "access_token": "",
-        "expiry": "0001-01-01T00:00:00Z",
+        "access_token": "expired",
+        "expiry": "2000-01-01T00:00:00Z",
         "refresh_token": c.refresh_token,
         "token_type": "Bearer",
     });
