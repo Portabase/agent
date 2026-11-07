@@ -34,36 +34,42 @@ SEED_FILE=$(mktemp /tmp/seed.XXXX.js)
 cat <<EOF > "$SEED_FILE"
 db = connect("$URI");
 
-// Drop collections if exist
-if (db.users) db.users.drop();
-if (db.products) db.products.drop();
-
-// Generate users
-const users = [];
-for (let i = 1; i <= $NUM_USERS; i++) {
-    users.push({
-        username: "user" + i,
-        email: "user" + i + "@example.com",
-        age: Math.floor(Math.random() * 60) + 18,
-        active: Math.random() > 0.5,
-        createdAt: new Date()
-    });
+function seed(name, count, build) {
+    const collection = db.getCollection(name);
+    collection.drop();
+    const documents = [];
+    for (let i = 1; i <= count; i++) documents.push(build(i));
+    collection.insertMany(documents);
+    return documents.length;
 }
-db.users.insertMany(users);
 
-// Generate products
-const products = [];
-for (let i = 1; i <= Math.floor($NUM_USERS/10); i++) {
-    products.push({
-        name: "Product " + i,
-        price: parseFloat((Math.random()*100).toFixed(2)),
-        stock: Math.floor(Math.random()*500),
-        createdAt: new Date()
-    });
-}
-db.products.insertMany(products);
+const noise = (words) => Array.from({ length: words }, () => Math.random().toString(36).slice(2)).join("");
 
-print("Seed complete: " + users.length + " users, " + products.length + " products.");
+const users = seed("users", $NUM_USERS, (i) => ({
+    username: "user" + i,
+    email: "user" + i + "@example.com",
+    age: Math.floor(Math.random() * 60) + 18,
+    active: Math.random() > 0.5,
+    createdAt: new Date()
+}));
+
+const products = seed("products", Math.floor($NUM_USERS/10), (i) => ({
+    name: "Product " + i,
+    price: parseFloat((Math.random()*100).toFixed(2)),
+    stock: Math.floor(Math.random()*500),
+    createdAt: new Date()
+}));
+
+const excludable = {
+    events: seed("events", $NUM_USERS*4, (i) => ({ user: "user" + (i % $NUM_USERS + 1), type: "page_view", payload: noise(40), createdAt: new Date() })),
+    sessions: seed("sessions", $NUM_USERS*2, (i) => ({ user: "user" + (i % $NUM_USERS + 1), token: noise(8), expiresAt: new Date(Date.now() + 3600000) })),
+    cache_pages: seed("cache_pages", $NUM_USERS, (i) => ({ key: "/page/" + i, html: noise(80) })),
+    cache_api: seed("cache_api", Math.floor($NUM_USERS/2), (i) => ({ key: "/api/" + i, body: noise(40) })),
+    tmp_import: seed("tmp_import", Math.floor($NUM_USERS/2), (i) => ({ row: i, raw: noise(20) }))
+};
+
+print("Seed complete: " + users + " users, " + products + " products.");
+print("Collections for exclude_collections / exclude_collections_with_prefix: " + JSON.stringify(excludable));
 EOF
 
 docker cp "$SEED_FILE" "$MONGO_CONTAINER:/seed.js"

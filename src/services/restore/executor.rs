@@ -20,23 +20,32 @@ impl RestoreService {
     ) -> Result<()> {
         let logger = Arc::new(JobLogger::new());
         let start = Instant::now();
+        let generated_id = cfg.generated_id.clone();
 
         logger.log("info", "Database restoration job started".to_string());
 
-        let temp_dir = TempDir::new()?;
-        let tmp_path = temp_dir.path();
+        let outcome = async {
+            let temp_dir = TempDir::new()?;
+            let tmp_path = temp_dir.path();
 
-        logger.log("info", format!("Created temp directory {}", tmp_path.display()));
+            logger.log("info", format!("Created temp directory {}", tmp_path.display()));
 
-        let downloaded = self
-            .download_backup(&file_url, tmp_path, Arc::clone(&logger), expected_size)
-            .await?;
+            let downloaded = self
+                .download_backup(&file_url, tmp_path, Arc::clone(&logger), expected_size)
+                .await?;
 
-        let backup_file = self
-            .prepare_archive(downloaded, tmp_path, &cfg.db_type, Arc::clone(&logger))
-            .await?;
+            let backup_file = self
+                .prepare_archive(downloaded, tmp_path, &cfg.db_type, Arc::clone(&logger))
+                .await?;
 
-        let result = self.run_restore(cfg, backup_file, Arc::clone(&logger)).await?;
+            self.run_restore(cfg, backup_file, Arc::clone(&logger)).await
+        }
+        .await;
+
+        let result = outcome.unwrap_or_else(|error| {
+            logger.log("error", format!("Database restore failed: {error:#}"));
+            RestoreResult { generated_id, status: "failed".into() }
+        });
 
         logger.log("info", "Database restore job finished".to_string());
 

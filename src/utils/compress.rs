@@ -66,8 +66,15 @@ pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Arc<JobLogger>) ->
     }
 
     let tar_gz_path = file.with_extension("").with_extension("tar.gz");
+    tar_gz_file_to(file, &tar_gz_path, logger).await?;
 
-    let output_file = File::create(&tar_gz_path)
+    Ok(CompressionResult {
+        compressed_path: tar_gz_path,
+    })
+}
+
+pub async fn tar_gz_file_to(file: &Path, tar_gz_path: &Path, logger: Arc<JobLogger>) -> Result<()> {
+    let output_file = File::create(tar_gz_path)
         .await
         .map_err(|e| {
             logger.log("error", format!("Failed to create output file {:?}: {}", tar_gz_path, e));
@@ -118,9 +125,7 @@ pub async fn compress_to_tar_gz_large(file: &PathBuf, logger: Arc<JobLogger>) ->
 
     logger.log("info", format!("Compressed {:?} to {:?}", &file, &tar_gz_path));
 
-    Ok(CompressionResult {
-        compressed_path: tar_gz_path,
-    })
+    Ok(())
 }
 
 pub async fn decompress_large_tar_gz(
