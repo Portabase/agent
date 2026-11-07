@@ -1,7 +1,9 @@
 use crate::domain::factory::DatabaseFactory;
+use crate::services::backup::logger::JobLogger;
 use crate::services::config::{DatabaseConfig, DbType};
 use crate::tests::init_tracing_for_test;
 use mongodb::{Client, bson::doc};
+use std::sync::Arc;
 use tempfile::TempDir;
 use testcontainers::ContainerAsync;
 use testcontainers::runners::AsyncRunner;
@@ -27,7 +29,7 @@ async fn create_config() -> (ContainerAsync<Mongo>, DatabaseConfig) {
         password: "".to_string(),
         port,
         host: host.to_string(),
-        generated_id: "96d30a9f-ff4b-47c9-aaab-f3147bb34f16".to_string(),
+        generated_id: uuid::Uuid::new_v4().to_string(),
         path: "".to_string(),
         max_packet_size: "".to_string(),
         volume_name: "".to_string(),
@@ -99,6 +101,52 @@ async fn mongodb_backup_restore_test() {
             assert!(false)
         }
     }
+}
+
+#[tokio::test]
+async fn mongodb_backup_skips_excluded_collections() {
+    init_tracing_for_test();
+
+    let (_container, mut config) = create_config().await;
+    config
+        .options
+        .insert("exclude_collections".into(), serde_json::json!(["events", " sessions ", ""]));
+    config
+        .options
+        .insert("exclude_collections_with_prefix".into(), serde_json::json!(["cache_", "tmp_"]));
+
+    let client = Client::with_uri_str(format!("mongodb://{}:{}", config.host, config.port))
+        .await
+        .unwrap();
+    let database = client.database(&config.database);
+    let collection = |name: &str| database.collection::<mongodb::bson::Document>(name);
+    for name in ["users", "events", "sessions", "cache_pages", "tmp_import"] {
+        collection(name).insert_one(doc! { "name": name }).await.unwrap();
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let backup_logger = Arc::new(JobLogger::new());
+    let db = DatabaseFactory::create_for_backup(config.clone()).await;
+    let file_path = db.backup(temp_dir.path(), backup_logger.clone()).await.unwrap();
+
+    collection("users").drop().await.unwrap();
+    for name in ["events", "cache_pages"] {
+        collection(name).insert_one(doc! { "name": "kept" }).await.unwrap();
+    }
+
+    let db = DatabaseFactory::create_for_restore(config.clone(), &file_path).await;
+    db.restore(&file_path, Arc::new(JobLogger::new())).await.unwrap();
+
+    assert_eq!(collection("users").count_documents(doc! {}).await.unwrap(), 1);
+    assert_eq!(collection("events").count_documents(doc! {}).await.unwrap(), 2);
+    assert_eq!(collection("cache_pages").count_documents(doc! {}).await.unwrap(), 2);
+
+    let entries = Arc::try_unwrap(backup_logger).expect("single owner").into_entries();
+    assert!(entries.iter().any(|e| e.message
+        == format!(
+            "Excluding from dump of {}: --excludeCollection=events --excludeCollection=sessions --excludeCollectionsWithPrefix=cache_ --excludeCollectionsWithPrefix=tmp_",
+            config.name
+        )));
 }
 
 use crate::domain::mongodb::connection::build_mongo_uri;

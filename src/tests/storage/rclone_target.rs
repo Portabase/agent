@@ -35,8 +35,6 @@ pub(super) fn storage(provider: &str, config: Value) -> DatabaseStorage {
     .unwrap()
 }
 
-/// Temp-file paths differ per run; normalize them before comparing. Keeps the exact
-/// trailing newline so a missing final `\n` fails the golden test.
 pub(super) fn normalize(config_text: &str) -> String {
     config_text
         .split('\n')
@@ -206,7 +204,6 @@ async fn gcs_emulator_target_reaches_fake_gcs_through_rclone() {
     .unwrap();
     let config = write_config(&target.config_text).unwrap();
 
-    // Same per-call override as the s3 test: the mapper never creates buckets on its own.
     let create = format!("{},no_check_bucket=false:{}", target.remote_name, target.base_path);
     rclone_ok(config.path(), &["mkdir", &create]);
     let listing = String::from_utf8(rclone_ok(config.path(), &["lsd", &format!("{}:", target.remote_name)])).unwrap();
@@ -321,4 +318,45 @@ async fn s3_targets_host_one_sync_replica_per_channel() {
         .unwrap();
         assert!(listed.contains("a.txt") && listed.contains("docs/b.txt"), "{bucket}: {listed}");
     }
+}
+
+#[tokio::test]
+async fn drive_target_lets_rclone_refresh_the_access_token() {
+    use wiremock::matchers::{body_string_contains, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let token_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .and(body_string_contains("grant_type=refresh_token"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(json!({ "error": "invalid_grant" })))
+        .mount(&token_server)
+        .await;
+
+    let target = rclone_target(&storage(
+        "google-drive",
+        json!({
+            "clientId": "cid.apps.googleusercontent.com",
+            "clientSecret": "csecret",
+            "refreshToken": "1//refresh",
+            "folderId": "folder123",
+        }),
+    ))
+    .unwrap();
+    let config = write_config(&format!("{}token_url = {}/token\n", target.config_text, token_server.uri())).unwrap();
+
+    let output = tokio::process::Command::new("rclone")
+        .arg("--config")
+        .arg(config.path())
+        .args(["--retries", "1", "--low-level-retries", "1", "lsd", "google-drive:"])
+        .output()
+        .await
+        .expect("rclone binary");
+
+    let refresh_attempts = token_server.received_requests().await.unwrap().len();
+    assert!(
+        refresh_attempts > 0,
+        "rclone never tried to refresh the token: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

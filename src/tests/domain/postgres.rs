@@ -6,7 +6,6 @@ use crate::services::backup::logger::JobLogger;
 use crate::services::config::{DatabaseConfig, DbType};
 use crate::tests::init_tracing_for_test;
 use crate::utils::compress::{compress_to_tar_gz_large, decompress_large_tar_gz};
-use oauth2::url;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;

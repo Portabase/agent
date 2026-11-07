@@ -2,7 +2,7 @@
 
 use crate::services::api::ApiError;
 use base64::{Engine as _, engine::general_purpose};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use reqwest::header::CONTENT_TYPE;
 use reqwest::{Client, Method, RequestBuilder};
 use serde::de::DeserializeOwned;

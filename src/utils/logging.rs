@@ -1,5 +1,5 @@
 use crate::settings::CONFIG;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use time::macros::format_description;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -8,7 +8,7 @@ use tracing_subscriber::{EnvFilter, Registry, fmt, prelude::*};
 
 const LOGS_DIRECTORY: &str = "/var/log/app";
 
-static FILE_APPENDER: Lazy<(NonBlocking, WorkerGuard)> = Lazy::new(|| {
+static FILE_APPENDER: LazyLock<(NonBlocking, WorkerGuard)> = LazyLock::new(|| {
     let file_appender = RollingFileAppender::new(Rotation::DAILY, LOGS_DIRECTORY, "app.log");
     tracing_appender::non_blocking(file_appender)
 });

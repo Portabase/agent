@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use bollard::exec::StartExecResults;
 use bollard::models::ExecConfig;
 use bollard::query_parameters::UploadToContainerOptions;
-use futures_util::StreamExt;
+use futures::StreamExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
