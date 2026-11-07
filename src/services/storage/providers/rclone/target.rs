@@ -11,8 +11,6 @@ use crate::services::storage::providers::sftp::models::SftpProviderConfig;
 use anyhow::{Context, Result, bail};
 use tempfile::TempPath;
 
-/// A storage channel expressed as an rclone remote. Temp files the config refers
-/// to (e.g. an sftp key) live as long as this value.
 pub struct RcloneTarget {
     pub config_text: String,
     pub remote_name: String,
@@ -82,8 +80,6 @@ fn gcs(c: GoogleCloudStorageProviderConfig) -> Result<RcloneTarget> {
         ("project_number", c.project_id.clone()),
     ];
     match c.api_endpoint.as_deref().map(str::trim).filter(|e| !e.is_empty()) {
-        // A custom endpoint means the fake-gcs emulator, which does not verify credentials.
-        // rclone's `endpoint` is the JSON API base path, not the bare host.
         Some(endpoint) => {
             fields.push(("anonymous", "true".to_string()));
             fields.push(("endpoint", format!("{}/storage/v1/", endpoint.trim_end_matches('/'))));
@@ -93,8 +89,6 @@ fn gcs(c: GoogleCloudStorageProviderConfig) -> Result<RcloneTarget> {
             serde_json::to_string(&service_account_key(&c))?,
         )),
     }
-    // Uniform bucket-level access (the GCS default) rejects rclone's default
-    // `predefinedAcl=private`; and native uploads never create the bucket.
     fields.push(("bucket_policy_only", "true".to_string()));
     fields.push(("no_check_bucket", "true".to_string()));
     Ok(RcloneTarget::new(
@@ -105,9 +99,6 @@ fn gcs(c: GoogleCloudStorageProviderConfig) -> Result<RcloneTarget> {
 }
 
 fn drive(c: GoogleDriveProviderConfig) -> Result<RcloneTarget> {
-    // rclone only refreshes a token that has an access token and a past expiry: an
-    // empty access token reads as "no refresh token", and a zero expiry as "never
-    // expires". Hand it an already-expired placeholder so it refreshes first.
     let token = serde_json::json!({
         "access_token": "expired",
         "expiry": "2000-01-01T00:00:00Z",
@@ -121,7 +112,6 @@ fn drive(c: GoogleDriveProviderConfig) -> Result<RcloneTarget> {
         ("scope", "drive.file".to_string()),
         ("token", serde_json::to_string(&token)?),
         ("root_folder_id", c.folder_id),
-        // Deletes (retention, restic prune) must free space, not fill the Drive trash.
         ("use_trash", "false".to_string()),
     ];
     Ok(RcloneTarget::new(build_rclone_config("google-drive", &fields)?, "google-drive", String::new()))

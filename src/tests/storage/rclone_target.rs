@@ -35,8 +35,6 @@ pub(super) fn storage(provider: &str, config: Value) -> DatabaseStorage {
     .unwrap()
 }
 
-/// Temp-file paths differ per run; normalize them before comparing. Keeps the exact
-/// trailing newline so a missing final `\n` fails the golden test.
 pub(super) fn normalize(config_text: &str) -> String {
     config_text
         .split('\n')
@@ -206,7 +204,6 @@ async fn gcs_emulator_target_reaches_fake_gcs_through_rclone() {
     .unwrap();
     let config = write_config(&target.config_text).unwrap();
 
-    // Same per-call override as the s3 test: the mapper never creates buckets on its own.
     let create = format!("{},no_check_bucket=false:{}", target.remote_name, target.base_path);
     rclone_ok(config.path(), &["mkdir", &create]);
     let listing = String::from_utf8(rclone_ok(config.path(), &["lsd", &format!("{}:", target.remote_name)])).unwrap();
@@ -346,7 +343,6 @@ async fn drive_target_lets_rclone_refresh_the_access_token() {
         }),
     ))
     .unwrap();
-    // Point the OAuth refresh at the mock instead of Google.
     let config = write_config(&format!("{}token_url = {}/token\n", target.config_text, token_server.uri())).unwrap();
 
     let output = tokio::process::Command::new("rclone")
