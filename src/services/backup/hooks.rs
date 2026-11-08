@@ -8,6 +8,7 @@ use bollard::models::ExecConfig;
 use futures::StreamExt;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[derive(Debug, Clone)]
 pub struct HookEnv {
@@ -102,9 +103,14 @@ pub async fn run_phase(
             bail!("{label} failed: {e:#}");
         }
         Err(_) => {
-            // ponytail: docker has no exec-kill API, so a timed-out docker exec keeps running in its container.
             logger.log_command(&label, None, Some(-1), Some(duration_ms));
-            bail!("{label} timed out after {}s", timeout.as_secs());
+            match hook.container {
+                Some(_) => bail!(
+                    "{label} timed out after {}s (the command keeps running in its container)",
+                    timeout.as_secs()
+                ),
+                None => bail!("{label} timed out after {}s", timeout.as_secs()),
+            }
         }
     };
 
@@ -144,21 +150,41 @@ async fn run_local(hook: &HookCommand, vars: &[(String, String)]) -> Result<Hook
         .iter()
         .filter_map(|k| std::env::var(k).ok().map(|v| (k.to_string(), v)));
 
-    let out = tokio::process::Command::new(program)
+    let mut child = tokio::process::Command::new(program)
         .args(args)
         .env_clear()
         .envs(passthrough)
         .envs(vars.iter().cloned())
         .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .kill_on_drop(true)
-        .output()
-        .await
+        .spawn()
         .with_context(|| format!("failed to start {program}"))?;
 
-    let mut output = String::from_utf8_lossy(&out.stdout).into_owned();
-    output.push_str(&String::from_utf8_lossy(&out.stderr));
+    let mut stdout = BufReader::new(child.stdout.take().context("stdout not piped")?).lines();
+    let mut stderr = BufReader::new(child.stderr.take().context("stderr not piped")?).lines();
+    let (mut stdout_done, mut stderr_done) = (false, false);
+    let mut output = String::new();
+    loop {
+        let (from_stdout, line) = tokio::select! {
+            line = stdout.next_line(), if !stdout_done => (true, line?),
+            line = stderr.next_line(), if !stderr_done => (false, line?),
+            else => break,
+        };
+        match line {
+            Some(line) => {
+                output.push_str(&line);
+                output.push('\n');
+            }
+            None if from_stdout => stdout_done = true,
+            None => stderr_done = true,
+        }
+    }
+
+    let status = child.wait().await.context("failed to wait for hook")?;
     Ok(HookOutput {
-        exit_code: out.status.code().map(i64::from),
+        exit_code: status.code().map(i64::from),
         output,
     })
 }
