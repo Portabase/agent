@@ -14,11 +14,11 @@ use std::sync::Arc;
 use std::time::Instant;
 use tempfile::TempDir;
 
-fn failed_result(db_cfg: &DatabaseConfig) -> BackupResult {
+fn base_result(db_cfg: &DatabaseConfig, status: JobStatus) -> BackupResult {
     BackupResult {
         generated_id: db_cfg.generated_id.clone(),
         db_type: db_cfg.db_type.clone(),
-        status: "failed".into(),
+        status: status.as_str().into(),
         backup_file: None,
         code: None,
     }
@@ -54,6 +54,7 @@ impl BackupService {
             },
         );
 
+        let failed = base_result(&db_cfg, JobStatus::Failed);
         let outcome = match job_hooks.pre(&logger).await {
             Ok(()) => {
                 self.backup_and_upload(db_cfg, method, storages, encrypt, &engine, &backup_id, &job_hooks, &logger)
@@ -62,15 +63,15 @@ impl BackupService {
             Err(e) => {
                 logger.log("error", format!("Pre-backup hook failed, backup skipped: {e:#}"));
                 job_hooks.post(JobStatus::Failed, &logger).await;
-                Ok((failed_result(&db_cfg), vec![]))
+                Ok((failed.clone(), vec![]))
             }
         };
 
-        let (result, uploads) = match outcome {
-            Ok(done) => done,
+        let (result, uploads, error) = match outcome {
+            Ok((result, uploads)) => (result, uploads, None),
             Err(e) => {
-                job_hooks.finish(JobStatus::Failed, &logger).await;
-                return Err(e);
+                logger.log("error", format!("Backup failed: {e:#}"));
+                (failed, vec![], Some(e))
             }
         };
 
@@ -81,7 +82,7 @@ impl BackupService {
         let logs = Arc::try_unwrap(logger).unwrap_or_else(|_| JobLogger::new()).into_entries();
         self.send_result(result, uploads, &backup_id, logs, duration_ms).await?;
 
-        Ok(())
+        error.map_or(Ok(()), Err)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -100,7 +101,7 @@ impl BackupService {
             if matches!(db_cfg.db_type, DbType::Files) {
                 let uploads = files_engine::run(&self.ctx, &db_cfg, files_engine, &storages, backup_id, logger).await;
                 job_hooks.post(job_status(&uploads), logger).await;
-                let result = BackupResult { status: "success".into(), ..failed_result(&db_cfg) };
+                let result = base_result(&db_cfg, job_status(&uploads));
                 return Ok((result, uploads));
             }
             logger.log("warn", format!("The {engine} method only applies to files sources; making an archive"));
