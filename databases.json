@@ -8,7 +8,42 @@
       "password": "changeme",
       "port": 5432,
       "host": "db-postgres",
-      "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681"
+      "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681",
+      "hooks": {
+        "timeout_secs": 60,
+        "pre": {
+          "container": "db-postgres",
+          "command": [
+            "sh",
+            "-c",
+            "psql -U devuser -d devdb -c \"CREATE TABLE IF NOT EXISTS hook_log (at timestamptz DEFAULT now(), phase text, backup_id text, status text); INSERT INTO hook_log (phase, backup_id) VALUES ('$PORTABASE_PHASE', '$PORTABASE_BACKUP_ID')\""
+          ]
+        },
+        "post": {
+          "container": "db-postgres",
+          "command": [
+            "sh",
+            "-c",
+            "psql -U devuser -d devdb -c \"INSERT INTO hook_log (phase, backup_id, status) VALUES ('$PORTABASE_PHASE', '$PORTABASE_BACKUP_ID', '$PORTABASE_STATUS')\""
+          ]
+        },
+        "on_success": {
+          "container": "db-postgres",
+          "command": [
+            "sh",
+            "-c",
+            "psql -U devuser -d devdb -c \"INSERT INTO hook_log (phase, backup_id, status) VALUES ('$PORTABASE_PHASE', '$PORTABASE_BACKUP_ID', '$PORTABASE_STATUS')\""
+          ]
+        },
+        "on_failure": {
+          "container": "db-postgres",
+          "command": [
+            "sh",
+            "-c",
+            "psql -U devuser -d devdb -c \"INSERT INTO hook_log (phase, backup_id, status) VALUES ('$PORTABASE_PHASE', '$PORTABASE_BACKUP_ID', '$PORTABASE_STATUS')\""
+          ]
+        }
+      }
     },
     {
       "name": "Test database 1 - PostgreSQL - BIS",
@@ -51,8 +86,14 @@
       "host": "db-mongodb",
       "generated_id": "16678147-ff7e-4c97-8c83-0adeff214681",
       "options": {
-        "exclude_collections": ["events", "sessions"],
-        "exclude_collections_with_prefix": ["cache_", "tmp_"]
+        "exclude_collections": [
+          "events",
+          "sessions"
+        ],
+        "exclude_collections_with_prefix": [
+          "cache_",
+          "tmp_"
+        ]
       }
     },
     {
@@ -187,7 +228,11 @@
       "generated_id": "64aeaf80-e03b-4503-a5c1-00a1b829f0e5",
       "options": {
         "method": "archive",
-        "exclude": ["node_modules", "*.tmp", "/cache"],
+        "exclude": [
+          "node_modules",
+          "*.tmp",
+          "/cache"
+        ],
         "one_file_system": false
       }
     },
@@ -198,7 +243,11 @@
       "generated_id": "9093ad85-3f67-489f-9759-aa369572b30d",
       "options": {
         "method": "snapshot",
-        "exclude": ["node_modules", "*.log", "/build"],
+        "exclude": [
+          "node_modules",
+          "*.log",
+          "/build"
+        ],
         "one_file_system": true
       }
     },
@@ -209,7 +258,10 @@
       "generated_id": "353ecc44-7c75-40e7-803e-ac07683c2c05",
       "options": {
         "method": "sync",
-        "exclude": ["*.tmp", "/cache"]
+        "exclude": [
+          "*.tmp",
+          "/cache"
+        ]
       }
     },
     {
@@ -219,7 +271,10 @@
       "generated_id": "86b188ec-e091-496a-8273-05929f13a298",
       "options": {
         "method": "copy",
-        "exclude": ["*.tmp", "/cache"]
+        "exclude": [
+          "*.tmp",
+          "/cache"
+        ]
       }
     }
   ]
