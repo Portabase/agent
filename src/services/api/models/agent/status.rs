@@ -66,7 +66,7 @@ pub struct BackupInfo {
     pub engine: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RestoreFile {
     pub url: String,
     #[serde(default, deserialize_with = "string_or_number_to_string")]

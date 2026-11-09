@@ -1,19 +1,37 @@
 use super::start_physical_cluster;
+use crate::core::context::Context;
 use crate::domain::postgres::cluster::physical::commands::{
     missing_config_files, output_dir, start_commands,
 };
 use crate::domain::postgres::cluster::physical::decision::{decide, Decision};
-use crate::domain::postgres::cluster::physical::{backup, checks, manifest};
+use crate::domain::postgres::cluster::physical::restore::RestoredCluster;
+use crate::domain::postgres::cluster::physical::{backup, checks, manifest, restore};
 use crate::domain::postgres::connection;
+use crate::services::api::ApiClient;
 use crate::services::api::models::agent::backup::ParentOffer;
+use crate::services::api::models::agent::status::RestoreFile;
 use crate::services::backup::logger::JobLogger;
-use crate::services::config::DatabaseConfig;
+use crate::services::config::{DatabaseConfig, DbType};
+use crate::services::restore::RestoreService;
+use crate::settings::CONFIG;
 use crate::tests::init_tracing_for_test;
 use crate::utils::compress::decompress_large_tar_gz;
+use crate::utils::edge_key::EdgeKey;
+use crate::utils::file::encrypt_file_stream_gcm;
+use base64::Engine;
 use chrono::{Duration, TimeZone, Utc};
+use futures::StreamExt;
+use serde_json::{Value, json};
+use std::collections::HashMap;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::TempDir;
+use testcontainers::core::{IntoContainerPort, Mount, WaitFor};
+use testcontainers::runners::AsyncRunner;
+use testcontainers::{GenericImage, ImageExt};
+use wiremock::matchers::{body_partial_json, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const GENERATED_ID: &str = "40875631-e3d2-4dfe-a26b-2a347ecc64fd";
 
@@ -129,32 +147,47 @@ fn timestamp_dir() -> String {
 #[test]
 fn start_commands_for_17() {
     let ts = timestamp_dir();
-    let commands = start_commands(Path::new(&format!("{ts}/data")), 17);
-    assert!(commands.contains(&format!("chown -R 999:999 '{ts}/data'")));
-    assert!(commands.contains(&format!("chmod 700 '{ts}/data'")));
-    assert!(commands.contains(&format!(
-        "docker run -d --name portabase-restore-40875631 -v '{ts}/data':/var/lib/postgresql/data postgres:17"
-    )));
-    assert!(commands.contains(&format!(
-        "/usr/lib/postgresql/17/bin/pg_ctl -D '{ts}/data' start"
-    )));
+    assert_eq!(
+        start_commands(Path::new(&format!("{ts}/data")), 17, GENERATED_ID),
+        [
+            format!("chown -R 999:999 '{ts}/data'"),
+            format!("chmod 700 '{ts}/data'"),
+            format!(
+                "docker run -d --name portabase-restore-40875631 -v '{ts}/data':/var/lib/postgresql/data postgres:17"
+            ),
+            format!(
+                "sudo chown -R postgres:postgres '{ts}/data' && sudo chmod 700 '{ts}/data' && sudo -u postgres /usr/lib/postgresql/17/bin/pg_ctl -D '{ts}/data' start"
+            ),
+        ]
+    );
 }
 
 #[test]
 fn start_commands_for_18_mounts_parent() {
     let ts = timestamp_dir();
-    let commands = start_commands(Path::new(&format!("{ts}/18/docker")), 18);
-    assert!(commands.contains(&format!(
-        "docker run -d --name portabase-restore-40875631 -v '{ts}':/var/lib/postgresql postgres:18"
-    )));
+    assert_eq!(
+        start_commands(Path::new(&format!("{ts}/18/docker")), 18, GENERATED_ID),
+        [
+            format!("chown -R 999:999 '{ts}'"),
+            format!("chmod 700 '{ts}/18/docker'"),
+            format!(
+                "docker run -d --name portabase-restore-40875631 -v '{ts}':/var/lib/postgresql postgres:18"
+            ),
+            format!(
+                "sudo chown -R postgres:postgres '{ts}/18/docker' && sudo chmod 700 '{ts}/18/docker' && sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D '{ts}/18/docker' start"
+            ),
+        ]
+    );
 }
 
 #[test]
 fn start_commands_quote_paths_with_spaces() {
-    let commands = start_commands(Path::new("/my restore/it's/data"), 17);
-    assert!(commands
-        .iter()
-        .any(|command| command.contains(r#"'/my restore/it'\''s/data'"#)));
+    let commands = start_commands(Path::new("/my restore/it's/data"), 17, GENERATED_ID);
+    assert!(
+        commands
+            .iter()
+            .all(|command| command.contains(r#"'/my restore/it'\''s/data'"#))
+    );
 }
 
 #[test]
@@ -446,4 +479,363 @@ fn is_compression_unsupported_matches_build_errors() {
     ] {
         assert_eq!(backup::is_compression_unsupported(stderr), expected, "{stderr}");
     }
+}
+
+const RESTORE_PATH_REFUSAL: &str = "RESTORE_PATH is not set or not writable; a physical restore needs a folder shared with the host:
+volumes:
+  - ./restores:/restores
+environment:
+  RESTORE_PATH: /restores";
+
+fn api_context(server: &MockServer, master_key_b64: String) -> Arc<Context> {
+    Arc::new(Context {
+        edge_key: EdgeKey {
+            server_url: server.uri(),
+            agent_id: "agent-1".to_string(),
+            master_key_b64,
+        },
+        api: ApiClient::new(server.uri()),
+    })
+}
+
+#[tokio::test]
+async fn restore_refuses_without_restore_path() {
+    init_tracing_for_test();
+    let parent = TempDir::new().unwrap();
+    let missing = parent.path().join("missing");
+    let read_only = parent.path().join("read-only");
+    std::fs::create_dir(&read_only).unwrap();
+    std::fs::set_permissions(&read_only, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let regular_file = parent.path().join("file");
+    std::fs::write(&regular_file, b"").unwrap();
+
+    let mut refused_paths = vec![None, Some(""), missing.to_str(), regular_file.to_str()];
+    if std::fs::write(read_only.join("probe"), b"").is_err() {
+        refused_paths.push(read_only.to_str());
+    }
+    for restore_path in refused_paths {
+        let message = restore::ensure_restore_root(restore_path)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(message, RESTORE_PATH_REFUSAL, "{restore_path:?}");
+    }
+
+    let writable = TempDir::new().unwrap();
+    assert_eq!(
+        restore::ensure_restore_root(writable.path().to_str()).unwrap(),
+        writable.path()
+    );
+    assert_eq!(std::fs::read_dir(writable.path()).unwrap().count(), 0);
+
+    assert_eq!(
+        CONFIG.restore_path, None,
+        "run this test without RESTORE_PATH"
+    );
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/agent/agent-1/restore"))
+        .and(body_partial_json(
+            json!({ "generatedId": GENERATED_ID, "status": "failed" }),
+        ))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let service = RestoreService::new(api_context(&server, String::new()));
+    let cfg = DatabaseConfig {
+        name: "cluster".to_string(),
+        database: "postgres".to_string(),
+        db_type: DbType::PostgresqlCluster,
+        username: String::new(),
+        password: String::new(),
+        port: 5432,
+        host: "localhost".to_string(),
+        generated_id: GENERATED_ID.to_string(),
+        path: String::new(),
+        max_packet_size: String::new(),
+        volume_name: String::new(),
+        container_name: None,
+        options: HashMap::new(),
+    };
+    let files = vec![RestoreFile {
+        url: format!("{}/never/{GENERATED_ID}.tar.gz", server.uri()),
+        size: None,
+    }];
+    service.execute_physical_restore(cfg, files).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let report: Value = requests
+        .iter()
+        .find(|request| request.url.path() == "/agent/agent-1/restore")
+        .unwrap()
+        .body_json()
+        .unwrap();
+    assert!(
+        report["logs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| entry["message"].as_str())
+            .any(|message| message.ends_with(RESTORE_PATH_REFUSAL))
+    );
+}
+
+fn fake_bundle(dir: &Path) -> PathBuf {
+    let data_dir = dir.join("data");
+    let backup_dir = dir.join("backup");
+    std::fs::create_dir_all(&data_dir).unwrap();
+    std::fs::create_dir_all(&backup_dir).unwrap();
+    std::fs::write(data_dir.join("PG_VERSION"), "17\n").unwrap();
+    let mut base = tar::Builder::new(std::fs::File::create(backup_dir.join("base.tar")).unwrap());
+    base.append_dir_all("", &data_dir).unwrap();
+    base.finish().unwrap();
+    tar::Builder::new(std::fs::File::create(backup_dir.join("pg_wal.tar")).unwrap())
+        .finish()
+        .unwrap();
+    std::fs::write(backup_dir.join("backup_manifest"), "{}").unwrap();
+    let bundle = dir.join(format!("{GENERATED_ID}.tar.gz"));
+    let mut bundle_builder = tar::Builder::new(flate2::write::GzEncoder::new(
+        std::fs::File::create(&bundle).unwrap(),
+        flate2::Compression::none(),
+    ));
+    bundle_builder.append_dir_all("", &backup_dir).unwrap();
+    bundle_builder.into_inner().unwrap().finish().unwrap();
+    bundle
+}
+
+#[tokio::test]
+async fn rebuild_refuses_non_empty_output() {
+    init_tracing_for_test();
+    let work_dir = TempDir::new().unwrap();
+    let bundle = fake_bundle(work_dir.path());
+    let restore_root = TempDir::new().unwrap();
+    let now = Utc::now();
+    let occupied: Vec<PathBuf> = (-2..=30)
+        .map(|offset| {
+            let output = output_dir(
+                restore_root.path(),
+                GENERATED_ID,
+                now + Duration::seconds(offset),
+                17,
+            );
+            std::fs::create_dir_all(&output).unwrap();
+            std::fs::write(output.join("keep"), b"previous restore").unwrap();
+            output
+        })
+        .collect();
+
+    let logger = Arc::new(JobLogger::new());
+    let message = restore::rebuild(&[bundle], restore_root.path(), GENERATED_ID, logger.clone())
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(message.starts_with("Output directory "), "{message}");
+    assert!(
+        message.ends_with(" already exists and is not empty; nothing was overwritten"),
+        "{message}"
+    );
+    for output in occupied {
+        assert_eq!(
+            std::fs::read(output.join("keep")).unwrap(),
+            b"previous restore"
+        );
+        assert_eq!(std::fs::read_dir(&output).unwrap().count(), 1);
+    }
+    assert!(
+        !log_messages(logger)
+            .iter()
+            .any(|message| message.contains("pg_combinebackup"))
+    );
+}
+
+async fn backup_chain(cfg: &DatabaseConfig) -> (Vec<PathBuf>, Vec<TempDir>) {
+    let facts = checks::preflight(cfg).await.unwrap();
+    let mut bundles = Vec::new();
+    let mut work_dirs = Vec::new();
+    let mut parent_manifest: Option<Vec<u8>> = None;
+    for table in ["rows_a", "rows_b", "rows_c"] {
+        let work_dir = TempDir::new().unwrap();
+        let decision = parent_manifest
+            .as_deref()
+            .map_or_else(full_decision, incremental_decision);
+        let taken = backup::run(
+            cfg,
+            &facts,
+            decision,
+            work_dir.path(),
+            Arc::new(JobLogger::new()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(taken.parent_backup_id.is_some(), parent_manifest.is_some());
+        execute(
+            cfg,
+            &format!("CREATE TABLE {table} AS SELECT generate_series(1, 1000) AS id"),
+        )
+        .await;
+        parent_manifest = Some(taken.manifest);
+        bundles.push(taken.bundle);
+        work_dirs.push(work_dir);
+    }
+    (bundles, work_dirs)
+}
+
+fn logged_mount(messages: &[String]) -> (String, String) {
+    let docker_run = messages
+        .iter()
+        .find(|message| message.starts_with("docker run "))
+        .unwrap_or_else(|| panic!("{messages:#?}"));
+    let (source, target) = docker_run
+        .split_once(" -v '")
+        .and_then(|(_, mount)| mount.split_once("':"))
+        .unwrap();
+    (
+        source.to_string(),
+        target.split_whitespace().next().unwrap().to_string(),
+    )
+}
+
+async fn assert_restored_tables(
+    restored: &RestoredCluster,
+    messages: &[String],
+    source_cfg: &DatabaseConfig,
+    expected_tables: &[&str],
+) {
+    assert!(messages.iter().any(|message| message
+        == &format!(
+            "Restored data directory: {}. In a container, this is the host folder mounted at RESTORE_PATH.",
+            restored.data_dir.display()
+        )));
+    for command in start_commands(&restored.data_dir, restored.major, GENERATED_ID) {
+        assert!(messages.contains(&command), "{command}");
+    }
+    assert!(restored.size > 0);
+
+    let (source, target) = logged_mount(messages);
+    let container = GenericImage::new("postgres", &restored.major.to_string())
+        .with_exposed_port(5432.tcp())
+        .with_wait_for(WaitFor::message_on_stderr(
+            "database system is ready to accept connections",
+        ))
+        .with_mount(Mount::bind_mount(source, target))
+        .start()
+        .await
+        .unwrap();
+    let restored_cfg = DatabaseConfig {
+        host: container.get_host().await.unwrap().to_string(),
+        port: container.get_host_port_ipv4(5432).await.unwrap(),
+        ..source_cfg.clone()
+    };
+    let client = connection::connect(&restored_cfg).await.unwrap();
+    let tables: Vec<String> = client
+        .query(
+            "SELECT tablename::text FROM pg_tables WHERE schemaname = 'public' ORDER BY 1",
+            &[],
+        )
+        .await
+        .unwrap()
+        .iter()
+        .map(|row| row.get(0))
+        .collect();
+    assert_eq!(tables, expected_tables);
+    for table in expected_tables {
+        let count: i64 = client
+            .query_one(&format!("SELECT count(*) FROM {table}"), &[])
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(count, 1000, "{table}");
+    }
+}
+
+async fn chain_restore_round_trip(tag: &str) {
+    init_tracing_for_test();
+    let (_container, cfg) = start_physical_cluster(tag, true).await;
+    let (bundles, _work_dirs) = backup_chain(&cfg).await;
+    let restore_root = TempDir::new().unwrap();
+    let logger = Arc::new(JobLogger::new());
+    let restored = restore::rebuild(&bundles, restore_root.path(), GENERATED_ID, logger.clone())
+        .await
+        .unwrap();
+    assert_eq!(restored.major.to_string(), tag);
+    assert!(
+        restored
+            .data_dir
+            .starts_with(restore_root.path().join(GENERATED_ID))
+    );
+    let messages = log_messages(logger);
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.starts_with("Executed: pg_combinebackup"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.starts_with("Executed: pg_verifybackup"))
+    );
+    assert_restored_tables(&restored, &messages, &cfg, &["rows_a", "rows_b"]).await;
+}
+
+#[tokio::test]
+async fn chain_restore_round_trip_pg17() {
+    chain_restore_round_trip("17").await;
+}
+
+#[tokio::test]
+async fn chain_restore_round_trip_pg18() {
+    chain_restore_round_trip("18").await;
+}
+
+#[tokio::test]
+async fn encrypted_chain_restores() {
+    init_tracing_for_test();
+    let (_container, cfg) = start_physical_cluster("17", true).await;
+    let (bundles, _work_dirs) = backup_chain(&cfg).await;
+    let master_key_b64 = base64::engine::general_purpose::STANDARD.encode([7u8; 32]);
+    let server = MockServer::start().await;
+    let mut files = Vec::new();
+    for (index, bundle) in bundles[..2].iter().enumerate() {
+        let encrypted = encrypt_file_stream_gcm(bundle.clone(), master_key_b64.clone())
+            .await
+            .unwrap()
+            .map(|chunk| chunk.unwrap().to_vec())
+            .collect::<Vec<_>>()
+            .await
+            .concat();
+        let file_path = format!("/{index}/{GENERATED_ID}.tar.gz.enc");
+        Mock::given(method("GET"))
+            .and(path(file_path.clone()))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(encrypted.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        files.push(RestoreFile {
+            url: format!("{}{file_path}", server.uri()),
+            size: Some(encrypted.len().to_string()),
+        });
+    }
+
+    let service = RestoreService::new(api_context(&server, master_key_b64));
+    let restore_root = TempDir::new().unwrap();
+    let logger = Arc::new(JobLogger::new());
+    let restored = service
+        .rebuild_chain(files, restore_root.path(), GENERATED_ID, logger.clone())
+        .await
+        .unwrap();
+    let messages = log_messages(logger);
+    assert_eq!(
+        messages
+            .iter()
+            .filter(|message| message.starts_with("Decrypting "))
+            .count(),
+        2
+    );
+    assert_restored_tables(&restored, &messages, &cfg, &["rows_a"]).await;
 }

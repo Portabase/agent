@@ -21,16 +21,8 @@ fn quote(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
 }
 
-pub fn start_commands(data_dir: &Path, major: u32) -> Vec<String> {
-    let container_suffix: String = data_dir
-        .components()
-        .rev()
-        .filter_map(|component| component.as_os_str().to_str())
-        .find(|name| name.len() == 36)
-        .unwrap_or("restore")
-        .chars()
-        .take(8)
-        .collect();
+pub fn start_commands(data_dir: &Path, major: u32, generated_id: &str) -> Vec<String> {
+    let container_suffix: String = generated_id.chars().take(8).collect();
     let (mount_source, mount_target) = if major >= 18 {
         (
             data_dir.parent().and_then(Path::parent).unwrap_or(data_dir),
@@ -39,16 +31,16 @@ pub fn start_commands(data_dir: &Path, major: u32) -> Vec<String> {
     } else {
         (data_dir, "/var/lib/postgresql/data")
     };
+    let data_dir = quote(data_dir);
     vec![
         format!("chown -R 999:999 {}", quote(mount_source)),
-        format!("chmod 700 {}", quote(data_dir)),
+        format!("chmod 700 {data_dir}"),
         format!(
             "docker run -d --name portabase-restore-{container_suffix} -v {}:{mount_target} postgres:{major}",
             quote(mount_source)
         ),
         format!(
-            "/usr/lib/postgresql/{major}/bin/pg_ctl -D {} start",
-            quote(data_dir)
+            "sudo chown -R postgres:postgres {data_dir} && sudo chmod 700 {data_dir} && sudo -u postgres /usr/lib/postgresql/{major}/bin/pg_ctl -D {data_dir} start"
         ),
     ]
 }

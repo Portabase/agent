@@ -237,7 +237,11 @@ fn unpack(archive: &Path, target: &Path) -> Result<()> {
         .with_context(|| format!("could not extract {}", archive.display()))
 }
 
-fn run_logged(mut command: Command, label: &str, logger: &JobLogger) -> Result<(bool, String)> {
+pub(super) fn run_logged(
+    mut command: Command,
+    label: &str,
+    logger: &JobLogger,
+) -> Result<(bool, String)> {
     let start = Instant::now();
     let result = command.output();
     let duration_ms = start.elapsed().as_millis() as f64;
