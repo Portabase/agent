@@ -3,6 +3,7 @@ use crate::services::backup::logger::JobLogger;
 use crate::services::config::{DatabaseConfig, DbType};
 use crate::tests::init_tracing_for_test;
 
+use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -79,7 +80,7 @@ fn cluster_config(engine_options: &[(&str, &str)]) -> DatabaseConfig {
     cfg
 }
 
-async fn update_body_for_engine(engine: &str, cfg: DatabaseConfig) -> Option<serde_json::Value> {
+async fn update_body_for_engine(engine: &str, cfg: DatabaseConfig) -> (Result<()>, Vec<wiremock::Request>) {
     use crate::services::backup::BackupService;
     use crate::tests::services::backup_uploader_tests::ctx_pointing_at;
     use crate::utils::common::BackupMethod;
@@ -106,7 +107,7 @@ async fn update_body_for_engine(engine: &str, cfg: DatabaseConfig) -> Option<ser
         .await;
 
     let service = BackupService::new(Arc::new(ctx_pointing_at(server.uri())));
-    let _ = service
+    let outcome = service
         .execute_backup(
             "routing-test-gen".to_string(),
             cfg,
@@ -118,17 +119,19 @@ async fn update_body_for_engine(engine: &str, cfg: DatabaseConfig) -> Option<ser
         .await;
 
     let requests = server.received_requests().await.unwrap();
-    requests
-        .iter()
-        .find(|request| request.method.as_str() == "PATCH")
-        .map(|update| serde_json::from_slice(&update.body).unwrap())
+    (outcome, requests)
 }
 
 #[tokio::test]
 async fn physical_source_routes_to_physical_branch() {
     init_tracing_for_test();
 
-    let physical = update_body_for_engine("physical", cluster_config(&[])).await.expect("an update request");
+    let (_, requests) = update_body_for_engine("physical", cluster_config(&[])).await;
+    let update = requests
+        .iter()
+        .find(|request| request.method.as_str() == "PATCH")
+        .expect("an update request");
+    let physical: serde_json::Value = serde_json::from_slice(&update.body).unwrap();
     assert_eq!(physical["status"], "failed");
     assert!(physical.get("manifest").is_none());
     assert!(
@@ -145,16 +148,23 @@ async fn physical_source_routes_to_physical_branch() {
 async fn archive_cluster_source_does_not_take_the_physical_branch() {
     init_tracing_for_test();
 
-    let archive = update_body_for_engine("archive", cluster_config(&[("method", "physical")])).await;
-    if let Some(archive) = archive {
-        assert!(archive.get("manifest").is_none());
-        assert!(
-            !archive["logs"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|entry| entry["message"].as_str().unwrap().contains("Physical backup")),
-            "{archive}"
-        );
-    }
+    let (outcome, requests) = update_body_for_engine("archive", cluster_config(&[("method", "physical")])).await;
+    assert!(outcome.is_ok());
+    assert!(requests.iter().any(|request| request.method.as_str() == "POST"));
+    let update = requests
+        .iter()
+        .find(|request| request.method.as_str() == "PATCH")
+        .expect("the archive path reports its failure");
+    let body: serde_json::Value = serde_json::from_slice(&update.body).unwrap();
+    assert_eq!(body["status"], "failed");
+    assert!(body.get("manifest").is_none());
+    assert!(body.get("parentBackupId").is_none());
+    let messages: Vec<&str> = body["logs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["message"].as_str().unwrap())
+        .collect();
+    assert!(messages.contains(&"Database unreachable, backup aborted"), "{messages:?}");
+    assert!(!messages.iter().any(|message| message.starts_with("Physical backup failed:")), "{messages:?}");
 }

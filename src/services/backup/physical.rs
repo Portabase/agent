@@ -41,11 +41,7 @@ impl BackupService {
             .await;
 
         let (uploads, physical) = match outcome {
-            Ok((physical_backup, work_dir)) => {
-                let physical = PhysicalOutcome {
-                    parent_backup_id: physical_backup.parent_backup_id.clone(),
-                    manifest: manifest::encode(&physical_backup.manifest)?,
-                };
+            Ok((physical_backup, physical, work_dir)) => {
                 result.status = "success".into();
                 result.backup_file = Some(physical_backup.bundle);
                 let uploads = self
@@ -82,7 +78,7 @@ impl BackupService {
         generated_id: &str,
         backup: &BackupResponse,
         logger: Arc<JobLogger>,
-    ) -> Result<(backup::PhysicalBackup, TempDir)> {
+    ) -> Result<(backup::PhysicalBackup, PhysicalOutcome, TempDir)> {
         let facts = checks::preflight(db_cfg).await?;
         let decision = decide(
             backup.parent.as_ref(),
@@ -103,6 +99,11 @@ impl BackupService {
         if let Err(error) = FileLock::release(generated_id).await {
             tracing::warn!("Failed to release the backup lock: {error}");
         }
-        Ok((physical_backup?, work_dir))
+        let physical_backup = physical_backup?;
+        let physical = PhysicalOutcome {
+            parent_backup_id: physical_backup.parent_backup_id.clone(),
+            manifest: manifest::encode(&physical_backup.manifest)?,
+        };
+        Ok((physical_backup, physical, work_dir))
     }
 }
