@@ -20,7 +20,11 @@ pub async fn preflight(cfg: &DatabaseConfig) -> Result<ServerFacts> {
     if version_num < 170000 {
         bail!(
             "Physical backups need PostgreSQL 17 or later (server is {}). Use the Archive method for this source.",
-            version.try_get::<_, String>(1)?
+            version
+                .try_get::<_, String>(1)?
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
         );
     }
 

@@ -210,12 +210,12 @@ async fn preflight_rejects_pg16() {
     init_tracing_for_test();
     let (_container, cfg) = start_physical_cluster("16", false).await;
     let message = preflight_error(&cfg).await;
+    let version = message
+        .strip_prefix("Physical backups need PostgreSQL 17 or later (server is ")
+        .and_then(|rest| rest.strip_suffix("). Use the Archive method for this source."))
+        .unwrap_or_else(|| panic!("{message}"));
     assert!(
-        message.starts_with("Physical backups need PostgreSQL 17 or later (server is 16."),
-        "{message}"
-    );
-    assert!(
-        message.ends_with("). Use the Archive method for this source."),
+        version.starts_with("16.") && !version.contains(' '),
         "{message}"
     );
 }
@@ -308,15 +308,11 @@ async fn full_then_incremental_produce_verified_bundles() {
 
     let full_size = std::fs::metadata(&full.bundle).unwrap().len();
     let incremental_size = std::fs::metadata(&incremental.bundle).unwrap().len();
-    println!("full bundle {full_size} bytes, incremental bundle {incremental_size} bytes");
     assert!(incremental_size < full_size);
 
     let unpacked = TempDir::new().unwrap();
     let names = unpack_bundle(&incremental.bundle, unpacked.path()).await;
-    assert_eq!(names.len(), 3, "{names:?}");
-    assert!(names.contains(&"backup_manifest".to_string()));
-    assert!(names.iter().any(|name| name.starts_with("base.tar")));
-    assert!(names.iter().any(|name| name.starts_with("pg_wal.tar")));
+    assert_eq!(names, ["backup_manifest", "base.tar.zst", "pg_wal.tar.zst"]);
     assert_eq!(
         std::fs::read(unpacked.path().join("backup_manifest")).unwrap(),
         incremental.manifest
@@ -353,14 +349,16 @@ async fn incremental_after_server_reinit_falls_back_to_full() {
     assert!(result.bundle.is_file());
     assert_eq!(manifest::system_identifier(&result.manifest), new_facts.system_identifier);
     let messages = log_messages(logger);
-    let refusal = messages
+    let fallback = messages
         .iter()
-        .find(|message| message.ends_with("; taking a full backup instead"))
+        .find(|message| message.ends_with("); taking a full backup instead"))
         .unwrap_or_else(|| panic!("{messages:#?}"));
-    println!("{refusal}");
-    assert!(refusal.starts_with(
-        "Incremental refused by the server (pg_basebackup: error: could not upload manifest: ERROR:  system identifier in backup manifest is"
-    ));
+    assert!(
+        fallback.starts_with(
+            "Incremental backup failed (pg_basebackup: error: could not upload manifest: ERROR:  system identifier in backup manifest is"
+        ),
+        "{fallback}"
+    );
 }
 
 #[tokio::test]
@@ -405,42 +403,35 @@ async fn corrupted_incremental_fails_verification() {
     let message = backup::verify(backup_dir.path(), &extracted, facts.major, &logger)
         .unwrap_err()
         .to_string();
-    println!("{message}");
     assert!(message.starts_with("pg_verifybackup failed"), "{message}");
     assert!(message.contains("checksum mismatch"), "{message}");
 }
 
 #[test]
-fn is_chain_refusal_matches_observed_messages() {
+fn is_compression_unsupported_matches_build_errors() {
     for (stderr, expected) in [
         (
+            "pg_basebackup: error: could not initiate base backup: ERROR:  zstd compression is not supported by this build",
+            true,
+        ),
+        (
+            "pg_basebackup: error: could not initiate base backup: ERROR:  gzip compression is not supported by this build",
+            true,
+        ),
+        (
+            "pg_basebackup: error: invalid compression specification: this build does not support compression with zstd",
+            true,
+        ),
+        (
             "pg_basebackup: error: could not upload manifest: ERROR:  system identifier in backup manifest is 7706206809223479334, but database system identifier is 7706206809830854694",
-            true,
-        ),
-        (
-            "pg_basebackup: error: could not initiate base backup: ERROR:  WAL summaries are required on timeline 1 from 0/B000028 to 0/E000028, but the summaries for that timeline and LSN range are incomplete",
-            true,
-        ),
-        (
-            "pg_basebackup: error: could not initiate base backup: ERROR:  WAL summaries are required on timeline 1 from 0/B000028 to 0/E000028, but no summaries for that timeline and LSN range exist",
-            true,
-        ),
-        (
-            "pg_basebackup: error: could not initiate base backup: ERROR:  manifest requires WAL from initial timeline 1 starting at 0/2000028, but that timeline begins at 0/3000000",
-            true,
-        ),
-        (
-            "pg_basebackup: error: could not initiate base backup: ERROR:  timeline 2 found in manifest, but not in this server's history",
-            true,
+            false,
         ),
         (
             "pg_basebackup: initiating base backup, waiting for checkpoint to complete",
             false,
         ),
-        ("DETAIL:  The first unsummarized LSN in this range is 0/B000028.", false),
-        ("pg_basebackup: removing data directory \"incB\"", false),
         ("", false),
     ] {
-        assert_eq!(backup::is_chain_refusal(stderr), expected, "{stderr}");
+        assert_eq!(backup::is_compression_unsupported(stderr), expected, "{stderr}");
     }
 }

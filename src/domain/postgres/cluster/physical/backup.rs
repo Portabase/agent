@@ -15,28 +15,24 @@ use std::time::Instant;
 
 const COMPRESSION_METHODS: [&str; 3] = ["server-zstd", "server-gzip", "none"];
 
-const CHAIN_REFUSALS: [&str; 4] = [
-    "system identifier in backup manifest is",
-    "WAL summaries are required on timeline",
-    "manifest requires WAL from",
-    "found in manifest, but not in this server's history",
-];
-
 pub struct PhysicalBackup {
     pub bundle: PathBuf,
     pub parent_backup_id: Option<String>,
     pub manifest: Vec<u8>,
 }
 
-pub fn is_chain_refusal(stderr: &str) -> bool {
-    CHAIN_REFUSALS
-        .iter()
-        .any(|refusal| stderr.contains(refusal))
-}
-
-fn is_compression_unsupported(stderr: &str) -> bool {
+pub fn is_compression_unsupported(stderr: &str) -> bool {
     stderr.contains("compression is not supported by this build")
         || stderr.contains("does not support compression with")
+}
+
+fn failure_reason(stderr: &str) -> &str {
+    stderr
+        .lines()
+        .rfind(|line| line.starts_with("pg_basebackup: error:"))
+        .or_else(|| stderr.lines().rfind(|line| !line.trim().is_empty()))
+        .unwrap_or_default()
+        .trim()
 }
 
 pub async fn run(
@@ -61,9 +57,14 @@ fn run_blocking(
     let bin_dir = select_pg_path(&major.to_string());
     let backup_dir = work_dir.join("backup");
     let verify_dir = work_dir.join("verify");
-    let full_backup = || {
-        base_backup(cfg, &bin_dir, &backup_dir, None, logger)
-            .map_err(|_| anyhow!("pg_basebackup failed for {}", cfg.name))
+    let full_backup = || -> Result<()> {
+        base_backup(cfg, &bin_dir, &backup_dir, None, logger)?.map_err(|stderr| {
+            anyhow!(
+                "pg_basebackup failed for {}: {}",
+                cfg.name,
+                failure_reason(&stderr)
+            )
+        })
     };
 
     let parent_backup_id = match decision {
@@ -85,15 +86,15 @@ fn run_blocking(
                 logger,
             );
             fs::remove_file(&parent_manifest_path)?;
-            match attempt {
+            match attempt? {
                 Ok(()) => Some(parent_backup_id),
                 Err(stderr) => {
-                    let Some(refusal) = stderr.lines().find(|line| is_chain_refusal(line)) else {
-                        bail!("pg_basebackup failed for {}", cfg.name);
-                    };
                     logger.log(
                         "warn",
-                        format!("Incremental refused by the server ({refusal}); taking a full backup instead"),
+                        format!(
+                            "Incremental backup failed ({}); taking a full backup instead",
+                            failure_reason(&stderr)
+                        ),
                     );
                     full_backup()?;
                     None
@@ -105,6 +106,17 @@ fn run_blocking(
     if parent_backup_id.is_some() {
         extract_backup(&backup_dir, &verify_dir)?;
         verify(&backup_dir, &verify_dir, major, logger)?;
+        fs::remove_dir_all(&verify_dir)?;
+    }
+
+    let raw_wal = backup_dir.join("pg_wal.tar");
+    if raw_wal.is_file() {
+        zstd::stream::copy_encode(
+            File::open(&raw_wal)?,
+            File::create(backup_dir.join("pg_wal.tar.zst"))?,
+            0,
+        )?;
+        fs::remove_file(&raw_wal)?;
     }
 
     let manifest = fs::read(backup_dir.join("backup_manifest"))?;
@@ -115,9 +127,6 @@ fn run_blocking(
     bundle_builder.into_inner()?.finish()?;
 
     fs::remove_dir_all(&backup_dir)?;
-    if verify_dir.exists() {
-        fs::remove_dir_all(&verify_dir)?;
-    }
 
     Ok(PhysicalBackup {
         bundle,
@@ -132,11 +141,12 @@ fn base_backup(
     backup_dir: &Path,
     parent_manifest: Option<&Path>,
     logger: &JobLogger,
-) -> Result<(), String> {
+) -> Result<Result<(), String>> {
     let mut stderr = String::new();
     for compression in COMPRESSION_METHODS {
         if backup_dir.exists() {
-            fs::remove_dir_all(backup_dir).map_err(|error| error.to_string())?;
+            fs::remove_dir_all(backup_dir)
+                .with_context(|| format!("could not remove {}", backup_dir.display()))?;
         }
         let mut command = Command::new(bin_dir.join("pg_basebackup"));
         command
@@ -150,7 +160,7 @@ fn base_backup(
             .arg(backup_dir)
             .args(["-Ft", "-X", "stream"])
             .arg(format!("--compress={compression}"))
-            .args(["--progress", "-v"])
+            .args(["-w", "-v"])
             .env("PGPASSWORD", &cfg.password);
         let mut label = format!("pg_basebackup --compress={compression}");
         if let Some(parent_manifest) = parent_manifest {
@@ -160,10 +170,9 @@ fn base_backup(
             label.push_str(" --incremental");
         }
 
-        let (succeeded, output) =
-            run_logged(command, &label, logger).map_err(|error| error.to_string())?;
+        let (succeeded, output) = run_logged(command, &label, logger)?;
         if succeeded {
-            return Ok(());
+            return Ok(Ok(()));
         }
         stderr = output;
         if !is_compression_unsupported(&stderr) {
@@ -176,7 +185,7 @@ fn base_backup(
             ),
         );
     }
-    Err(stderr)
+    Ok(Err(stderr))
 }
 
 pub fn verify(
