@@ -1,8 +1,9 @@
 use serde_json::json;
 
+use crate::services::api::endpoints::agent::backup::{BackupUpdateRequest, PhysicalOutcome};
 use crate::services::api::models::agent::backup::{BackupResponse, BackupUploadResponse};
 use crate::services::api::models::agent::restore::ResultRestoreResponse;
-use crate::services::api::models::agent::status::{DatabaseStatus, PingResult};
+use crate::services::api::models::agent::status::{DatabaseStatus, PingResult, RestoreInfo};
 
 #[test]
 fn backup_response_deserializes_nested_backup_id() {
@@ -346,4 +347,81 @@ fn upload_status_sends_stats_only_when_set() {
     assert!(unmeasured["replicaBytes"].is_null(), "{unmeasured}");
     let without = serde_json::to_value(request(None)).unwrap();
     assert!(without.get("stats").is_none(), "{without}");
+}
+
+#[test]
+fn backup_response_without_parent_still_parses() {
+    let response: BackupResponse = serde_json::from_value(json!({
+        "message": "created",
+        "backup": { "id": "backup-123" }
+    }))
+    .unwrap();
+
+    assert!(response.parent.is_none());
+}
+
+#[test]
+fn backup_response_parses_parent_offer() {
+    let response: BackupResponse = serde_json::from_value(json!({
+        "message": "created",
+        "backup": { "id": "backup-123" },
+        "parent": {
+            "backupId": "parent-1",
+            "chainStartedAt": "2026-11-09T10:00:00.000Z",
+            "manifest": "H4sIAAAA"
+        }
+    }))
+    .unwrap();
+
+    let parent = response.parent.unwrap();
+    assert_eq!(parent.backup_id, "parent-1");
+    assert_eq!(parent.chain_started_at.to_rfc3339(), "2026-11-09T10:00:00+00:00");
+    assert_eq!(parent.manifest, "H4sIAAAA");
+}
+
+fn update_request(physical: Option<&PhysicalOutcome>) -> serde_json::Value {
+    serde_json::to_value(BackupUpdateRequest::new(
+        "backup-1".to_string(),
+        "success".to_string(),
+        Some(10),
+        "gen-1".to_string(),
+        vec![],
+        1.0,
+        physical,
+    ))
+    .unwrap()
+}
+
+#[test]
+fn archive_update_request_has_no_physical_keys() {
+    let body = update_request(None);
+
+    assert!(body.get("parentBackupId").is_none());
+    assert!(body.get("manifest").is_none());
+}
+
+#[test]
+fn physical_update_request_serializes_null_parent_for_full() {
+    let outcome = PhysicalOutcome {
+        parent_backup_id: None,
+        manifest: "abc".to_string(),
+    };
+    let body = update_request(Some(&outcome));
+
+    assert!(body.get("parentBackupId").unwrap().is_null());
+    assert_eq!(body["manifest"], "abc");
+}
+
+#[test]
+fn restore_info_parses_physical_files() {
+    let info: RestoreInfo = serde_json::from_value(json!({
+        "action": true,
+        "engine": "physical",
+        "files": [{ "url": "https://x/1", "size": 123 }, { "url": "https://x/2", "size": "456" }]
+    }))
+    .unwrap();
+
+    assert_eq!(info.files.len(), 2);
+    assert_eq!(info.files[0].size.as_deref(), Some("123"));
+    assert_eq!(info.files[1].size.as_deref(), Some("456"));
 }

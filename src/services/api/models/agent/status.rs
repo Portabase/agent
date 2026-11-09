@@ -67,6 +67,13 @@ pub struct BackupInfo {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct RestoreFile {
+    pub url: String,
+    #[serde(default, deserialize_with = "string_or_number_to_string")]
+    pub size: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct RestoreInfo {
     pub action: bool,
     #[serde(default)]
@@ -86,4 +93,6 @@ pub struct RestoreInfo {
     /// Filled in memory from `storage_ciphertext`; never on the wire.
     #[serde(skip)]
     pub storage: Option<DatabaseStorage>,
+    #[serde(default)]
+    pub files: Vec<RestoreFile>,
 }

@@ -46,7 +46,7 @@ impl BackupService {
                 };
                 let duration_ms = start.elapsed().as_millis() as f64;
                 let logs = Arc::try_unwrap(logger).unwrap_or_else(|_| JobLogger::new()).into_entries();
-                self.send_result(result, uploads, &backup_id, logs, duration_ms).await?;
+                self.send_result(result, uploads, &backup_id, logs, duration_ms, None).await?;
                 return Ok(());
             }
             logger.log("warn", format!("The {engine} method only applies to files sources; making an archive"));
@@ -60,7 +60,7 @@ impl BackupService {
         if result.status == "failed" {
             let duration_ms = start.elapsed().as_millis() as f64;
             let logs = Arc::try_unwrap(logger).unwrap_or_else(|_| JobLogger::new()).into_entries();
-            self.send_result(result, vec![], &backup_id, logs, duration_ms).await?;
+            self.send_result(result, vec![], &backup_id, logs, duration_ms, None).await?;
             return Ok(());
         }
 
@@ -75,7 +75,7 @@ impl BackupService {
 
         let duration_ms = start.elapsed().as_millis() as f64;
         let logs = Arc::try_unwrap(logger).unwrap_or_else(|_| JobLogger::new()).into_entries();
-        self.send_result(result, uploads, &backup_id, logs, duration_ms).await?;
+        self.send_result(result, uploads, &backup_id, logs, duration_ms, None).await?;
 
         Ok(())
     }
