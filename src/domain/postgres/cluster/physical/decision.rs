@@ -33,8 +33,9 @@ pub fn decide(
             "chain is older than {full_every_days} day(s)"
         ));
     }
-    let Ok(parent_manifest) = manifest::decode(&offer.manifest) else {
-        return full("parent manifest could not be decoded");
+    let parent_manifest = match manifest::decode(&offer.manifest) {
+        Ok(parent_manifest) => parent_manifest,
+        Err(error) => return full(format!("parent manifest could not be decoded: {error:#}")),
     };
     if let (Some(server), Some(parent)) = (
         server_system_identifier,

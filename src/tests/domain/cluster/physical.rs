@@ -68,9 +68,21 @@ fn decide_full_when_chain_too_old() {
 #[test]
 fn decide_full_when_manifest_undecodable() {
     let parent = offer(1, "%%%".to_string());
+    match decide(Some(&parent), Utc::now(), 7, None) {
+        Decision::Full { reason } => {
+            assert!(reason.contains("could not be decoded: "), "{reason}");
+            assert!(reason.len() > "parent manifest could not be decoded: ".len());
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn decide_incremental_just_below_chain_age_boundary() {
+    let parent = offer(6, manifest::encode(&manifest_fixture(1)).unwrap());
     assert!(matches!(
         decide(Some(&parent), Utc::now(), 7, None),
-        Decision::Full { .. }
+        Decision::Incremental { .. }
     ));
 }
 
