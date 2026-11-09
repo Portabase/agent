@@ -54,7 +54,7 @@ pub fn resolve_restore_storage(status: &mut DatabaseStatus, master_key_b64: &str
 pub fn payload_method(db: &DatabaseConfig, local_ids: &HashSet<String>) -> Option<&'static str> {
     match db.db_type {
         DbType::Files => local_ids.contains(&db.generated_id).then(|| files_method(db)),
-        DbType::PostgresqlCluster => Some(cluster_method(db)),
+        DbType::PostgresqlCluster => local_ids.contains(&db.generated_id).then(|| cluster_method(db)),
         _ => None,
     }
 }

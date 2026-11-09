@@ -40,7 +40,7 @@ pub fn validate_cluster_options(name: &str, options: Option<&HashMap<String, ser
         }
     }
     if let Some(days) = options.and_then(|options| options.get("full_every_days")) {
-        if !days.as_u64().is_some_and(|days| days >= 1 && days <= u32::MAX as u64) {
+        if !days.as_u64().is_some_and(|days| (1..=u32::MAX as u64).contains(&days)) {
             return Err(format!(
                 "Invalid full_every_days {days} for postgresql-cluster source '{}' (expected a whole number >= 1)",
                 name
