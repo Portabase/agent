@@ -2,6 +2,8 @@ use crate::core::context::Context;
 use crate::services::api::ApiClient;
 use crate::services::config::ConfigService;
 use crate::services::config::{DatabasesConfig, InputDatabaseConfig, build_config, files_method};
+use crate::services::config::{cluster_method, full_every_days, validate_cluster_options};
+use std::collections::HashMap;
 use crate::utils::edge_key::EdgeKey;
 use std::io::Write;
 use std::sync::Arc;
@@ -444,4 +446,59 @@ fn unknown_files_method_refuses_the_source() {
     let err = build_config(files_input(r#", "options": { "method": "mirror" }"#)).unwrap_err();
     assert!(err.contains("Unknown method"), "{err}");
     assert!(err.contains("docs"), "{err}");
+}
+
+fn cluster_input(options: &str) -> InputDatabaseConfig {
+    serde_json::from_str(&format!(
+        r#"{{ "name": "x", "type": "postgresql-cluster", "username": "postgres", "password": "p",
+               "port": 5432, "host": "localhost",
+               "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681"{options} }}"#
+    ))
+    .unwrap()
+}
+
+fn options_map(json: &str) -> HashMap<String, serde_json::Value> {
+    serde_json::from_str(json).unwrap()
+}
+
+#[test]
+fn cluster_method_defaults_to_archive() {
+    let default_cfg = build_config(cluster_input("")).unwrap();
+    assert_eq!(cluster_method(&default_cfg), "archive");
+    let physical_cfg = build_config(cluster_input(r#", "options": { "method": "physical" }"#)).unwrap();
+    assert_eq!(cluster_method(&physical_cfg), "physical");
+}
+
+#[test]
+fn full_every_days_defaults_to_seven() {
+    let default_cfg = build_config(cluster_input("")).unwrap();
+    assert_eq!(full_every_days(&default_cfg), 7);
+    let custom_cfg = build_config(cluster_input(r#", "options": { "full_every_days": 3 }"#)).unwrap();
+    assert_eq!(full_every_days(&custom_cfg), 3);
+}
+
+#[test]
+fn validate_cluster_options_rejects_unknown_method() {
+    let options = options_map(r#"{ "method": "incremental" }"#);
+    let message = validate_cluster_options("x", Some(&options)).unwrap_err();
+    assert!(
+        message.contains(r#"Unknown method "incremental" for postgresql-cluster source 'x' (expected archive or physical)"#),
+        "{message}"
+    );
+}
+
+#[test]
+fn validate_cluster_options_rejects_bad_full_every_days() {
+    for value in ["0", "-1", r#""7""#] {
+        let options = options_map(&format!(r#"{{ "full_every_days": {value} }}"#));
+        let message = validate_cluster_options("x", Some(&options)).unwrap_err();
+        assert!(message.contains("Invalid full_every_days"), "{value}: {message}");
+    }
+    assert!(validate_cluster_options("x", None).is_ok());
+}
+
+#[test]
+fn cluster_source_with_bad_method_is_refused_by_build_config() {
+    let message = build_config(cluster_input(r#", "options": { "method": "incremental" }"#)).unwrap_err();
+    assert!(message.contains("Unknown method"), "{message}");
 }

@@ -117,3 +117,12 @@ fn payload_method_is_sent_for_local_files_sources_only() {
     // Not a files source.
     assert_eq!(payload_method(&cfg("pg", ID_A, "h"), &ids), None);
 }
+
+#[test]
+fn payload_method_reports_cluster_method() {
+    let json = r#"{ "name": "x", "type": "postgresql-cluster", "username": "postgres", "password": "p",
+                    "port": 5432, "host": "h", "generated_id": "16678159-ff7e-4c97-8c83-0adeff214681",
+                    "options": { "method": "physical" } }"#;
+    let cluster = build_config(serde_json::from_str::<InputDatabaseConfig>(json).unwrap()).unwrap();
+    assert_eq!(payload_method(&cluster, &Default::default()), Some("physical"));
+}

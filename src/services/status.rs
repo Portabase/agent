@@ -6,7 +6,7 @@ use crate::services::api::endpoints::status::DatabasePayload;
 use crate::services::api::models::agent::status::DatabaseStatus;
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::api::models::agent::status::PingResult;
-use crate::services::config::{build_config, files_method, DatabaseConfig, DbType, InputDatabaseConfig};
+use crate::services::config::{build_config, cluster_method, files_method, DatabaseConfig, DbType, InputDatabaseConfig};
 use crate::settings::CONFIG;
 use crate::utils::file::decrypt_json_gcm;
 use futures::future::try_join_all;
@@ -52,7 +52,11 @@ pub fn resolve_restore_storage(status: &mut DatabaseStatus, master_key_b64: &str
 }
 
 pub fn payload_method(db: &DatabaseConfig, local_ids: &HashSet<String>) -> Option<&'static str> {
-    (matches!(db.db_type, DbType::Files) && local_ids.contains(&db.generated_id)).then(|| files_method(db))
+    match db.db_type {
+        DbType::Files => local_ids.contains(&db.generated_id).then(|| files_method(db)),
+        DbType::PostgresqlCluster => Some(cluster_method(db)),
+        _ => None,
+    }
 }
 
 pub struct StatusService {

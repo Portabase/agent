@@ -12,6 +12,44 @@ pub fn files_method(cfg: &DatabaseConfig) -> &'static str {
     }
 }
 
+pub const CLUSTER_METHODS: [&str; 2] = ["archive", "physical"];
+
+pub fn cluster_method(cfg: &DatabaseConfig) -> &'static str {
+    match cfg.options.get("method").and_then(|v| v.as_str()) {
+        Some("physical") => "physical",
+        _ => "archive",
+    }
+}
+
+pub fn full_every_days(cfg: &DatabaseConfig) -> u32 {
+    cfg.options
+        .get("full_every_days")
+        .and_then(|v| v.as_u64())
+        .and_then(|days| u32::try_from(days).ok())
+        .filter(|days| *days >= 1)
+        .unwrap_or(7)
+}
+
+pub fn validate_cluster_options(name: &str, options: Option<&HashMap<String, serde_json::Value>>) -> Result<(), String> {
+    if let Some(method) = options.and_then(|options| options.get("method")) {
+        if !method.as_str().is_some_and(|m| CLUSTER_METHODS.contains(&m)) {
+            return Err(format!(
+                "Unknown method {method} for postgresql-cluster source '{}' (expected archive or physical)",
+                name
+            ));
+        }
+    }
+    if let Some(days) = options.and_then(|options| options.get("full_every_days")) {
+        if !days.as_u64().is_some_and(|days| days >= 1 && days <= u32::MAX as u64) {
+            return Err(format!(
+                "Invalid full_every_days {days} for postgresql-cluster source '{}' (expected a whole number >= 1)",
+                name
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn list_option_args(cfg: &DatabaseConfig, flags: &[(&'static str, &str)]) -> (Vec<String>, Vec<&'static str>) {
     let mut args = Vec::new();
     let mut invalid = Vec::new();
