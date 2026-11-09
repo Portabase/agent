@@ -1,5 +1,6 @@
 mod backup;
 mod database;
+mod physical;
 mod restore;
 
 use crate::services::config::{DatabaseConfig, DbType};
