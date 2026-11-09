@@ -43,6 +43,12 @@ volume:
         ]
       }
 
+  restore:
+    enabled: false
+    hostPath: ""         # Host directory receiving physical restores
+    existingClaim: ""    # Or an existing PersistentVolumeClaim (used when hostPath is empty)
+    mountPath: /restores # Also exported as RESTORE_PATH
+
 # Extra volumes for the agent pod, e.g. a host directory used by a `files`
 # source. Mount it read-write: restores write into it.
 extraVolumes: []
