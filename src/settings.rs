@@ -16,6 +16,7 @@ pub struct Settings {
     pub polling: usize,
     pub timezone: String,
     pub log: String,
+    pub log_to_file: bool,
     pub chunk_size: usize, // bytes
     pub retry_attempts: u32,
     pub retry_backoff_ms: u64,
@@ -89,7 +90,11 @@ impl Settings {
             pg_bin_dir: env::var("PG_BIN_DIR").unwrap_or_default(),
             polling: polling_seconds,
             timezone: tz,
-            log: env::var("LOG").unwrap_or_else(|_| "info".into()),
+            log: env::var("LOG")
+                .or_else(|_| env::var("LOG_LEVEL"))
+                .unwrap_or_else(|_| "info".into()),
+            log_to_file: env::var("LOG_TO_FILE")
+                .is_ok_and(|value| value.trim().eq_ignore_ascii_case("true")),
             chunk_size,
             retry_attempts,
             retry_backoff_ms,
