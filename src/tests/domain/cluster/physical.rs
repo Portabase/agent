@@ -345,11 +345,14 @@ async fn full_then_incremental_produce_verified_bundles() {
     assert_eq!(incremental.parent_backup_id.as_deref(), Some("parent-1"));
     assert!(!incremental_dir.path().join("backup").exists());
     assert!(!incremental_dir.path().join("verify").exists());
+    let messages = log_messages(logger);
     assert!(
-        log_messages(logger)
+        messages
             .iter()
             .any(|message| message.starts_with("Executed: pg_verifybackup"))
     );
+    assert!(messages.iter().any(|message| message
+        == "Waiting for the server's checkpoint before copying (spread checkpoint; can take up to checkpoint_timeout)"));
 
     let full_size = std::fs::metadata(&full.bundle).unwrap().len();
     let incremental_size = std::fs::metadata(&incremental.bundle).unwrap().len();

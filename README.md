@@ -63,6 +63,8 @@ You have 4 ways to install Portabase Agent:
 
 A `postgresql-cluster` source can use the `physical` method (`options.method = "physical"`, default `archive` = `pg_dumpall`). It takes whole-cluster backups through the replication protocol with server-side zstd compression: a full backup, then incrementals chained to it. `options.full_every_days` (integer >= 1, default 7) starts a new chain once the chain's full backup is that old. A broken chain (failover, restored server, expired WAL summaries) falls back to a full backup automatically.
 
+Each backup starts with a spread checkpoint on the server (no `--checkpoint=fast`, so the server's I/O is not spiked). After heavy writes the job can wait up to `checkpoint_timeout` before copying starts; the job log says when it is waiting.
+
 Server requirements:
 
 - PostgreSQL 17 or later

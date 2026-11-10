@@ -141,6 +141,10 @@ pub fn base_backup(
     parent_manifest: Option<&Path>,
     logger: &JobLogger,
 ) -> Result<Result<(), String>> {
+    logger.log(
+        "info",
+        "Waiting for the server's checkpoint before copying (spread checkpoint; can take up to checkpoint_timeout)",
+    );
     let mut stderr = String::new();
     for (attempt, compression) in COMPRESSION_METHODS.into_iter().enumerate() {
         if backup_dir.exists() {
