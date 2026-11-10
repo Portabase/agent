@@ -77,7 +77,7 @@ impl RestoreService {
         generated_id: &str,
         logger: Arc<JobLogger>,
     ) -> Result<RestoredCluster> {
-        let download_dir = TempDir::new()?;
+        let download_dir = TempDir::new_in(restore_root)?;
         let mut bundles = Vec::new();
         for (index, file) in files.into_iter().enumerate() {
             let target = download_dir.path().join(index.to_string());

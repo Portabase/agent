@@ -218,7 +218,7 @@ pub fn extract_backup(backup_dir: &Path, target: &Path) -> Result<()> {
     )
 }
 
-fn archive_named(backup_dir: &Path, stem: &str) -> Result<PathBuf> {
+pub(super) fn archive_named(backup_dir: &Path, stem: &str) -> Result<PathBuf> {
     ["tar.zst", "tar.gz", "tar"]
         .into_iter()
         .map(|extension| backup_dir.join(format!("{stem}.{extension}")))

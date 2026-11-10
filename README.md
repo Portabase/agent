@@ -72,7 +72,7 @@ Server requirements:
 - `summarize_wal = on`: `ALTER SYSTEM SET summarize_wal = on; SELECT pg_reload_conf();`
 - No custom tablespaces
 
-Restore rebuilds a ready-to-start data directory under `$RESTORE_PATH/<source id>/<UTC timestamp>/` (`data/` for PostgreSQL 17 and earlier, `<major>/docker/` for 18 and later) with `pg_combinebackup`, then checks it with `pg_verifybackup`. The running server is never touched. The start commands (host and Docker) are printed at the end of the restore job logs.
+Restore rebuilds a ready-to-start data directory under `$RESTORE_PATH/<source id>/<UTC timestamp>/` (`data/` for PostgreSQL 17 and earlier, `<major>/docker/` for 18 and later) with `pg_combinebackup`, then checks it with `pg_verifybackup`. The running server is never touched. The start commands (host and Docker) are printed at the end of the restore job logs. The downloaded and extracted files are kept in a temporary folder under `RESTORE_PATH` while the restore runs and removed when it ends.
 
 A physical restore is refused, before anything is downloaded, unless `RESTORE_PATH` is set to an existing, writable directory. Mount a volume there:
 

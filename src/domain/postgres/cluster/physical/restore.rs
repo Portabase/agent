@@ -1,4 +1,4 @@
-use super::backup::{extract_backup, run_logged, verify};
+use super::backup::{archive_named, extract_backup, run_logged, verify};
 use super::commands::{missing_config_files, output_dir, start_commands};
 use crate::domain::postgres::connection::select_pg_path;
 use crate::services::backup::logger::JobLogger;
@@ -42,7 +42,7 @@ pub async fn rebuild(
     if bundles.is_empty() {
         bail!("no backup to restore");
     }
-    let work_dir = TempDir::new()?;
+    let work_dir = TempDir::new_in(restore_root)?;
     let mut bundle_dirs = Vec::new();
     for (index, bundle) in bundles.iter().enumerate() {
         let bundle_dir = work_dir.path().join(index.to_string());
@@ -50,6 +50,7 @@ pub async fn rebuild(
         decompress_large_tar_gz(bundle, &bundle_dir)
             .await
             .with_context(|| format!("could not extract {}", bundle.display()))?;
+        fs::remove_file(bundle)?;
         bundle_dirs.push(bundle_dir);
     }
     let (restore_root, generated_id) = (restore_root.to_path_buf(), generated_id.to_string());
@@ -70,6 +71,9 @@ fn combine(
         .map(|bundle_dir| {
             let backup_dir = bundle_dir.join("data");
             extract_backup(bundle_dir, &backup_dir)?;
+            for stem in ["base", "pg_wal"] {
+                fs::remove_file(archive_named(bundle_dir, stem)?)?;
+            }
             fs::rename(
                 bundle_dir.join("backup_manifest"),
                 backup_dir.join("backup_manifest"),

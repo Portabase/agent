@@ -676,6 +676,7 @@ async fn rebuild_refuses_non_empty_output() {
         );
         assert_eq!(std::fs::read_dir(&output).unwrap().count(), 1);
     }
+    assert_eq!(std::fs::read_dir(restore_root.path()).unwrap().count(), 1);
     assert!(
         !log_messages(logger)
             .iter()
@@ -793,6 +794,8 @@ async fn chain_restore_round_trip(tag: &str) {
         .await
         .unwrap();
     assert_eq!(restored.major.to_string(), tag);
+    assert!(bundles.iter().all(|bundle| !bundle.exists()));
+    assert_eq!(std::fs::read_dir(restore_root.path()).unwrap().count(), 1);
     assert!(
         restored
             .data_dir
@@ -858,6 +861,7 @@ async fn encrypted_chain_restores() {
         .rebuild_chain(files, restore_root.path(), GENERATED_ID, logger.clone())
         .await
         .unwrap();
+    assert_eq!(std::fs::read_dir(restore_root.path()).unwrap().count(), 1);
     let messages = log_messages(logger);
     assert_eq!(
         messages
