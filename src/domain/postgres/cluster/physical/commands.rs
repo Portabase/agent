@@ -22,12 +22,20 @@ fn quote(path: &Path) -> String {
 }
 
 pub fn start_commands(data_dir: &Path, major: u32, generated_id: &str) -> Vec<String> {
-    let container_suffix: String = generated_id.chars().take(8).collect();
+    let source_prefix: String = generated_id.chars().take(8).collect();
+    let timestamp_dir = if major >= 18 {
+        data_dir.parent().and_then(Path::parent)
+    } else {
+        data_dir.parent()
+    }
+    .unwrap_or(data_dir);
+    let restored_at = timestamp_dir
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_lowercase();
     let (mount_source, mount_target) = if major >= 18 {
-        (
-            data_dir.parent().and_then(Path::parent).unwrap_or(data_dir),
-            "/var/lib/postgresql",
-        )
+        (timestamp_dir, "/var/lib/postgresql")
     } else {
         (data_dir, "/var/lib/postgresql/data")
     };
@@ -36,7 +44,7 @@ pub fn start_commands(data_dir: &Path, major: u32, generated_id: &str) -> Vec<St
         format!("chown -R 999:999 {}", quote(mount_source)),
         format!("chmod 700 {data_dir}"),
         format!(
-            "docker run -d --name portabase-restore-{container_suffix} -v {}:{mount_target} postgres:{major}",
+            "docker run -d --name portabase-restore-{source_prefix}-{restored_at} -v {}:{mount_target} postgres:{major}",
             quote(mount_source)
         ),
         format!(

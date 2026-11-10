@@ -153,7 +153,7 @@ fn start_commands_for_17() {
             format!("chown -R 999:999 '{ts}/data'"),
             format!("chmod 700 '{ts}/data'"),
             format!(
-                "docker run -d --name portabase-restore-40875631 -v '{ts}/data':/var/lib/postgresql/data postgres:17"
+                "docker run -d --name portabase-restore-40875631-20261109t101500z -v '{ts}/data':/var/lib/postgresql/data postgres:17"
             ),
             format!(
                 "sudo chown -R postgres:postgres '{ts}/data' && sudo chmod 700 '{ts}/data' && sudo -u postgres /usr/lib/postgresql/17/bin/pg_ctl -D '{ts}/data' start"
@@ -171,7 +171,7 @@ fn start_commands_for_18_mounts_parent() {
             format!("chown -R 999:999 '{ts}'"),
             format!("chmod 700 '{ts}/18/docker'"),
             format!(
-                "docker run -d --name portabase-restore-40875631 -v '{ts}':/var/lib/postgresql postgres:18"
+                "docker run -d --name portabase-restore-40875631-20261109t101500z -v '{ts}':/var/lib/postgresql postgres:18"
             ),
             format!(
                 "sudo chown -R postgres:postgres '{ts}/18/docker' && sudo chmod 700 '{ts}/18/docker' && sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D '{ts}/18/docker' start"
