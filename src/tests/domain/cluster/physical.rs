@@ -452,32 +452,72 @@ async fn corrupted_incremental_fails_verification() {
     assert!(message.contains("checksum mismatch"), "{message}");
 }
 
+fn offline_cfg() -> DatabaseConfig {
+    DatabaseConfig {
+        name: "cluster".to_string(),
+        database: "postgres".to_string(),
+        db_type: DbType::PostgresqlCluster,
+        username: String::new(),
+        password: String::new(),
+        port: 5432,
+        host: "localhost".to_string(),
+        generated_id: GENERATED_ID.to_string(),
+        path: String::new(),
+        max_packet_size: String::new(),
+        volume_name: String::new(),
+        container_name: None,
+        options: HashMap::new(),
+    }
+}
+
+fn fake_pg_basebackup(bin_dir: &Path, succeeding_compression: &str) -> PathBuf {
+    let calls = bin_dir.join("calls");
+    let script = bin_dir.join("pg_basebackup");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nfor arg in \"$@\"; do case \"$arg\" in --compress=*) echo \"$arg\" >> '{}'; [ \"$arg\" = '--compress={succeeding_compression}' ] && exit 0;; esac; done\necho 'pg_basebackup: error: refused in the server language' >&2\nexit 1\n",
+            calls.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    calls
+}
+
 #[test]
-fn is_compression_unsupported_matches_build_errors() {
-    for (stderr, expected) in [
+fn compression_falls_back_on_any_failure() {
+    for (succeeding_compression, expected_calls, succeeded) in [
+        ("server-gzip", "--compress=server-zstd\n--compress=server-gzip\n", true),
         (
-            "pg_basebackup: error: could not initiate base backup: ERROR:  zstd compression is not supported by this build",
-            true,
-        ),
-        (
-            "pg_basebackup: error: could not initiate base backup: ERROR:  gzip compression is not supported by this build",
-            true,
-        ),
-        (
-            "pg_basebackup: error: invalid compression specification: this build does not support compression with zstd",
-            true,
-        ),
-        (
-            "pg_basebackup: error: could not upload manifest: ERROR:  system identifier in backup manifest is 7706206809223479334, but database system identifier is 7706206809830854694",
+            "never",
+            "--compress=server-zstd\n--compress=server-gzip\n--compress=none\n",
             false,
         ),
-        (
-            "pg_basebackup: initiating base backup, waiting for checkpoint to complete",
-            false,
-        ),
-        ("", false),
     ] {
-        assert_eq!(backup::is_compression_unsupported(stderr), expected, "{stderr}");
+        let bin_dir = TempDir::new().unwrap();
+        let calls = fake_pg_basebackup(bin_dir.path(), succeeding_compression);
+        let work_dir = TempDir::new().unwrap();
+        let logger = Arc::new(JobLogger::new());
+        let outcome = backup::base_backup(
+            &offline_cfg(),
+            bin_dir.path(),
+            &work_dir.path().join("backup"),
+            None,
+            &logger,
+        )
+        .unwrap();
+
+        assert_eq!(std::fs::read_to_string(&calls).unwrap(), expected_calls);
+        assert_eq!(outcome.is_ok(), succeeded);
+        if let Err(stderr) = outcome {
+            assert!(stderr.contains("refused in the server language"), "{stderr}");
+        }
+        let fallbacks = log_messages(logger)
+            .into_iter()
+            .filter(|message| message.ends_with("; trying the next compression method"))
+            .count();
+        assert_eq!(fallbacks, expected_calls.lines().count() - 1);
     }
 }
 
@@ -547,21 +587,7 @@ async fn restore_refuses_without_restore_path() {
         .mount(&server)
         .await;
     let service = RestoreService::new(api_context(&server, String::new()));
-    let cfg = DatabaseConfig {
-        name: "cluster".to_string(),
-        database: "postgres".to_string(),
-        db_type: DbType::PostgresqlCluster,
-        username: String::new(),
-        password: String::new(),
-        port: 5432,
-        host: "localhost".to_string(),
-        generated_id: GENERATED_ID.to_string(),
-        path: String::new(),
-        max_packet_size: String::new(),
-        volume_name: String::new(),
-        container_name: None,
-        options: HashMap::new(),
-    };
+    let cfg = offline_cfg();
     let files = vec![RestoreFile {
         url: format!("{}/never/{GENERATED_ID}.tar.gz", server.uri()),
         size: None,

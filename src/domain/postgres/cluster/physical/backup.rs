@@ -21,11 +21,6 @@ pub struct PhysicalBackup {
     pub manifest: Vec<u8>,
 }
 
-pub fn is_compression_unsupported(stderr: &str) -> bool {
-    stderr.contains("compression is not supported by this build")
-        || stderr.contains("does not support compression with")
-}
-
 fn failure_reason(stderr: &str) -> &str {
     stderr
         .lines()
@@ -139,7 +134,7 @@ fn run_blocking(
     })
 }
 
-fn base_backup(
+pub fn base_backup(
     cfg: &DatabaseConfig,
     bin_dir: &Path,
     backup_dir: &Path,
@@ -147,7 +142,7 @@ fn base_backup(
     logger: &JobLogger,
 ) -> Result<Result<(), String>> {
     let mut stderr = String::new();
-    for compression in COMPRESSION_METHODS {
+    for (attempt, compression) in COMPRESSION_METHODS.into_iter().enumerate() {
         if backup_dir.exists() {
             fs::remove_dir_all(backup_dir)
                 .with_context(|| format!("could not remove {}", backup_dir.display()))?;
@@ -179,15 +174,15 @@ fn base_backup(
             return Ok(Ok(()));
         }
         stderr = output;
-        if !is_compression_unsupported(&stderr) {
-            break;
+        if attempt + 1 < COMPRESSION_METHODS.len() {
+            logger.log(
+                "warn",
+                format!(
+                    "pg_basebackup with --compress={compression} failed ({}); trying the next compression method",
+                    failure_reason(&stderr)
+                ),
+            );
         }
-        logger.log(
-            "warn",
-            format!(
-                "Compression {compression} is not supported by the server; trying the next method"
-            ),
-        );
     }
     Ok(Err(stderr))
 }
