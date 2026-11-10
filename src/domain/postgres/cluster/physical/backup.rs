@@ -123,7 +123,11 @@ fn run_blocking(
     let bundle = work_dir.join(format!("{}.tar.gz", cfg.generated_id));
     let mut bundle_builder =
         tar::Builder::new(GzEncoder::new(File::create(&bundle)?, Compression::none()));
-    bundle_builder.append_dir_all("", &backup_dir)?;
+    for entry in fs::read_dir(&backup_dir)? {
+        let path = entry?.path();
+        bundle_builder.append_path_with_name(&path, path.strip_prefix(&backup_dir)?)?;
+        fs::remove_file(&path)?;
+    }
     bundle_builder.into_inner()?.finish()?;
 
     fs::remove_dir_all(&backup_dir)?;
