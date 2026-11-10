@@ -791,6 +791,9 @@ async fn chain_restore_round_trip(tag: &str) {
     init_tracing_for_test();
     let (_container, cfg) = start_physical_cluster(tag, true).await;
     let (bundles, _work_dirs) = backup_chain(&cfg).await;
+    let lone_full_dir = TempDir::new().unwrap();
+    let lone_full = lone_full_dir.path().join(bundles[0].file_name().unwrap());
+    std::fs::copy(&bundles[0], &lone_full).unwrap();
     let restore_root = TempDir::new().unwrap();
     let logger = Arc::new(JobLogger::new());
     let restored = restore::rebuild(&bundles, restore_root.path(), GENERATED_ID, logger.clone())
@@ -816,6 +819,18 @@ async fn chain_restore_round_trip(tag: &str) {
             .any(|message| message.starts_with("Executed: pg_verifybackup"))
     );
     assert_restored_tables(&restored, &messages, &cfg, &["rows_a", "rows_b"]).await;
+
+    let lone_full_root = TempDir::new().unwrap();
+    let lone_full_logger = Arc::new(JobLogger::new());
+    let restored_full = restore::rebuild(
+        &[lone_full],
+        lone_full_root.path(),
+        GENERATED_ID,
+        lone_full_logger.clone(),
+    )
+    .await
+    .unwrap();
+    assert_restored_tables(&restored_full, &log_messages(lone_full_logger), &cfg, &[]).await;
 }
 
 #[tokio::test]
