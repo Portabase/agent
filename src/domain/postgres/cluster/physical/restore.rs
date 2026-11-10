@@ -131,11 +131,11 @@ fn combine(
     logger.log("info", format!("Restored size: {}", human_size(size)));
     logger.log(
         "info",
-        "To start it, run the three Docker commands below, or the last command on a host install:",
+        format!(
+            "To start it, run the three Docker commands below, or the last command on a host install:\n{}",
+            start_commands(&data_dir, major, generated_id).join("\n")
+        ),
     );
-    for command in start_commands(&data_dir, major, generated_id) {
-        logger.log("info", command);
-    }
     for missing in missing_config_files(&data_dir) {
         logger.log(
             "warn",

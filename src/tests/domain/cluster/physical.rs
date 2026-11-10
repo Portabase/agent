@@ -719,7 +719,8 @@ async fn backup_chain(cfg: &DatabaseConfig) -> (Vec<PathBuf>, Vec<TempDir>) {
 fn logged_mount(messages: &[String]) -> (String, String) {
     let docker_run = messages
         .iter()
-        .find(|message| message.starts_with("docker run "))
+        .flat_map(|message| message.lines())
+        .find(|line| line.starts_with("docker run "))
         .unwrap_or_else(|| panic!("{messages:#?}"));
     let (source, target) = docker_run
         .split_once(" -v '")
@@ -742,9 +743,11 @@ async fn assert_restored_tables(
             "Restored data directory: {}. In a container, this is the host folder mounted at RESTORE_PATH.",
             restored.data_dir.display()
         )));
-    for command in start_commands(&restored.data_dir, restored.major, GENERATED_ID) {
-        assert!(messages.contains(&command), "{command}");
-    }
+    let start_entry = format!(
+        "To start it, run the three Docker commands below, or the last command on a host install:\n{}",
+        start_commands(&restored.data_dir, restored.major, GENERATED_ID).join("\n")
+    );
+    assert!(messages.contains(&start_entry), "{messages:#?}");
     assert!(restored.size > 0);
 
     let (source, target) = logged_mount(messages);
