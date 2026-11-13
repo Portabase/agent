@@ -1,5 +1,6 @@
 use crate::domain::docker_volume::docker::{
-    client, create_helper, remove_helper, resolve_helper_image, start_container, stop_container,
+    client, create_helper, idle_command, remove_helper, resolve_helper_image, start_container,
+    stop_container,
 };
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
@@ -8,7 +9,7 @@ use bollard::exec::StartExecResults;
 use bollard::models::ExecConfig;
 use bollard::query_parameters::UploadToContainerOptions;
 use futures::StreamExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -19,6 +20,7 @@ pub async fn run(cfg: DatabaseConfig, archive: PathBuf, logger: Arc<JobLogger>) 
 
             let docker = client()?;
             let image = resolve_helper_image(&docker).await?;
+            let target_path = upload_path(&archive)?;
 
             logger.log("debug", format!("Restore archive: {}", archive.display()));
 
@@ -34,11 +36,7 @@ pub async fn run(cfg: DatabaseConfig, archive: PathBuf, logger: Arc<JobLogger>) 
                     &cfg.volume_name,
                     &cfg.generated_id,
                     false,
-                    Some(vec![
-                        "sh".into(),
-                        "-c".into(),
-                        "trap 'exit 0' TERM; sleep 2147483647 & wait".into(),
-                    ]),
+                    Some(idle_command()),
                 )
                 .await?;
                 start_container(&docker, &helper.id).await?;
@@ -74,7 +72,7 @@ pub async fn run(cfg: DatabaseConfig, archive: PathBuf, logger: Arc<JobLogger>) 
                     .with_context(|| format!("Failed to open {}", archive.display()))?;
                 let stream = tokio_util::io::ReaderStream::new(file);
 
-                let up_opts = UploadToContainerOptions { path: "/".to_string(), ..Default::default() };
+                let up_opts = UploadToContainerOptions { path: target_path.to_string(), ..Default::default() };
                 docker
                     .upload_to_container(&helper.id, Some(up_opts), bollard::body_try_stream(stream))
                     .await
@@ -99,4 +97,14 @@ pub async fn run(cfg: DatabaseConfig, archive: PathBuf, logger: Arc<JobLogger>) 
         })
     })
     .await?
+}
+
+pub fn upload_path(archive: &Path) -> Result<&'static str> {
+    let file = std::fs::File::open(archive)
+        .with_context(|| format!("Failed to open {}", archive.display()))?;
+    let rooted_at_volume_dir = match tar::Archive::new(file).entries()?.next() {
+        Some(entry) => entry?.path()?.starts_with("vol"),
+        None => true,
+    };
+    Ok(if rooted_at_volume_dir { "/" } else { "/vol" })
 }
