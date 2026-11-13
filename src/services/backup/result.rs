@@ -6,6 +6,29 @@ use crate::services::api::models::agent::backup::BackupResponse;
 use anyhow::Result;
 use tracing::error;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobStatus {
+    Success,
+    Failed,
+}
+
+impl JobStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            JobStatus::Success => "success",
+            JobStatus::Failed => "failed",
+        }
+    }
+}
+
+pub fn job_status(upload_results: &[UploadResult]) -> JobStatus {
+    if upload_results.iter().any(|r| r.success) {
+        JobStatus::Success
+    } else {
+        JobStatus::Failed
+    }
+}
+
 impl BackupService {
     pub async fn send_result(
         &self,
@@ -15,13 +38,8 @@ impl BackupService {
         logs: Vec<JobLogEntry>,
         duration_ms: f64,
     ) -> Result<Option<BackupResponse>, ApiError> {
-        let status = if upload_results.iter().any(|r| r.success) {
-            "success"
-        } else {
-            "failed"
-        };
+        let status = job_status(&upload_results).as_str();
 
-        // Average over the uploads that reported a size: failed ones have none.
         let sizes: Vec<u64> = upload_results.iter().filter_map(|r| r.total_size).collect();
         let file_size = (!sizes.is_empty()).then(|| sizes.iter().sum::<u64>() / sizes.len() as u64);
 
@@ -34,7 +52,7 @@ impl BackupService {
                 file_size,
                 &result.generated_id,
                 logs,
-                duration_ms
+                duration_ms,
             )
             .await
             .map_err(|e| {

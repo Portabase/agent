@@ -12,7 +12,7 @@ pub fn merge(local: &[DatabaseConfig], dashboard: &[DatabaseConfig]) -> Database
             .iter_mut()
             .find(|c| c.generated_id == d.generated_id)
         {
-            *slot = d.clone();
+            *slot = DatabaseConfig { hooks: slot.hooks.take(), ..d.clone() };
         } else {
             databases.push(d.clone());
         }
