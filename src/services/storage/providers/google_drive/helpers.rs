@@ -7,8 +7,7 @@ use reqwest::{Client as ReqwestClient, StatusCode};
 use reqwest::{Client, header};
 use serde_json::{Value, json};
 
-pub const DRIVE_FILES_URL: &str =
-    "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true";
+pub const DRIVE_API_BASE: &str = "https://www.googleapis.com/drive/v3";
 pub const DRIVE_RESUMABLE_UPLOAD_URL: &str =
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true";
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
@@ -53,6 +52,156 @@ pub(crate) async fn exchange_refresh_token(
         .ok_or_else(|| anyhow!("token response has no access_token"))
 }
 
+/// A file or folder returned by a Drive `files.list` call.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DriveItem {
+    pub id: String,
+    pub created_time: String,
+}
+
+/// Drive allows several folders with the same name under one parent. Every
+/// caller must resolve a name to the same folder, so pick the oldest one
+/// (ties broken by id) instead of whatever the list happens to return first.
+pub fn pick_oldest(items: &[DriveItem]) -> Option<&DriveItem> {
+    items.iter().min_by(|a, b| {
+        a.created_time
+            .cmp(&b.created_time)
+            .then_with(|| a.id.cmp(&b.id))
+    })
+}
+
+/// Parses a `files.list` response. A non-2xx status or a body without a
+/// `files` array is an error: treating it as "nothing found" makes callers
+/// create a duplicate folder or upload over an existing file.
+pub fn parse_files_list(status: u16, body: &str) -> Result<Vec<DriveItem>> {
+    if !(200..300).contains(&status) {
+        return Err(anyhow!("Drive files.list failed: HTTP {status}: {body}"));
+    }
+    let value: Value = serde_json::from_str(body).context("Drive files.list: invalid JSON")?;
+    let files = value
+        .get("files")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("Drive files.list: response has no files array"))?;
+    Ok(files
+        .iter()
+        .filter_map(|file| {
+            Some(DriveItem {
+                id: file.get("id")?.as_str()?.to_string(),
+                created_time: file
+                    .get("createdTime")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            })
+        })
+        .collect())
+}
+
+/// Escapes a value for a single-quoted string in a Drive search query.
+pub fn escape_query_value(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+pub(crate) async fn list_files(
+    client: &Client,
+    api_base: &str,
+    token: &str,
+    query: &str,
+) -> Result<Vec<DriveItem>> {
+    let res = client
+        .get(format!("{api_base}/files"))
+        .bearer_auth(token)
+        .query(&[
+            ("q", query),
+            ("fields", "files(id,createdTime)"),
+            ("orderBy", "createdTime"),
+            ("pageSize", "100"),
+            ("supportsAllDrives", "true"),
+            ("includeItemsFromAllDrives", "true"),
+            ("corpora", "allDrives"),
+        ])
+        .send()
+        .await
+        .context("Drive files.list request failed")?;
+    let status = res.status().as_u16();
+    let body = res.text().await.unwrap_or_default();
+    parse_files_list(status, &body)
+}
+
+async fn list_folders_named(
+    client: &Client,
+    api_base: &str,
+    token: &str,
+    parent_id: &str,
+    name: &str,
+) -> Result<Vec<DriveItem>> {
+    let query = format!(
+        "'{}' in parents and name='{}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        escape_query_value(parent_id),
+        escape_query_value(name)
+    );
+    list_files(client, api_base, token, &query).await
+}
+
+async fn create_folder(
+    client: &Client,
+    api_base: &str,
+    token: &str,
+    parent_id: &str,
+    name: &str,
+) -> Result<String> {
+    let res = client
+        .post(format!("{api_base}/files?supportsAllDrives=true"))
+        .bearer_auth(token)
+        .json(&json!({
+            "name": name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent_id],
+        }))
+        .send()
+        .await
+        .context("Drive folder create request failed")?;
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!("Drive folder create failed: HTTP {status}: {body}"));
+    }
+    let folder: Value = serde_json::from_str(&body).context("Drive folder create: invalid JSON")?;
+    folder["id"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| anyhow!("No id returned after folder creation"))
+}
+
+/// Resolves `path_parts` under `root_id`, creating missing folders. After a
+/// create the name is listed again: when a concurrent caller created the same
+/// folder, everybody converges on the oldest one.
+pub(crate) async fn ensure_folder_path_at(
+    client: &Client,
+    api_base: &str,
+    token: &str,
+    root_id: &str,
+    path_parts: &[&str],
+) -> Result<String> {
+    let mut parent_id = root_id.to_string();
+
+    for &name in path_parts {
+        let existing = list_folders_named(client, api_base, token, &parent_id, name).await?;
+        if let Some(oldest) = pick_oldest(&existing) {
+            parent_id = oldest.id.clone();
+            continue;
+        }
+
+        let created_id = create_folder(client, api_base, token, &parent_id, name).await?;
+        let listed = list_folders_named(client, api_base, token, &parent_id, name).await?;
+        parent_id = pick_oldest(&listed)
+            .map(|oldest| oldest.id.clone())
+            .unwrap_or(created_id);
+    }
+
+    Ok(parent_id)
+}
+
 pub async fn ensure_folder_path(
     config: &GoogleDriveProviderConfig,
     path_parts: &[&str],
@@ -62,62 +211,14 @@ pub async fn ensure_folder_path(
     }
 
     let token = get_google_drive_token(config).await?;
-    let client = ReqwestClient::new();
-    let mut parent_id = config.folder_id.clone();
-
-    for &name in path_parts {
-        let query = format!(
-            "'{parent_id}' in parents and name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-        );
-
-        let res = client
-            .get("https://www.googleapis.com/drive/v3/files")
-            .bearer_auth(&token)
-            .query(&[
-                ("q", query),
-                ("fields", "files(id,name)".to_string()),
-                ("supportsAllDrives", "true".to_string()),
-                ("includeItemsFromAllDrives", "true".to_string()),
-                ("corpora", "allDrives".to_string()),
-            ])
-            .send()
-            .await
-            .context("list folders failed")?
-            .json::<Value>()
-            .await?;
-
-        if let Some(files) = res["files"].as_array() {
-            if let Some(folder) = files.first() {
-                if let Some(id) = folder["id"].as_str() {
-                    parent_id = id.to_string();
-                    continue;
-                }
-            }
-        }
-
-        let create_payload = json!({
-            "name": name,
-            "mimeType": "application/vnd.google-apps.folder",
-            "parents": [parent_id],
-        });
-
-        let folder = client
-            .post(DRIVE_FILES_URL)
-            .bearer_auth(&token)
-            .json(&create_payload)
-            .send()
-            .await
-            .context("create folder failed")?
-            .json::<Value>()
-            .await?;
-
-        parent_id = folder["id"]
-            .as_str()
-            .ok_or_else(|| anyhow!("No id returned after folder creation"))?
-            .to_string();
-    }
-
-    Ok(parent_id)
+    ensure_folder_path_at(
+        &ReqwestClient::new(),
+        DRIVE_API_BASE,
+        &token,
+        &config.folder_id,
+        path_parts,
+    )
+    .await
 }
 
 pub async fn find_file_by_name(
@@ -126,34 +227,13 @@ pub async fn find_file_by_name(
     folder_id: &str,
 ) -> Result<Option<String>> {
     let token = get_google_drive_token(config).await?;
-    let client = ReqwestClient::new();
-
-    let query = format!("'{folder_id}' in parents and name='{file_name}' and trashed=false");
-
-    let res = client
-        .get("https://www.googleapis.com/drive/v3/files")
-        .bearer_auth(&token)
-        .query(&[
-            ("q", query),
-            ("fields", "files(id,name)".to_string()),
-            ("supportsAllDrives", "true".to_string()),
-            ("includeItemsFromAllDrives", "true".to_string()),
-            ("corpora", "allDrives".to_string()),
-        ])
-        .send()
-        .await?
-        .json::<Value>()
-        .await?;
-
-    if let Some(files) = res["files"].as_array() {
-        if let Some(file) = files.first() {
-            if let Some(id) = file["id"].as_str() {
-                return Ok(Some(id.to_string()));
-            }
-        }
-    }
-
-    Ok(None)
+    let query = format!(
+        "'{}' in parents and name='{}' and trashed=false",
+        escape_query_value(folder_id),
+        escape_query_value(file_name)
+    );
+    let files = list_files(&ReqwestClient::new(), DRIVE_API_BASE, &token, &query).await?;
+    Ok(pick_oldest(&files).map(|file| file.id.clone()))
 }
 
 pub async fn upload_stream_to_google_drive(
