@@ -99,6 +99,9 @@ pub fn build_config(db: InputDatabaseConfig) -> Result<DatabaseConfig, String> {
         DbType::DockerVolume => required(&db.volume_name, &db.name, "volume_name")?,
         _ => optional(&db.volume_name),
     };
+    if let Some(hooks) = &db.hooks {
+        hooks.validate(&db.name)?;
+    }
 
     Ok(DatabaseConfig {
         name: db.name,
@@ -114,5 +117,6 @@ pub fn build_config(db: InputDatabaseConfig) -> Result<DatabaseConfig, String> {
         volume_name,
         container_name: db.container_name.clone(),
         options: db.options.unwrap_or_default(),
+        hooks: db.hooks,
     })
 }

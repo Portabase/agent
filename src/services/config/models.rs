@@ -1,3 +1,4 @@
+use super::hooks::Hooks;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -56,6 +57,8 @@ pub struct DatabaseConfig {
     pub volume_name: String,
     pub container_name: Option<String>,
     pub options: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub hooks: Option<Hooks>,
 }
 
 #[allow(dead_code)]
@@ -81,6 +84,8 @@ pub struct InputDatabaseConfig {
     pub volume_name: Option<String>,
     pub container_name: Option<String>,
     pub options: Option<HashMap<String, serde_json::Value>>,
+    #[serde(default)]
+    pub hooks: Option<Hooks>,
 }
 
 #[allow(dead_code)]

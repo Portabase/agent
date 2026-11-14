@@ -7,6 +7,24 @@ password = "changeme"
 port = 5432
 host = "db-postgres"
 generated_id = "16678159-ff7e-4c97-8c83-0adeff214689"
+[databases.hooks]
+timeout_secs = 60
+
+[databases.hooks.pre]
+container = "db-postgres"
+command = ["sh", "-c", '''psql -U devuser -d devdb -c "CREATE TABLE IF NOT EXISTS hook_log (at timestamptz DEFAULT now(), phase text, backup_id text, status text); INSERT INTO hook_log (phase, backup_id) VALUES ('$PORTABASE_PHASE', '$PORTABASE_BACKUP_ID')"''']
+
+[databases.hooks.post]
+container = "db-postgres"
+command = ["sh", "-c", '''psql -U devuser -d devdb -c "INSERT INTO hook_log (phase, backup_id, status) VALUES ('$PORTABASE_PHASE', '$PORTABASE_BACKUP_ID', '$PORTABASE_STATUS')"''']
+
+[databases.hooks.on_success]
+container = "db-postgres"
+command = ["sh", "-c", '''psql -U devuser -d devdb -c "INSERT INTO hook_log (phase, backup_id, status) VALUES ('$PORTABASE_PHASE', '$PORTABASE_BACKUP_ID', '$PORTABASE_STATUS')"''']
+
+[databases.hooks.on_failure]
+container = "db-postgres"
+command = ["sh", "-c", '''psql -U devuser -d devdb -c "INSERT INTO hook_log (phase, backup_id, status) VALUES ('$PORTABASE_PHASE', '$PORTABASE_BACKUP_ID', '$PORTABASE_STATUS')"''']
 
 [[databases]]
 name = "Test database 2 - MariaDB"
