@@ -3145,7 +3145,7 @@ dependencies = [
 
 [[package]]
 name = "portabase-agent"
-version = "1.26.2"
+version = "1.26.3"
 dependencies = [
  "aes-gcm",
  "anyhow",
