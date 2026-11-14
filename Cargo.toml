@@ -59,7 +59,7 @@ walkdir = "2.5"
 libc = "0.2"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "test-util"] }
 testcontainers = "0.27.1"
 testcontainers-modules = { version = "0.15.0", features = ["postgres", "redis", "valkey", "mysql", "mariadb", "mongo"] }
 wiremock = "0.6"

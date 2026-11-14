@@ -1,5 +1,5 @@
 use crate::services::storage::providers::google_drive::helpers::{
-    DRIVE_RESUMABLE_UPLOAD_URL, DRIVE_RETRY_MAX, DriveItem, drive_error_reasons,
+    DRIVE_RESUMABLE_UPLOAD_URL, DRIVE_RETRY_MAX, DriveItem, drive_backoff, drive_error_reasons,
     ensure_folder_path_at, escape_query_value, exchange_refresh_token, is_retryable_drive_status,
     list_files, parse_files_list, pick_oldest, upload_chunks,
 };
@@ -11,6 +11,7 @@ use crate::utils::stream::build_stream;
 use bytes::Bytes;
 use futures::stream;
 use reqwest::Client;
+use std::time::Duration;
 use tempfile::TempDir;
 use wiremock::matchers::{body_string_contains, method, path, query_param_contains};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -268,7 +269,7 @@ fn query_values_are_escaped() {
     assert_eq!(escape_query_value("o'neil\\db"), "o\\'neil\\\\db");
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn list_error_surfaces_from_list_files() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -397,7 +398,7 @@ fn server_errors_retry_only_when_safe() {
     assert!(!is_retryable_drive_status(404, "", true));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn list_retries_a_rate_limit_403() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -412,10 +413,16 @@ async fn list_retries_a_rate_limit_403() {
         .mount(&server)
         .await;
 
+    let started = tokio::time::Instant::now();
     let files = list_files(&Client::new(), &server.uri(), "t", "q")
         .await
         .unwrap();
     assert_eq!(files, vec![item("a", "")]);
+    // Two retries back off at least 5s + 10s. The paused clock also skips
+    // ahead while the mock server does real I/O, so only the lower bound holds;
+    // exact delays are covered by the drive_backoff unit test.
+    let waited = started.elapsed();
+    assert!(waited >= Duration::from_secs(15), "{waited:?}");
 }
 
 #[tokio::test]
@@ -438,7 +445,7 @@ async fn permission_403_fails_without_retry() {
     assert!(error.contains("HTTP 403"), "{error}");
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn chunk_retries_a_rate_limit_403_and_completes() {
     let server = MockServer::start().await;
     Mock::given(method("PUT"))
@@ -467,7 +474,7 @@ async fn chunk_retries_a_rate_limit_403_and_completes() {
     assert_eq!(puts[0], puts[1]);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn chunk_gives_up_after_bounded_rate_limit_retries() {
     let server = MockServer::start().await;
     Mock::given(method("PUT"))
@@ -507,4 +514,17 @@ async fn chunk_does_not_resend_after_a_server_error() {
     .unwrap_err()
     .to_string();
     assert!(error.contains("backendError"), "{error}");
+}
+
+#[test]
+fn backoff_doubles_from_five_seconds_with_bounded_jitter() {
+    for (attempt, base) in [(0, 5), (1, 10), (2, 20), (3, 40), (4, 80), (9, 80)] {
+        for _ in 0..50 {
+            let delay = drive_backoff(attempt);
+            assert!(
+                delay >= Duration::from_secs(base) && delay < Duration::from_secs(base + 1),
+                "attempt {attempt}: {delay:?}"
+            );
+        }
+    }
 }

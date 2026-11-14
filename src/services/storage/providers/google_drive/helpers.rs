@@ -6,6 +6,7 @@ use futures::StreamExt;
 use reqwest::{Client as ReqwestClient, StatusCode};
 use reqwest::{Client, header};
 use serde_json::{Value, json};
+use std::time::Duration;
 
 pub const DRIVE_API_BASE: &str = "https://www.googleapis.com/drive/v3";
 pub const DRIVE_RESUMABLE_UPLOAD_URL: &str =
@@ -80,11 +81,22 @@ pub fn is_retryable_drive_status(status: u16, body: &str, retry_server_errors: b
     }
 }
 
-pub fn drive_backoff_secs(attempt: u32) -> u64 {
-    if cfg!(test) {
-        return 0;
+/// Delay before retry `attempt + 1`: 5s, 10s, 20s, 40s, 80s, plus up to one
+/// second of random jitter, so agents that hit the limit together (scheduled
+/// backups start at the same minute) do not retry together.
+pub fn drive_backoff(attempt: u32) -> Duration {
+    Duration::from_secs(5 * (1u64 << attempt.min(4)))
+        + Duration::from_millis(rand::random_range(0..1000))
+}
+
+/// Keeps logs and error messages readable when a proxy answers with a page.
+fn shorten(body: &str) -> String {
+    const MAX_CHARS: usize = 500;
+    if body.chars().count() <= MAX_CHARS {
+        return body.to_string();
     }
-    5 * (1u64 << attempt.min(4))
+    let head: String = body.chars().take(MAX_CHARS).collect();
+    format!("{head}…")
 }
 
 pub(crate) struct DriveResponse {
@@ -114,7 +126,11 @@ where
                 if attempt < DRIVE_RETRY_MAX
                     && is_retryable_drive_status(status.as_u16(), &body, retry_server_errors)
                 {
-                    tracing::warn!("Drive HTTP {status}, retry {}: {body}", attempt + 1);
+                    tracing::warn!(
+                        "Drive HTTP {status}, retry {}: {}",
+                        attempt + 1,
+                        shorten(&body)
+                    );
                 } else {
                     return Ok(DriveResponse {
                         status,
@@ -128,7 +144,7 @@ where
             }
             Err(e) => return Err(e).context("Drive request failed"),
         }
-        tokio::time::sleep(std::time::Duration::from_secs(drive_backoff_secs(attempt))).await;
+        tokio::time::sleep(drive_backoff(attempt)).await;
         attempt += 1;
     }
 }
@@ -452,7 +468,11 @@ pub async fn upload_chunks(
         .context("Chunk request failed")?;
 
         if !(res.status.is_success() || res.status == StatusCode::PERMANENT_REDIRECT) {
-            return Err(anyhow::anyhow!("Chunk upload failed: {}", res.body));
+            return Err(anyhow::anyhow!(
+                "Chunk upload failed: HTTP {}: {}",
+                res.status,
+                shorten(&res.body)
+            ));
         }
         uploaded = chunk_end;
         tracing::info!("Uploaded {} bytes", uploaded);
