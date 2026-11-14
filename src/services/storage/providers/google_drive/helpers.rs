@@ -17,7 +17,6 @@ pub async fn get_google_drive_token(config: &GoogleDriveProviderConfig) -> Resul
     exchange_refresh_token(&ReqwestClient::new(), GOOGLE_TOKEN_URL, config).await
 }
 
-/// OAuth 2.0 refresh-token grant (RFC 6749 §6), client credentials in the body.
 pub(crate) async fn exchange_refresh_token(
     client: &Client,
     token_url: &str,
@@ -55,7 +54,6 @@ pub(crate) async fn exchange_refresh_token(
 
 pub const DRIVE_RETRY_MAX: u32 = 5;
 
-/// `error.errors[].reason` values of a Drive error body.
 pub fn drive_error_reasons(body: &str) -> Vec<String> {
     serde_json::from_str::<Value>(body)
         .ok()
@@ -66,10 +64,6 @@ pub fn drive_error_reasons(body: &str) -> Vec<String> {
         .collect()
 }
 
-/// Drive reports rate limiting as 429 or as 403 with a rate-limit reason and
-/// asks clients to retry with exponential backoff. Other 403s (permissions,
-/// storage quota, daily limit) are final. 5xx is retried only where sending
-/// the request again is safe.
 pub fn is_retryable_drive_status(status: u16, body: &str, retry_server_errors: bool) -> bool {
     match status {
         429 => true,
@@ -81,15 +75,11 @@ pub fn is_retryable_drive_status(status: u16, body: &str, retry_server_errors: b
     }
 }
 
-/// Delay before retry `attempt + 1`: 5s, 10s, 20s, 40s, 80s, plus up to one
-/// second of random jitter, so agents that hit the limit together (scheduled
-/// backups start at the same minute) do not retry together.
 pub fn drive_backoff(attempt: u32) -> Duration {
     Duration::from_secs(5 * (1u64 << attempt.min(4)))
         + Duration::from_millis(rand::random_range(0..1000))
 }
 
-/// Keeps logs and error messages readable when a proxy answers with a page.
 fn shorten(body: &str) -> String {
     const MAX_CHARS: usize = 500;
     if body.chars().count() <= MAX_CHARS {
@@ -105,9 +95,6 @@ pub(crate) struct DriveResponse {
     pub body: String,
 }
 
-/// Sends a Drive request, retrying rate limits, timeouts, connection errors
-/// and (when `retry_server_errors`) 5xx. Returns the last response whatever
-/// its status; callers decide what a final status means.
 pub(crate) async fn send_with_retry<F, Fut>(
     mut send: F,
     retry_server_errors: bool,
@@ -149,16 +136,12 @@ where
     }
 }
 
-/// A file or folder returned by a Drive `files.list` call.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DriveItem {
     pub id: String,
     pub created_time: String,
 }
 
-/// Drive allows several folders with the same name under one parent. Every
-/// caller must resolve a name to the same folder, so pick the oldest one
-/// (ties broken by id) instead of whatever the list happens to return first.
 pub fn pick_oldest(items: &[DriveItem]) -> Option<&DriveItem> {
     items.iter().min_by(|a, b| {
         a.created_time
@@ -167,9 +150,6 @@ pub fn pick_oldest(items: &[DriveItem]) -> Option<&DriveItem> {
     })
 }
 
-/// Parses a `files.list` response. A non-2xx status or a body without a
-/// `files` array is an error: treating it as "nothing found" makes callers
-/// create a duplicate folder or upload over an existing file.
 pub fn parse_files_list(status: u16, body: &str) -> Result<Vec<DriveItem>> {
     if !(200..300).contains(&status) {
         return Err(anyhow!("Drive files.list failed: HTTP {status}: {body}"));
@@ -194,7 +174,6 @@ pub fn parse_files_list(status: u16, body: &str) -> Result<Vec<DriveItem>> {
         .collect())
 }
 
-/// Escapes a value for a single-quoted string in a Drive search query.
 pub fn escape_query_value(value: &str) -> String {
     value.replace('\\', "\\\\").replace('\'', "\\'")
 }
@@ -251,8 +230,6 @@ async fn create_folder(
     parent_id: &str,
     name: &str,
 ) -> Result<String> {
-    // A repeated create after a 5xx can leave a second folder; the list after
-    // the create resolves the name to the oldest one either way.
     let url = format!("{api_base}/files?supportsAllDrives=true");
     let payload = json!({
         "name": name,
@@ -280,9 +257,6 @@ async fn create_folder(
         .ok_or_else(|| anyhow!("No id returned after folder creation"))
 }
 
-/// Resolves `path_parts` under `root_id`, creating missing folders. After a
-/// create the name is listed again: when a concurrent caller created the same
-/// folder, everybody converges on the oldest one.
 pub(crate) async fn ensure_folder_path_at(
     client: &Client,
     api_base: &str,
@@ -450,9 +424,7 @@ pub async fn upload_chunks(
             (false, false) => format!("bytes {uploaded}-{}/*", chunk_end - 1),
         };
         let chunk_bytes = Bytes::from(chunk_bytes);
-
-        // Server errors are not resent: after a 5xx the session offset has to
-        // be queried first, so only rate limits and network errors retry here.
+        
         let res = send_with_retry(
             || {
                 client

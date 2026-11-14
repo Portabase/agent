@@ -418,9 +418,6 @@ async fn list_retries_a_rate_limit_403() {
         .await
         .unwrap();
     assert_eq!(files, vec![item("a", "")]);
-    // Two retries back off at least 5s + 10s. The paused clock also skips
-    // ahead while the mock server does real I/O, so only the lower bound holds;
-    // exact delays are covered by the drive_backoff unit test.
     let waited = started.elapsed();
     assert!(waited >= Duration::from_secs(15), "{waited:?}");
 }

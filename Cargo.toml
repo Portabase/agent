@@ -47,9 +47,6 @@ aes-gcm = "0.11"
 tokio-stream = "0.1.18"
 url = "2.5.8"
 percent-encoding = "2.3.2"
-# bollard must match the version testcontainers uses (bollard-stubs is pinned
-# exactly, so two bollards cannot coexist). Upgrade bollard, testcontainers and
-# testcontainers-modules together.
 bollard = "0.20.0"
 rustls = "0.23"
 globset = "0.4"
