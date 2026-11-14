@@ -52,6 +52,87 @@ pub(crate) async fn exchange_refresh_token(
         .ok_or_else(|| anyhow!("token response has no access_token"))
 }
 
+pub const DRIVE_RETRY_MAX: u32 = 5;
+
+/// `error.errors[].reason` values of a Drive error body.
+pub fn drive_error_reasons(body: &str) -> Vec<String> {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|value| value["error"]["errors"].as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|error| error["reason"].as_str().map(str::to_string))
+        .collect()
+}
+
+/// Drive reports rate limiting as 429 or as 403 with a rate-limit reason and
+/// asks clients to retry with exponential backoff. Other 403s (permissions,
+/// storage quota, daily limit) are final. 5xx is retried only where sending
+/// the request again is safe.
+pub fn is_retryable_drive_status(status: u16, body: &str, retry_server_errors: bool) -> bool {
+    match status {
+        429 => true,
+        403 => drive_error_reasons(body)
+            .iter()
+            .any(|reason| reason == "rateLimitExceeded" || reason == "userRateLimitExceeded"),
+        500 | 502 | 503 | 504 => retry_server_errors,
+        _ => false,
+    }
+}
+
+pub fn drive_backoff_secs(attempt: u32) -> u64 {
+    if cfg!(test) {
+        return 0;
+    }
+    5 * (1u64 << attempt.min(4))
+}
+
+pub(crate) struct DriveResponse {
+    pub status: StatusCode,
+    pub headers: header::HeaderMap,
+    pub body: String,
+}
+
+/// Sends a Drive request, retrying rate limits, timeouts, connection errors
+/// and (when `retry_server_errors`) 5xx. Returns the last response whatever
+/// its status; callers decide what a final status means.
+pub(crate) async fn send_with_retry<F, Fut>(
+    mut send: F,
+    retry_server_errors: bool,
+) -> Result<DriveResponse>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = std::result::Result<reqwest::Response, reqwest::Error>>,
+{
+    let mut attempt = 0u32;
+    loop {
+        match send().await {
+            Ok(res) => {
+                let status = res.status();
+                let headers = res.headers().clone();
+                let body = res.text().await.unwrap_or_default();
+                if attempt < DRIVE_RETRY_MAX
+                    && is_retryable_drive_status(status.as_u16(), &body, retry_server_errors)
+                {
+                    tracing::warn!("Drive HTTP {status}, retry {}: {body}", attempt + 1);
+                } else {
+                    return Ok(DriveResponse {
+                        status,
+                        headers,
+                        body,
+                    });
+                }
+            }
+            Err(e) if (e.is_timeout() || e.is_connect()) && attempt < DRIVE_RETRY_MAX => {
+                tracing::warn!("Drive request error, retry {}: {e}", attempt + 1);
+            }
+            Err(e) => return Err(e).context("Drive request failed"),
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(drive_backoff_secs(attempt))).await;
+        attempt += 1;
+    }
+}
+
 /// A file or folder returned by a Drive `files.list` call.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DriveItem {
@@ -108,24 +189,28 @@ pub(crate) async fn list_files(
     token: &str,
     query: &str,
 ) -> Result<Vec<DriveItem>> {
-    let res = client
-        .get(format!("{api_base}/files"))
-        .bearer_auth(token)
-        .query(&[
-            ("q", query),
-            ("fields", "files(id,createdTime)"),
-            ("orderBy", "createdTime"),
-            ("pageSize", "100"),
-            ("supportsAllDrives", "true"),
-            ("includeItemsFromAllDrives", "true"),
-            ("corpora", "allDrives"),
-        ])
-        .send()
-        .await
-        .context("Drive files.list request failed")?;
-    let status = res.status().as_u16();
-    let body = res.text().await.unwrap_or_default();
-    parse_files_list(status, &body)
+    let url = format!("{api_base}/files");
+    let res = send_with_retry(
+        || {
+            client
+                .get(&url)
+                .bearer_auth(token)
+                .query(&[
+                    ("q", query),
+                    ("fields", "files(id,createdTime)"),
+                    ("orderBy", "createdTime"),
+                    ("pageSize", "100"),
+                    ("supportsAllDrives", "true"),
+                    ("includeItemsFromAllDrives", "true"),
+                    ("corpora", "allDrives"),
+                ])
+                .send()
+        },
+        true,
+    )
+    .await
+    .context("Drive files.list request failed")?;
+    parse_files_list(res.status.as_u16(), &res.body)
 }
 
 async fn list_folders_named(
@@ -150,23 +235,29 @@ async fn create_folder(
     parent_id: &str,
     name: &str,
 ) -> Result<String> {
-    let res = client
-        .post(format!("{api_base}/files?supportsAllDrives=true"))
-        .bearer_auth(token)
-        .json(&json!({
-            "name": name,
-            "mimeType": "application/vnd.google-apps.folder",
-            "parents": [parent_id],
-        }))
-        .send()
-        .await
-        .context("Drive folder create request failed")?;
-    let status = res.status();
-    let body = res.text().await.unwrap_or_default();
-    if !status.is_success() {
-        return Err(anyhow!("Drive folder create failed: HTTP {status}: {body}"));
+    // A repeated create after a 5xx can leave a second folder; the list after
+    // the create resolves the name to the oldest one either way.
+    let url = format!("{api_base}/files?supportsAllDrives=true");
+    let payload = json!({
+        "name": name,
+        "mimeType": "application/vnd.google-apps.folder",
+        "parents": [parent_id],
+    });
+    let res = send_with_retry(
+        || client.post(&url).bearer_auth(token).json(&payload).send(),
+        true,
+    )
+    .await
+    .context("Drive folder create request failed")?;
+    if !res.status.is_success() {
+        return Err(anyhow!(
+            "Drive folder create failed: HTTP {}: {}",
+            res.status,
+            res.body
+        ));
     }
-    let folder: Value = serde_json::from_str(&body).context("Drive folder create: invalid JSON")?;
+    let folder: Value =
+        serde_json::from_str(&res.body).context("Drive folder create: invalid JSON")?;
     folder["id"]
         .as_str()
         .map(str::to_string)
@@ -271,22 +362,26 @@ pub async fn upload_stream_to_google_drive(
         "mimeType": mime,
     });
 
-    let session_res = client
-        .post(DRIVE_RESUMABLE_UPLOAD_URL)
-        .bearer_auth(&token)
-        .header("X-Upload-Content-Type", mime)
-        .json(&metadata)
-        .send()
-        .await
-        .context("Failed to initiate resumable upload")?;
+    let session_res = send_with_retry(
+        || {
+            client
+                .post(DRIVE_RESUMABLE_UPLOAD_URL)
+                .bearer_auth(&token)
+                .header("X-Upload-Content-Type", mime)
+                .json(&metadata)
+                .send()
+        },
+        true,
+    )
+    .await
+    .context("Failed to initiate resumable upload")?;
 
-    if session_res.status() != StatusCode::OK {
-        let text = session_res.text().await.unwrap_or_default();
-        return Err(anyhow::anyhow!("Initiate failed: {}", text));
+    if session_res.status != StatusCode::OK {
+        return Err(anyhow::anyhow!("Initiate failed: {}", session_res.body));
     }
 
     let upload_url = session_res
-        .headers()
+        .headers
         .get(header::LOCATION)
         .ok_or_else(|| anyhow::anyhow!("No Location header"))?
         .to_str()?
@@ -340,44 +435,27 @@ pub async fn upload_chunks(
         };
         let chunk_bytes = Bytes::from(chunk_bytes);
 
-        let mut retries = 0;
-        loop {
-            let res = client
-                .put(upload_url)
-                .header("Content-Range", &content_range)
-                .header("Content-Length", chunk_bytes.len().to_string())
-                .body(chunk_bytes.clone())
-                .send()
-                .await;
+        // Server errors are not resent: after a 5xx the session offset has to
+        // be queried first, so only rate limits and network errors retry here.
+        let res = send_with_retry(
+            || {
+                client
+                    .put(upload_url)
+                    .header("Content-Range", &content_range)
+                    .header("Content-Length", chunk_bytes.len().to_string())
+                    .body(chunk_bytes.clone())
+                    .send()
+            },
+            false,
+        )
+        .await
+        .context("Chunk request failed")?;
 
-            match res {
-                Ok(resp)
-                    if resp.status().is_success()
-                        || resp.status() == StatusCode::PERMANENT_REDIRECT =>
-                {
-                    // 200 or 308 = good
-                    uploaded = chunk_end;
-                    tracing::info!("Uploaded {} bytes", uploaded);
-                    break;
-                }
-                Ok(resp) if resp.status() == StatusCode::TOO_MANY_REQUESTS => {
-                    // Backoff on 429
-                    tokio::time::sleep(std::time::Duration::from_secs(5 * (1 << retries))).await;
-                }
-                Ok(resp) => {
-                    let text = resp.text().await.unwrap_or_default();
-                    return Err(anyhow::anyhow!("Chunk upload failed: {}", text));
-                }
-                Err(e) if e.is_timeout() || e.is_connect() => {
-                    if retries > 5 {
-                        return Err(e).context("Too many retries");
-                    }
-                    retries += 1;
-                    tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(retries))).await;
-                }
-                Err(e) => return Err(e).context("Chunk request failed"),
-            }
+        if !(res.status.is_success() || res.status == StatusCode::PERMANENT_REDIRECT) {
+            return Err(anyhow::anyhow!("Chunk upload failed: {}", res.body));
         }
+        uploaded = chunk_end;
+        tracing::info!("Uploaded {} bytes", uploaded);
     }
 
     Ok(())

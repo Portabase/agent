@@ -1,6 +1,7 @@
 use crate::services::storage::providers::google_drive::helpers::{
-    DRIVE_RESUMABLE_UPLOAD_URL, DriveItem, ensure_folder_path_at, escape_query_value,
-    exchange_refresh_token, list_files, parse_files_list, pick_oldest, upload_chunks,
+    DRIVE_RESUMABLE_UPLOAD_URL, DRIVE_RETRY_MAX, DriveItem, drive_error_reasons,
+    ensure_folder_path_at, escape_query_value, exchange_refresh_token, is_retryable_drive_status,
+    list_files, parse_files_list, pick_oldest, upload_chunks,
 };
 use crate::services::storage::providers::google_drive::models::GoogleDriveProviderConfig;
 use crate::tests::services::local_storage_tests::MASTER_KEY_B64;
@@ -273,6 +274,7 @@ async fn list_error_surfaces_from_list_files() {
     Mock::given(method("GET"))
         .and(path("/files"))
         .respond_with(ResponseTemplate::new(500).set_body_string("backendError"))
+        .expect(u64::from(DRIVE_RETRY_MAX) + 1)
         .mount(&server)
         .await;
 
@@ -355,4 +357,154 @@ async fn concurrent_create_converges_on_the_oldest_folder() {
         .await
         .unwrap();
     assert_eq!(id, "theirs");
+}
+
+const RATE_LIMIT_403: &str = r#"{"error":{"code":403,"message":"Rate Limit Exceeded","errors":[{"domain":"usageLimits","reason":"rateLimitExceeded","message":"Rate Limit Exceeded"}]}}"#;
+
+#[test]
+fn drive_error_reasons_are_read_from_json() {
+    assert_eq!(
+        drive_error_reasons(RATE_LIMIT_403),
+        vec!["rateLimitExceeded"]
+    );
+    assert!(drive_error_reasons("not json").is_empty());
+}
+
+#[test]
+fn only_rate_limit_403s_are_retryable() {
+    assert!(is_retryable_drive_status(429, "", false));
+    assert!(is_retryable_drive_status(403, RATE_LIMIT_403, false));
+    assert!(is_retryable_drive_status(
+        403,
+        r#"{"error":{"errors":[{"reason":"userRateLimitExceeded"}]}}"#,
+        false
+    ));
+    for reason in [
+        "insufficientFilePermissions",
+        "storageQuotaExceeded",
+        "dailyLimitExceeded",
+    ] {
+        let body = format!(r#"{{"error":{{"errors":[{{"reason":"{reason}"}}]}}}}"#);
+        assert!(!is_retryable_drive_status(403, &body, true), "{reason}");
+    }
+    assert!(!is_retryable_drive_status(403, "rateLimitExceeded", true));
+}
+
+#[test]
+fn server_errors_retry_only_when_safe() {
+    assert!(is_retryable_drive_status(503, "", true));
+    assert!(!is_retryable_drive_status(503, "", false));
+    assert!(!is_retryable_drive_status(404, "", true));
+}
+
+#[tokio::test]
+async fn list_retries_a_rate_limit_403() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/files"))
+        .respond_with(ResponseTemplate::new(403).set_body_string(RATE_LIMIT_403))
+        .up_to_n_times(2)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/files"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"files":[{"id":"a"}]}"#))
+        .mount(&server)
+        .await;
+
+    let files = list_files(&Client::new(), &server.uri(), "t", "q")
+        .await
+        .unwrap();
+    assert_eq!(files, vec![item("a", "")]);
+}
+
+#[tokio::test]
+async fn permission_403_fails_without_retry() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(403).set_body_string(
+                r#"{"error":{"errors":[{"reason":"insufficientFilePermissions"}]}}"#,
+            ),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let error = list_files(&Client::new(), &server.uri(), "t", "q")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("HTTP 403"), "{error}");
+}
+
+#[tokio::test]
+async fn chunk_retries_a_rate_limit_403_and_completes() {
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .and(path("/upload"))
+        .respond_with(ResponseTemplate::new(403).set_body_string(RATE_LIMIT_403))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/upload"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+
+    upload_chunks(
+        &Client::new(),
+        &format!("{}/upload", server.uri()),
+        stream::iter(vec![Ok(Bytes::from(vec![9u8; 1024]))]),
+        1024,
+    )
+    .await
+    .unwrap();
+
+    let puts = received_puts(&server).await;
+    assert_eq!(puts.len(), 2);
+    assert_eq!(puts[0], puts[1]);
+}
+
+#[tokio::test]
+async fn chunk_gives_up_after_bounded_rate_limit_retries() {
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .respond_with(ResponseTemplate::new(429))
+        .expect(u64::from(DRIVE_RETRY_MAX) + 1)
+        .mount(&server)
+        .await;
+
+    assert!(
+        upload_chunks(
+            &Client::new(),
+            &format!("{}/upload", server.uri()),
+            stream::iter(vec![Ok(Bytes::from(vec![9u8; 16]))]),
+            16,
+        )
+        .await
+        .is_err()
+    );
+}
+
+#[tokio::test]
+async fn chunk_does_not_resend_after_a_server_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .respond_with(ResponseTemplate::new(503).set_body_string("backendError"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let error = upload_chunks(
+        &Client::new(),
+        &format!("{}/upload", server.uri()),
+        stream::iter(vec![Ok(Bytes::from(vec![9u8; 16]))]),
+        16,
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("backendError"), "{error}");
 }
