@@ -1,0 +1,82 @@
+name: Build Linux release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release version (git tag), e.g. 1.18.4'
+        type: string
+        required: false
+      ref:
+        description: 'Git ref to check out and build'
+        type: string
+        required: false
+      draft_tag:
+        description: 'Draft GitHub release tag to attach the assets to (e.g. untagged-xxxx). Empty = skip upload.'
+        type: string
+        required: false
+    secrets:
+      GH_TOKEN:
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to check out and build'
+        type: string
+        required: false
+
+jobs:
+  build-linux:
+    name: Build linux/${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+
+      - name: Set up Rust toolchain (musl)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build (cargo release)
+        run: cargo build --release --locked --bin app --target ${{ matrix.target }}
+
+      - name: Prepare artifact archive
+        id: prepare_artifact
+        env:
+          RELEASE_VERSION: ${{ inputs.version || github.sha }}
+        run: |
+          mkdir artifact
+          cp "target/${{ matrix.target }}/release/app" artifact/portabase-agent
+          archive="linux-${{ matrix.arch }}-release-$RELEASE_VERSION.tar.gz"
+          tar -czf "$archive" -C artifact portabase-agent
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        if: ${{ inputs.draft_tag == '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}-release
+          path: ${{ steps.prepare_artifact.outputs.archive }}
+
+      - name: Attach asset to draft release
+        if: ${{ inputs.draft_tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: gh release upload "${{ inputs.draft_tag }}" "${{ steps.prepare_artifact.outputs.archive }}" --clobber

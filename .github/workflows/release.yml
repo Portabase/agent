@@ -129,6 +129,17 @@ jobs:
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  build-linux:
+    needs: create-release
+    if: ${{ needs.create-release.result == 'success' }}
+    uses: ./.github/workflows/linux-release.yml
+    with:
+      version: ${{ needs.create-release.outputs.version }}
+      ref: ${{ needs.create-release.outputs.version }}
+      draft_tag: ${{ needs.create-release.outputs.draft_tag }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   finalize-release:
     needs:
       - create-release
@@ -136,6 +147,7 @@ jobs:
       - publish-docker-ghcr
       - publish-helm
       - build-windows
+      - build-linux
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.publish_release_step.outputs.release_tag }}
