@@ -8,7 +8,43 @@ fn parse_container_id_from_mountinfo_line() {
     let mountinfo = format!(
         "1234 1000 0:50 / /etc/hostname rw shared:1 - ext4 /var/lib/docker/containers/{id}/hostname rw"
     );
-    assert_eq!(parse_container_id(&mountinfo, ""), Some(id));
+    assert_eq!(parse_container_id(&mountinfo, ""), Some(id.clone()));
+    let rootless = format!(
+        "1234 1000 0:50 /home/u/.local/share/docker/containers/{id}/hostname /etc/hostname rw - ext4 /dev/sda1 rw"
+    );
+    assert_eq!(parse_container_id(&rootless, ""), Some(id));
+}
+
+#[test]
+fn parse_container_id_from_podman_mountinfo_line() {
+    let id = "c".repeat(64);
+    for driver in ["overlay", "vfs"] {
+        let mountinfo = format!(
+            "17182 17570 0:411 /containers/{driver}-containers/{id}/userdata/hostname /etc/hostname rw,relatime - tmpfs tmpfs rw"
+        );
+        assert_eq!(
+            parse_container_id(&mountinfo, ""),
+            Some(id.clone()),
+            "{driver}"
+        );
+    }
+}
+
+#[test]
+fn parse_container_id_ignores_foreign_container_mounts() {
+    let own = "d".repeat(64);
+    let foreign = "e".repeat(64);
+    let podman = format!(
+        "1 0 0:1 /containers/overlay-containers/{foreign}/userdata/hosts /etc/hosts rw - tmpfs tmpfs rw\n\
+         2 0 0:1 /containers/overlay-containers/{foreign}/userdata/hostname /etc/hostname rw - tmpfs tmpfs rw\n\
+         3 0 0:1 /containers/overlay-containers/{own}/userdata/.containerenv /run/.containerenv rw - tmpfs tmpfs rw"
+    );
+    assert_eq!(parse_container_id(&podman, ""), Some(own.clone()));
+    let docker = format!(
+        "1 0 8:1 /var/lib/docker/containers/{foreign} /logs rw - ext4 /dev/sda1 rw\n\
+         2 0 8:1 /var/lib/docker/containers/{own}/hostname /etc/hostname rw - ext4 /dev/sda1 rw"
+    );
+    assert_eq!(parse_container_id(&docker, ""), Some(own));
 }
 
 #[test]
@@ -21,6 +57,49 @@ fn parse_container_id_from_cgroup_v1() {
 #[test]
 fn parse_container_id_none_on_cgroup_v2() {
     assert_eq!(parse_container_id("", "0::/\n"), None);
+}
+
+fn write_tar(dir: &tempfile::TempDir, file_name: &str, entry_names: &[&str]) -> std::path::PathBuf {
+    let mut builder = tar::Builder::new(Vec::new());
+    for entry_name in entry_names {
+        let mut header = tar::Header::new_ustar();
+        header.as_mut_bytes()[..entry_name.len()].copy_from_slice(entry_name.as_bytes());
+        header.set_size(0);
+        header.set_cksum();
+        builder.append(&header, std::io::empty()).unwrap();
+    }
+    let path = dir.path().join(file_name);
+    std::fs::write(&path, builder.into_inner().unwrap()).unwrap();
+    path
+}
+
+#[test]
+fn restore_upload_path_follows_archive_layout() {
+    use crate::domain::docker_volume::restore::upload_path;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let docker_archive = write_tar(&dir, "docker.tar", &["vol/", "vol/keeper.txt"]);
+    let podman_archive = write_tar(&dir, "podman.tar", &["/", "/keeper.txt"]);
+    let empty_archive = write_tar(&dir, "empty.tar", &[]);
+
+    assert_eq!(upload_path(&docker_archive).unwrap(), "/");
+    assert_eq!(upload_path(&podman_archive).unwrap(), "/vol");
+    assert_eq!(upload_path(&empty_archive).unwrap(), "/");
+}
+
+#[test]
+fn tar_succeeded_tolerates_only_files_changed_while_read() {
+    use crate::domain::docker_volume::backup::tar_succeeded;
+
+    let changed = "tar: vol/busy.log: file changed as we read it\ntar: vol/other.log: file changed as we read it\n";
+    assert!(tar_succeeded(Some(0), ""));
+    assert!(tar_succeeded(Some(0), "tar: vol/app.sock: socket ignored\n"));
+    assert!(tar_succeeded(Some(1), changed));
+    assert!(!tar_succeeded(Some(1), ""));
+    assert!(!tar_succeeded(Some(1), "tar: short read\n"));
+    assert!(!tar_succeeded(Some(1), &format!("{changed}tar: vol/x: Cannot open: Permission denied\n")));
+    assert!(!tar_succeeded(Some(2), changed));
+    assert!(!tar_succeeded(None, ""));
 }
 
 #[tokio::test]
@@ -81,6 +160,10 @@ async fn ensure_image(docker: &bollard::Docker, image: &str) {
 }
 
 async fn seed_volume(docker: &bollard::Docker, volume: &str, filename: &str, content: &str) {
+    run_in_volume(docker, volume, &format!("printf '%s' '{content}' > /vol/{filename}")).await;
+}
+
+async fn run_in_volume(docker: &bollard::Docker, volume: &str, script: &str) {
     use bollard::models::{ContainerCreateBody, HostConfig};
     use bollard::query_parameters::{
         CreateContainerOptions, RemoveContainerOptions, StartContainerOptions,
@@ -92,11 +175,7 @@ async fn seed_volume(docker: &bollard::Docker, volume: &str, filename: &str, con
 
     let body = ContainerCreateBody {
         image: Some("busybox".to_string()),
-        cmd: Some(vec![
-            "sh".into(),
-            "-c".into(),
-            format!("printf '%s' '{content}' > /vol/{filename}"),
-        ]),
+        cmd: Some(vec!["sh".into(), "-c".into(), script.to_string()]),
         host_config: Some(HostConfig {
             binds: Some(vec![format!("{volume}:/vol")]),
             ..Default::default()
@@ -114,6 +193,41 @@ async fn seed_volume(docker: &bollard::Docker, volume: &str, filename: &str, con
         .remove_container(&created.id, Some(RemoveContainerOptions { force: true, ..Default::default() }))
         .await
         .ok();
+}
+
+#[tokio::test]
+async fn docker_volume_backup_keeps_file_ownership() {
+    use crate::domain::docker_volume::docker::client;
+    use bollard::models::VolumeCreateRequest;
+    use bollard::query_parameters::RemoveVolumeOptions;
+
+    let _env_guard = ENV_GUARD.lock().await;
+    unsafe { std::env::set_var("PORTABASE_HELPER_IMAGE", "busybox"); }
+
+    let docker = client().expect("docker daemon required");
+    let vol = format!("portabase-test-{}", uuid::Uuid::new_v4());
+    docker
+        .create_volume(VolumeCreateRequest { name: Some(vol.clone()), ..Default::default() })
+        .await
+        .unwrap();
+    run_in_volume(&docker, &vol, "echo owned > /vol/owned.txt && chown 999:998 /vol/owned.txt").await;
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let logger = std::sync::Arc::new(crate::services::backup::logger::JobLogger::new());
+    let tar = crate::domain::docker_volume::backup::run(volume_config(&vol), tmp.path().to_path_buf(), logger)
+        .await
+        .unwrap();
+
+    let mut archive = tar::Archive::new(std::fs::File::open(&tar).unwrap());
+    let owner = archive
+        .entries()
+        .unwrap()
+        .map(|entry| entry.unwrap())
+        .find(|entry| entry.path().unwrap().ends_with("owned.txt"))
+        .map(|entry| (entry.header().uid().unwrap(), entry.header().gid().unwrap()));
+    assert_eq!(owner, Some((999, 998)));
+
+    docker.remove_volume(&vol, None::<RemoveVolumeOptions>).await.ok();
 }
 
 #[tokio::test]

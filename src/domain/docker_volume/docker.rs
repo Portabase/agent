@@ -19,15 +19,21 @@ pub fn client() -> Result<Docker> {
 }
 
 pub fn parse_container_id(mountinfo: &str, cgroup: &str) -> Option<String> {
-    for src in [mountinfo, cgroup] {
-        for line in src.lines() {
-            for marker in ["/containers/", "/docker/"] {
-                if let Some(idx) = line.find(marker) {
-                    let rest = &line[idx + marker.len()..];
-                    let id: String = rest.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
-                    if id.len() >= 64 {
-                        return Some(id[..64].to_string());
-                    }
+    let mounted_at = |target: &'static str| {
+        mountinfo
+            .lines()
+            .filter(move |line| line.split(' ').nth(4) == Some(target))
+    };
+    let own_lines = mounted_at("/run/.containerenv")
+        .chain(mounted_at("/etc/hostname"))
+        .chain(cgroup.lines());
+    for line in own_lines {
+        for marker in ["/containers/", "/docker/", "-containers/"] {
+            if let Some(idx) = line.find(marker) {
+                let rest = &line[idx + marker.len()..];
+                let id: String = rest.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
+                if id.len() >= 64 {
+                    return Some(id[..64].to_string());
                 }
             }
         }
@@ -49,9 +55,33 @@ pub async fn resolve_helper_image(docker: &Docker) -> Result<String> {
     let info = docker
         .inspect_container(&id, None::<InspectContainerOptions>)
         .await
-        .with_context(|| format!("Failed to inspect self container {id}"))?;
+        .with_context(|| {
+            format!(
+                "Failed to inspect self container {id} on the mounted socket; set PORTABASE_HELPER_IMAGE to an image present on that engine"
+            )
+        })?;
     info.image
         .context("Self container inspection returned no image reference")
+}
+
+pub async fn is_podman(docker: &Docker) -> Result<bool> {
+    let version = docker
+        .version()
+        .await
+        .context("Failed to read the container engine version")?;
+    Ok(version
+        .components
+        .unwrap_or_default()
+        .iter()
+        .any(|component| component.name == "Podman Engine"))
+}
+
+pub fn idle_command() -> Vec<String> {
+    vec![
+        "sh".into(),
+        "-c".into(),
+        "trap 'exit 0' TERM; sleep 2147483647 & wait".into(),
+    ]
 }
 
 pub struct Helper {
@@ -88,6 +118,7 @@ pub async fn create_helper(
         host_config: Some(HostConfig {
             binds: Some(vec![bind]),
             auto_remove: Some(false),
+            security_opt: Some(vec!["label=disable".to_string()]),
             ..Default::default()
         }),
         ..Default::default()
