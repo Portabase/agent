@@ -145,49 +145,23 @@ fn timestamp_dir() -> String {
 }
 
 #[test]
-fn start_commands_for_17() {
+fn start_commands_give_the_path_once() {
     let ts = timestamp_dir();
     assert_eq!(
-        start_commands(Path::new(&format!("{ts}/data")), 17, GENERATED_ID),
+        start_commands(Path::new(&format!("{ts}/18/docker")), 18),
         [
-            format!("chown -R 999:999 '{ts}/data'"),
-            format!("chmod 700 '{ts}/data'"),
-            format!(
-                "docker run -d --name portabase-restore-40875631-20261109t101500z -v '{ts}/data':/var/lib/postgresql/data postgres:17"
-            ),
-            format!(
-                "sudo chown -R postgres:postgres '{ts}/data' && sudo chmod 700 '{ts}/data' && sudo -u postgres /usr/lib/postgresql/17/bin/pg_ctl -D '{ts}/data' start"
-            ),
-        ]
-    );
-}
-
-#[test]
-fn start_commands_for_18_mounts_parent() {
-    let ts = timestamp_dir();
-    assert_eq!(
-        start_commands(Path::new(&format!("{ts}/18/docker")), 18, GENERATED_ID),
-        [
-            format!("chown -R 999:999 '{ts}'"),
-            format!("chmod 700 '{ts}/18/docker'"),
-            format!(
-                "docker run -d --name portabase-restore-40875631-20261109t101500z -v '{ts}':/var/lib/postgresql postgres:18"
-            ),
-            format!(
-                "sudo chown -R postgres:postgres '{ts}/18/docker' && sudo chmod 700 '{ts}/18/docker' && sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D '{ts}/18/docker' start"
-            ),
+            "To start the restored cluster (PostgreSQL 18):".to_string(),
+            format!("  PGDATA='{ts}/18/docker'"),
+            "  chown -R postgres:postgres \"$PGDATA\" && chmod 700 \"$PGDATA\"".to_string(),
+            "  pg_ctl -D \"$PGDATA\" start    # as the postgres OS user".to_string(),
         ]
     );
 }
 
 #[test]
 fn start_commands_quote_paths_with_spaces() {
-    let commands = start_commands(Path::new("/my restore/it's/data"), 17, GENERATED_ID);
-    assert!(
-        commands
-            .iter()
-            .all(|command| command.contains(r#"'/my restore/it'\''s/data'"#))
-    );
+    let commands = start_commands(Path::new("/my restore/it's/data"), 17);
+    assert_eq!(commands[1], r#"  PGDATA='/my restore/it'\''s/data'"#);
 }
 
 #[test]
@@ -195,10 +169,13 @@ fn missing_config_files_lists_absent_files() {
     let data_dir = tempfile::tempdir().unwrap();
     assert_eq!(
         missing_config_files(data_dir.path()),
-        vec!["postgresql.conf", "pg_hba.conf"]
+        vec!["postgresql.conf", "pg_hba.conf", "pg_ident.conf"]
     );
     std::fs::write(data_dir.path().join("postgresql.conf"), "").unwrap();
-    assert_eq!(missing_config_files(data_dir.path()), vec!["pg_hba.conf"]);
+    assert_eq!(
+        missing_config_files(data_dir.path()),
+        vec!["pg_hba.conf", "pg_ident.conf"]
+    );
 }
 
 async fn preflight_error(cfg: &DatabaseConfig) -> String {
@@ -524,11 +501,7 @@ fn compression_falls_back_on_any_failure() {
     }
 }
 
-const RESTORE_PATH_REFUSAL: &str = "RESTORE_PATH is not set or not writable; a physical restore needs a folder shared with the host:
-volumes:
-  - ./restores:/restores
-environment:
-  RESTORE_PATH: /restores";
+const RESTORE_PATH_REFUSAL: &str = "RESTORE_PATH is not set or not writable; a physical restore needs a folder shared with the host (see https://portabase.io/docs/agent/db/postgresql#physical-incremental-backups)";
 
 fn api_context(server: &MockServer, master_key_b64: String) -> Arc<Context> {
     Arc::new(Context {
@@ -716,20 +689,14 @@ async fn backup_chain(cfg: &DatabaseConfig) -> (Vec<PathBuf>, Vec<TempDir>) {
     (bundles, work_dirs)
 }
 
-fn logged_mount(messages: &[String]) -> (String, String) {
-    let docker_run = messages
-        .iter()
-        .flat_map(|message| message.lines())
-        .find(|line| line.starts_with("docker run "))
-        .unwrap_or_else(|| panic!("{messages:#?}"));
-    let (source, target) = docker_run
-        .split_once(" -v '")
-        .and_then(|(_, mount)| mount.split_once("':"))
-        .unwrap();
-    (
-        source.to_string(),
-        target.split_whitespace().next().unwrap().to_string(),
-    )
+/// Where the official postgres image expects the restored directory (18+ keeps PGDATA at <major>/docker).
+fn image_mount(restored: &RestoredCluster) -> (String, String) {
+    if restored.major >= 18 {
+        let volume = restored.data_dir.parent().and_then(Path::parent).unwrap();
+        (volume.display().to_string(), "/var/lib/postgresql".to_string())
+    } else {
+        (restored.data_dir.display().to_string(), "/var/lib/postgresql/data".to_string())
+    }
 }
 
 async fn assert_restored_tables(
@@ -738,19 +705,18 @@ async fn assert_restored_tables(
     source_cfg: &DatabaseConfig,
     expected_tables: &[&str],
 ) {
-    assert!(messages.iter().any(|message| message
-        == &format!(
-            "Restored data directory: {}. In a container, this is the host folder mounted at RESTORE_PATH.",
-            restored.data_dir.display()
-        )));
-    let start_entry = format!(
-        "To start it, run the three Docker commands below, or the last command on a host install:\n{}",
-        start_commands(&restored.data_dir, restored.major, GENERATED_ID).join("\n")
+    let shown = format!("): {}\n", restored.data_dir.display());
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.starts_with("Restored data directory (") && message.contains(&shown)),
+        "{messages:#?}"
     );
+    let start_entry = start_commands(&restored.data_dir, restored.major).join("\n");
     assert!(messages.contains(&start_entry), "{messages:#?}");
     assert!(restored.size > 0);
 
-    let (source, target) = logged_mount(messages);
+    let (source, target) = image_mount(restored);
     let container = GenericImage::new("postgres", &restored.major.to_string())
         .with_exposed_port(5432.tcp())
         .with_wait_for(WaitFor::message_on_stderr(

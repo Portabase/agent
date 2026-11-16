@@ -13,11 +13,7 @@ use std::sync::Arc;
 use tempfile::{NamedTempFile, TempDir};
 use walkdir::WalkDir;
 
-const RESTORE_PATH_REFUSAL: &str = "RESTORE_PATH is not set or not writable; a physical restore needs a folder shared with the host:
-volumes:
-  - ./restores:/restores
-environment:
-  RESTORE_PATH: /restores";
+const RESTORE_PATH_REFUSAL: &str = "RESTORE_PATH is not set or not writable; a physical restore needs a folder shared with the host (see https://portabase.io/docs/agent/db/postgresql#physical-incremental-backups)";
 
 #[derive(Debug)]
 pub struct RestoredCluster {
@@ -124,24 +120,17 @@ fn combine(
     logger.log(
         "info",
         format!(
-            "Restored data directory: {}. In a container, this is the host folder mounted at RESTORE_PATH.",
+            "Restored data directory ({}): {}\nThis path is inside the agent; on the host, it is under the folder mounted at RESTORE_PATH.",
+            human_size(size),
             data_dir.display()
         ),
     );
-    logger.log("info", format!("Restored size: {}", human_size(size)));
-    logger.log(
-        "info",
-        format!(
-            "To start it, run the three Docker commands below, or the last command on a host install:\n{}",
-            start_commands(&data_dir, major, generated_id).join("\n")
-        ),
-    );
+    logger.log("info", start_commands(&data_dir, major).join("\n"));
     for missing in missing_config_files(&data_dir) {
         logger.log(
             "warn",
             format!(
-                "{missing} is not in the restored directory: the server keeps it outside its data directory (Debian style, /etc/postgresql/{major}/main). Copy it into {} before starting.",
-                data_dir.display()
+                "{missing} is not in the restored directory: the source server keeps it elsewhere (SHOW config_file, hba_file and ident_file on the source tell where). Copy it into $PGDATA before starting."
             ),
         );
     }
