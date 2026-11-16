@@ -21,7 +21,7 @@ services:
       - ./test-files/snapshot:/data/files-snapshot
       - ./test-files/sync:/data/files-sync
       - ./test-files/copy:/data/files-copy
-      #- ./restores:/restores
+      - ./restores:/restores
     environment:
       APP_ENV: development
       LOG: debug
@@ -34,7 +34,7 @@ services:
       #RETRY_BACKOFF_MS: 1000
       #MAX_CONCURRENT_BACKUPS: 2
       #DATABASES_CONFIG_FILE: "config.toml"
-      #RESTORE_PATH: /restores
+      RESTORE_PATH: /restores
     extra_hosts:
       - "localhost:host-gateway"
     networks:
