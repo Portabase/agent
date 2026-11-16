@@ -59,32 +59,6 @@ You have 4 ways to install Portabase Agent:
 
 **Ensure Docker is installed on your machine before getting started.**
 
-## PostgreSQL physical incremental backups
-
-A `postgresql-cluster` source can use the `physical` method (`options.method = "physical"`, default `archive` = `pg_dumpall`). It takes whole-cluster backups through the replication protocol with server-side zstd compression: a full backup, then incrementals chained to it. `options.full_every_days` (integer >= 1, default 7) starts a new chain once the chain's full backup is that old. A broken chain (failover, restored server, expired WAL summaries) falls back to a full backup automatically.
-
-Each backup starts with a spread checkpoint on the server (no `--checkpoint=fast`, so the server's I/O is not spiked). After heavy writes the job can wait up to `checkpoint_timeout` before copying starts; the job log says when it is waiting.
-
-Server requirements:
-
-- PostgreSQL 17 or later
-- A role with `REPLICATION`, and a `pg_hba.conf` entry allowing replication connections from the agent
-- `summarize_wal = on`: `ALTER SYSTEM SET summarize_wal = on; SELECT pg_reload_conf();`
-- No custom tablespaces
-
-Restore rebuilds a ready-to-start data directory under `$RESTORE_PATH/<source id>/<UTC timestamp>/` (`data/` for PostgreSQL 17 and earlier, `<major>/docker/` for 18 and later) with `pg_combinebackup`, then checks it with `pg_verifybackup`. The running server is never touched. The start commands (host and Docker) are printed at the end of the restore job logs. The downloaded and extracted files are kept in a temporary folder under `RESTORE_PATH` while the restore runs and removed when it ends.
-
-A physical restore is refused, before anything is downloaded, unless `RESTORE_PATH` is set to an existing, writable directory. Mount a volume there:
-
-```yaml
-    volumes:
-      - ./restores:/restores
-    environment:
-      RESTORE_PATH: /restores
-```
-
-With Helm, set `volume.restore.enabled=true` with `volume.restore.hostPath` or `volume.restore.existingClaim`.
-
 ## Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=Portabase/agent-rust)](https://github.com/Portabase/agent-rust/graphs/contributors)
