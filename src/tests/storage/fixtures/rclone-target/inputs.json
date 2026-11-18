@@ -48,5 +48,10 @@
     "provider": "sftp",
     "config": { "host": "sftp.example.com", "port": 2222, "username": "backup", "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----\n", "remotePath": "/srv/backups" },
     "expected": { "remoteName": "sftp", "basePath": "/srv/backups" }
+  },
+  "webdav": {
+    "provider": "webdav",
+    "config": { "url": "https://dav.example.com/root", "username": "backup", "password": "secret", "remotePath": "portabase", "headers": [{ "key": "X-Api-Key", "value": "token" }, { "key": "Cookie", "value": "session=a,b\"c" }] },
+    "expected": { "remoteName": "webdav", "basePath": "portabase" }
   }
 }

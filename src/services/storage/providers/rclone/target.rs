@@ -8,6 +8,8 @@ use crate::services::storage::providers::rclone::models::RcloneProviderConfig;
 use crate::services::storage::providers::s3::models::S3ProviderConfig;
 use crate::services::storage::providers::sftp::helpers::build_sftp_config;
 use crate::services::storage::providers::sftp::models::SftpProviderConfig;
+use crate::services::storage::providers::webdav::helpers::build_webdav_config;
+use crate::services::storage::providers::webdav::models::WebDavProviderConfig;
 use anyhow::{Context, Result, bail};
 use tempfile::TempPath;
 
@@ -33,6 +35,7 @@ pub fn rclone_target(storage: &DatabaseStorage) -> Result<RcloneTarget> {
         "google-drive" => drive(config.try_into().context("invalid google drive storage config")?),
         "rclone" => user_rclone(config.try_into().context("invalid rclone storage config")?),
         "sftp" => sftp(config.try_into().context("invalid sftp storage config")?),
+        "webdav" => webdav(config.try_into().context("invalid WebDAV storage config")?),
         "local" => bail!("a local storage channel cannot be used as an rclone target"),
         other => bail!("unknown storage provider '{other}'"),
     }
@@ -127,4 +130,9 @@ fn sftp(c: SftpProviderConfig) -> Result<RcloneTarget> {
     let mut target = RcloneTarget::new(config_text, "sftp", c.remote_path);
     target._guards.extend(key_file.map(|f| f.into_temp_path()));
     Ok(target)
+}
+
+fn webdav(c: WebDavProviderConfig) -> Result<RcloneTarget> {
+    let config_text = build_webdav_config(&c)?;
+    Ok(RcloneTarget::new(config_text, "webdav", c.remote_path))
 }
