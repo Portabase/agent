@@ -1,5 +1,7 @@
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::storage::providers::azure_blob::models::AzureBlobProviderConfig;
+use crate::services::storage::providers::ftp::helpers::build_ftp_config;
+use crate::services::storage::providers::ftp::models::FtpProviderConfig;
 use crate::services::storage::providers::google_cloud_storage::helpers::service_account_key;
 use crate::services::storage::providers::google_cloud_storage::models::GoogleCloudStorageProviderConfig;
 use crate::services::storage::providers::google_drive::models::GoogleDriveProviderConfig;
@@ -33,6 +35,7 @@ pub fn rclone_target(storage: &DatabaseStorage) -> Result<RcloneTarget> {
         "google-drive" => drive(config.try_into().context("invalid google drive storage config")?),
         "rclone" => user_rclone(config.try_into().context("invalid rclone storage config")?),
         "sftp" => sftp(config.try_into().context("invalid sftp storage config")?),
+        "ftp" => ftp(config.try_into().context("invalid ftp storage config")?),
         "local" => bail!("a local storage channel cannot be used as an rclone target"),
         other => bail!("unknown storage provider '{other}'"),
     }
@@ -127,4 +130,12 @@ fn sftp(c: SftpProviderConfig) -> Result<RcloneTarget> {
     let mut target = RcloneTarget::new(config_text, "sftp", c.remote_path);
     target._guards.extend(key_file.map(|f| f.into_temp_path()));
     Ok(target)
+}
+
+fn ftp(c: FtpProviderConfig) -> Result<RcloneTarget> {
+    Ok(RcloneTarget::new(
+        build_ftp_config(&c)?,
+        "ftp",
+        c.remote_path,
+    ))
 }

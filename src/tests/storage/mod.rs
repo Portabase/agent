@@ -1,4 +1,5 @@
 mod azure_blob;
+mod ftp;
 mod google_cloud_storage;
 mod google_drive;
 mod rclone;
