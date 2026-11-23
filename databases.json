@@ -221,6 +221,20 @@
         "method": "copy",
         "exclude": ["*.tmp", "/cache"]
       }
+    },
+    {
+      "name": "Test database - PostgreSQL physical incremental",
+      "type": "postgresql-cluster",
+      "host": "db-postgres-physical",
+      "port": 5432,
+      "username": "portabase_backup",
+      "password": "changeme-physical",
+      "database": "postgres",
+      "generated_id": "d6faa176-04bd-4feb-8e47-1daaf4952f3b",
+      "options": {
+        "method": "physical",
+        "full_every_days": 7
+      }
     }
   ]
 }

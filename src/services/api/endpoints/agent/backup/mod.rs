@@ -25,6 +25,39 @@ pub struct BackupUpdateRequest {
     pub logs: Vec<JobLogEntry>,
     #[serde(rename = "durationMs")]
     pub duration_ms: f64,
+    #[serde(rename = "parentBackupId", skip_serializing_if = "Option::is_none")]
+    pub parent_backup_id: Option<Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PhysicalOutcome {
+    pub parent_backup_id: Option<String>,
+    pub manifest: String,
+}
+
+impl BackupUpdateRequest {
+    pub fn new(
+        backup_id: String,
+        status: String,
+        size: Option<u64>,
+        generated_id: String,
+        logs: Vec<JobLogEntry>,
+        duration_ms: f64,
+        physical: Option<&PhysicalOutcome>,
+    ) -> Self {
+        Self {
+            backup_id,
+            status,
+            size,
+            generated_id,
+            logs,
+            duration_ms,
+            parent_backup_id: physical.map(|outcome| outcome.parent_backup_id.clone()),
+            manifest: physical.map(|outcome| outcome.manifest.clone()),
+        }
+    }
 }
 
 impl ApiClient {
@@ -55,15 +88,17 @@ impl ApiClient {
         generated_id: impl Into<String>,
         job_logs: Vec<JobLogEntry>,
         duration_ms: f64,
+        physical: Option<&PhysicalOutcome>,
     ) -> Result<Option<BackupResponse>, ApiError> {
-        let body = BackupUpdateRequest {
-            backup_id: backup_id.into(),
-            status: status.into(),
-            size: file_size.into(),
-            generated_id: generated_id.into(),
-            logs: job_logs,
-            duration_ms: duration_ms,
-        };
+        let body = BackupUpdateRequest::new(
+            backup_id.into(),
+            status.into(),
+            file_size.into(),
+            generated_id.into(),
+            job_logs,
+            duration_ms,
+            physical,
+        );
 
         let agent_id = agent_id.into();
         let path = format!("/agent/{}/backup", agent_id);
