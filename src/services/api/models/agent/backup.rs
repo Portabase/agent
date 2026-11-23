@@ -33,4 +33,6 @@ pub struct ParentOffer {
     #[serde(rename = "chainStartedAt")]
     pub chain_started_at: DateTime<Utc>,
     pub manifest: String,
+    #[serde(rename = "scheduledFulls", default)]
+    pub scheduled_fulls: bool,
 }

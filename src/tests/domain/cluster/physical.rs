@@ -47,6 +47,7 @@ fn offer(chain_age_days: i64, encoded_manifest: String) -> ParentOffer {
         backup_id: "parent-1".to_string(),
         chain_started_at: Utc::now() - Duration::days(chain_age_days),
         manifest: encoded_manifest,
+        scheduled_fulls: false,
     }
 }
 
@@ -81,6 +82,18 @@ fn decide_full_when_chain_too_old() {
         Decision::Full { reason } => assert!(reason.contains("older than 7 day(s)")),
         other => panic!("{other:?}"),
     }
+}
+
+#[test]
+fn decide_incremental_on_old_chain_when_the_dashboard_schedules_fulls() {
+    let parent = ParentOffer {
+        scheduled_fulls: true,
+        ..offer(30, manifest::encode(&manifest_fixture(1)).unwrap())
+    };
+    assert!(matches!(
+        decide(Some(&parent), Utc::now(), 7, None),
+        Decision::Incremental { .. }
+    ));
 }
 
 #[test]

@@ -28,7 +28,9 @@ pub fn decide(
     let Some(offer) = offer else {
         return full("no parent offered (first backup or chain reset by the dashboard)");
     };
-    if now - offer.chain_started_at >= Duration::days(i64::from(full_every_days)) {
+    if !offer.scheduled_fulls
+        && now - offer.chain_started_at >= Duration::days(i64::from(full_every_days))
+    {
         return full(format!(
             "chain is older than {full_every_days} day(s)"
         ));

@@ -377,6 +377,24 @@ fn backup_response_parses_parent_offer() {
     assert_eq!(parent.backup_id, "parent-1");
     assert_eq!(parent.chain_started_at.to_rfc3339(), "2026-11-09T10:00:00+00:00");
     assert_eq!(parent.manifest, "H4sIAAAA");
+    assert!(!parent.scheduled_fulls);
+}
+
+#[test]
+fn backup_response_parses_scheduled_fulls() {
+    let response: BackupResponse = serde_json::from_value(json!({
+        "message": "created",
+        "backup": { "id": "backup-123" },
+        "parent": {
+            "backupId": "parent-1",
+            "chainStartedAt": "2026-11-09T10:00:00.000Z",
+            "manifest": "H4sIAAAA",
+            "scheduledFulls": true
+        }
+    }))
+    .unwrap();
+
+    assert!(response.parent.unwrap().scheduled_fulls);
 }
 
 fn update_request(physical: Option<&PhysicalOutcome>) -> serde_json::Value {
