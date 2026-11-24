@@ -2,6 +2,7 @@ use super::logger::JobLogEntry;
 use super::models::{BackupResult, UploadResult};
 use super::service::BackupService;
 use crate::services::api::ApiError;
+use crate::services::api::endpoints::agent::backup::PhysicalOutcome;
 use crate::services::api::models::agent::backup::BackupResponse;
 use anyhow::Result;
 use tracing::error;
@@ -14,6 +15,7 @@ impl BackupService {
         backup_id: &String,
         logs: Vec<JobLogEntry>,
         duration_ms: f64,
+        physical: Option<&PhysicalOutcome>,
     ) -> Result<Option<BackupResponse>, ApiError> {
         let status = if upload_results.iter().any(|r| r.success) {
             "success"
@@ -34,7 +36,8 @@ impl BackupService {
                 file_size,
                 &result.generated_id,
                 logs,
-                duration_ms
+                duration_ms,
+                physical,
             )
             .await
             .map_err(|e| {

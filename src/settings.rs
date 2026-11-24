@@ -13,6 +13,7 @@ pub struct Settings {
     pub databases_config_file: String,
     pub data_path: String,
     pub pg_bin_dir: String,
+    pub restore_path: Option<String>,
     pub polling: usize,
     pub timezone: String,
     pub log: String,
@@ -88,6 +89,7 @@ impl Settings {
                 .unwrap_or_else(|_| "config.json".into()),
             data_path: env::var("DATA_PATH").unwrap_or_else(|_| "/config".into()),
             pg_bin_dir: env::var("PG_BIN_DIR").unwrap_or_default(),
+            restore_path: parse_restore_path(env::var("RESTORE_PATH").ok()),
             polling: polling_seconds,
             timezone: tz,
             log: env::var("LOG")
@@ -129,4 +131,8 @@ pub(crate) fn parse_max_concurrent_backups(value: Result<String, env::VarError>)
         Err(env::VarError::NotPresent) => None,
         Err(env::VarError::NotUnicode(_)) => panic!("MAX_CONCURRENT_BACKUPS must be valid Unicode"),
     }
+}
+
+pub(crate) fn parse_restore_path(value: Option<String>) -> Option<String> {
+    value.filter(|path| !path.trim().is_empty())
 }

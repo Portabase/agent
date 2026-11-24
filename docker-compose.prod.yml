@@ -9,10 +9,12 @@ services:
     volumes:
       - ./databases.json:/config/config.json
       - /var/run/docker.sock:/var/run/docker.sock
+      #- ./restores:/restores
     environment:
       LOG: info
       TZ: "Europe/Paris"
       #DATABASES_CONFIG_FILE: "config.toml"
+      #RESTORE_PATH: /restores
       EDGE_KEY: "<to complete>"
     extra_hosts:
       - "localhost:host-gateway"
