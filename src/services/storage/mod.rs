@@ -12,6 +12,7 @@ use providers::local;
 use providers::rclone;
 use providers::s3;
 use providers::sftp;
+use providers::webdav;
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -42,6 +43,7 @@ pub fn get_provider(storage: &DatabaseStorage) -> Option<Box<dyn StorageProvider
         )),
         "rclone" => Some(Box::new(rclone::RcloneProvider {})),
         "sftp" => Some(Box::new(sftp::SftpProvider {})),
+        "webdav" => Some(Box::new(webdav::WebDavProvider {})),
         _ => {
             error!("Unknown storage provider: {}", storage.provider);
             None
