@@ -10,6 +10,8 @@ use crate::services::storage::providers::rclone::models::RcloneProviderConfig;
 use crate::services::storage::providers::s3::models::S3ProviderConfig;
 use crate::services::storage::providers::sftp::helpers::build_sftp_config;
 use crate::services::storage::providers::sftp::models::SftpProviderConfig;
+use crate::services::storage::providers::smb::helpers::build_smb_config;
+use crate::services::storage::providers::smb::models::SmbProviderConfig;
 use crate::services::storage::providers::webdav::helpers::build_webdav_config;
 use crate::services::storage::providers::webdav::models::WebDavProviderConfig;
 use anyhow::{Context, Result, bail};
@@ -24,7 +26,12 @@ pub struct RcloneTarget {
 
 impl RcloneTarget {
     fn new(config_text: String, remote_name: &str, base_path: String) -> Self {
-        Self { config_text, remote_name: remote_name.to_string(), base_path, _guards: Vec::new() }
+        Self {
+            config_text,
+            remote_name: remote_name.to_string(),
+            base_path,
+            _guards: Vec::new(),
+        }
     }
 }
 
@@ -32,11 +39,22 @@ pub fn rclone_target(storage: &DatabaseStorage) -> Result<RcloneTarget> {
     let config = storage.config.clone();
     match storage.provider.as_str() {
         "s3" => s3(config.try_into().context("invalid s3 storage config")?),
-        "blob" => blob(config.try_into().context("invalid azure blob storage config")?),
-        "google-cloud-storage" => gcs(config.try_into().context("invalid google cloud storage config")?),
-        "google-drive" => drive(config.try_into().context("invalid google drive storage config")?),
+        "blob" => blob(
+            config
+                .try_into()
+                .context("invalid azure blob storage config")?,
+        ),
+        "google-cloud-storage" => gcs(config
+            .try_into()
+            .context("invalid google cloud storage config")?),
+        "google-drive" => drive(
+            config
+                .try_into()
+                .context("invalid google drive storage config")?,
+        ),
         "rclone" => user_rclone(config.try_into().context("invalid rclone storage config")?),
         "sftp" => sftp(config.try_into().context("invalid sftp storage config")?),
+        "smb" => smb(config.try_into().context("invalid smb storage config")?),
         "ftp" => ftp(config.try_into().context("invalid ftp storage config")?),
         "webdav" => webdav(config.try_into().context("invalid WebDAV storage config")?),
         "local" => bail!("a local storage channel cannot be used as an rclone target"),
@@ -50,7 +68,12 @@ fn s3(c: S3ProviderConfig) -> Result<RcloneTarget> {
         Some(port) => format!("{scheme}://{}:{port}", c.end_point_url),
         None => format!("{scheme}://{}", c.end_point_url),
     };
-    let region = c.region.as_deref().map(str::trim).filter(|r| !r.is_empty()).unwrap_or("us-east-1");
+    let region = c
+        .region
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+        .unwrap_or("us-east-1");
     let fields = [
         ("type", "s3".to_string()),
         ("provider", "Other".to_string()),
@@ -61,13 +84,19 @@ fn s3(c: S3ProviderConfig) -> Result<RcloneTarget> {
         ("force_path_style", "true".to_string()),
         ("no_check_bucket", "true".to_string()),
     ];
-    Ok(RcloneTarget::new(build_rclone_config("s3", &fields)?, "s3", c.bucket_name))
+    Ok(RcloneTarget::new(
+        build_rclone_config("s3", &fields)?,
+        "s3",
+        c.bucket_name,
+    ))
 }
 
 fn blob(c: AzureBlobProviderConfig) -> Result<RcloneTarget> {
     let resolved = c.resolve().context("invalid azure blob storage config")?;
     if resolved.account_key.trim().is_empty() {
-        bail!("azure blob needs an account key to be used as an rclone target (SAS-only connection strings are not supported)");
+        bail!(
+            "azure blob needs an account key to be used as an rclone target (SAS-only connection strings are not supported)"
+        );
     }
     let fields = [
         ("type", "azureblob".to_string()),
@@ -77,7 +106,11 @@ fn blob(c: AzureBlobProviderConfig) -> Result<RcloneTarget> {
         // Native uploads never create the container; neither should rclone.
         ("no_check_container", "true".to_string()),
     ];
-    Ok(RcloneTarget::new(build_rclone_config("blob", &fields)?, "blob", c.container_name))
+    Ok(RcloneTarget::new(
+        build_rclone_config("blob", &fields)?,
+        "blob",
+        c.container_name,
+    ))
 }
 
 fn gcs(c: GoogleCloudStorageProviderConfig) -> Result<RcloneTarget> {
@@ -85,10 +118,18 @@ fn gcs(c: GoogleCloudStorageProviderConfig) -> Result<RcloneTarget> {
         ("type", "google cloud storage".to_string()),
         ("project_number", c.project_id.clone()),
     ];
-    match c.api_endpoint.as_deref().map(str::trim).filter(|e| !e.is_empty()) {
+    match c
+        .api_endpoint
+        .as_deref()
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+    {
         Some(endpoint) => {
             fields.push(("anonymous", "true".to_string()));
-            fields.push(("endpoint", format!("{}/storage/v1/", endpoint.trim_end_matches('/'))));
+            fields.push((
+                "endpoint",
+                format!("{}/storage/v1/", endpoint.trim_end_matches('/')),
+            ));
         }
         None => fields.push((
             "service_account_credentials",
@@ -120,12 +161,20 @@ fn drive(c: GoogleDriveProviderConfig) -> Result<RcloneTarget> {
         ("root_folder_id", c.folder_id),
         ("use_trash", "false".to_string()),
     ];
-    Ok(RcloneTarget::new(build_rclone_config("google-drive", &fields)?, "google-drive", String::new()))
+    Ok(RcloneTarget::new(
+        build_rclone_config("google-drive", &fields)?,
+        "google-drive",
+        String::new(),
+    ))
 }
 
 fn user_rclone(c: RcloneProviderConfig) -> Result<RcloneTarget> {
     validate_config(&c.config_text, &c.remote_name)?;
-    Ok(RcloneTarget::new(c.config_text, &c.remote_name, c.remote_path))
+    Ok(RcloneTarget::new(
+        c.config_text,
+        &c.remote_name,
+        c.remote_path,
+    ))
 }
 
 fn sftp(c: SftpProviderConfig) -> Result<RcloneTarget> {
@@ -133,6 +182,14 @@ fn sftp(c: SftpProviderConfig) -> Result<RcloneTarget> {
     let mut target = RcloneTarget::new(config_text, "sftp", c.remote_path);
     target._guards.extend(key_file.map(|f| f.into_temp_path()));
     Ok(target)
+}
+
+fn smb(c: SmbProviderConfig) -> Result<RcloneTarget> {
+    let base_path = match c.remote_path.trim_matches('/') {
+        "" => c.share.trim_matches('/').to_string(),
+        remote_path => format!("{}/{}", c.share.trim_matches('/'), remote_path),
+    };
+    Ok(RcloneTarget::new(build_smb_config(&c)?, "smb", base_path))
 }
 
 fn ftp(c: FtpProviderConfig) -> Result<RcloneTarget> {

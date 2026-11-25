@@ -6,4 +6,5 @@ mod rclone;
 mod rclone_target;
 mod s3;
 mod sftp;
+mod smb;
 mod webdav;

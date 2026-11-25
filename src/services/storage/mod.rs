@@ -13,6 +13,7 @@ use providers::local;
 use providers::rclone;
 use providers::s3;
 use providers::sftp;
+use providers::smb;
 use providers::webdav;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -44,6 +45,7 @@ pub fn get_provider(storage: &DatabaseStorage) -> Option<Box<dyn StorageProvider
         )),
         "rclone" => Some(Box::new(rclone::RcloneProvider {})),
         "sftp" => Some(Box::new(sftp::SftpProvider {})),
+        "smb" => Some(Box::new(smb::SmbProvider {})),
         "ftp" => Some(Box::new(ftp::FtpProvider {})),
         "webdav" => Some(Box::new(webdav::WebDavProvider {})),
         _ => {
