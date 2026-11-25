@@ -3,6 +3,7 @@ pub mod dispatcher;
 pub mod downloader;
 pub mod executor;
 pub mod models;
+pub mod physical;
 pub mod result;
 pub mod runner;
 pub mod service;

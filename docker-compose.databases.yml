@@ -29,6 +29,24 @@ services:
     networks:
       - portabase
 
+  db-postgres-physical:
+    container_name: db-postgres-physical
+    image: postgres:18-alpine
+    # Physical incremental backups (postgresql-cluster, method "physical") need WAL summaries.
+    # checkpoint_timeout=60s: a backup waits at most ~1 min for its spread checkpoint in dev.
+    command: ["postgres", "-c", "summarize_wal=on", "-c", "checkpoint_timeout=60s"]
+    ports:
+      - "5440:5432"
+    volumes:
+      - postgres-data-physical:/var/lib/postgresql
+      - ./scripts/postgres/physical-init.sh:/docker-entrypoint-initdb.d/10-physical.sh:ro
+    environment:
+      - POSTGRES_DB=devdb_physical
+      - POSTGRES_USER=devuser
+      - POSTGRES_PASSWORD=changeme
+    networks:
+      - portabase
+
   db-mariadb:
     container_name: db-mariadb
     image: mariadb:latest
@@ -194,6 +212,7 @@ services:
 volumes:
   postgres-data:
   postgres-data-2:
+  postgres-data-physical:
   mariadb-data:
   mysql-data:
   mongodb-data:

@@ -32,6 +32,21 @@ seed-postgres-1gb:
     docker exec -i -e PGPASSWORD="$PG_PASSWORD" "$PG_CONTAINER" \
         psql -U "$PG_USER" -d "$PG_DB" < ./scripts/postgres/seed-1gb.sql
 
+# Physical incremental source (databases.json: "Test database - PostgreSQL physical incremental")
+seed-postgres-physical-1gb:
+    echo "Seeding db-postgres-physical (~1GB)..."
+    docker exec -i db-postgres-physical psql -v ON_ERROR_STOP=1 -U devuser -d devdb_physical < ./scripts/postgres/seed-physical-1gb.sql
+
+# Keeps writing to db-postgres-physical (Ctrl-C to stop): each backup taken meanwhile is a real incremental
+load-postgres-physical interval="10" rows="5000":
+    sh ./scripts/postgres/physical-load.sh {{interval}} {{rows}}
+
+# Rewrites the first 20k rows and appends 10k: the next physical backup is a small incremental
+churn-postgres-physical:
+    docker exec -i db-postgres-physical psql -v ON_ERROR_STOP=1 -U devuser -d devdb_physical \
+        -c "UPDATE events SET payload = md5(random()::text) || substr(payload, 33) WHERE id <= 20000" \
+        -c "INSERT INTO events (kind, payload) SELECT 'audit', md5(random()::text) FROM generate_series(1, 10000)"
+
 seed-sqlite:
     echo "Seeding SQLite..."
     bash ./scripts/sqlite/seed.sh

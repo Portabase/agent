@@ -19,6 +19,7 @@ impl BackupService {
         encrypt: bool,
         backup_id: &String,
         logger: Arc<JobLogger>,
+        engine: Option<&str>,
     ) -> Result<Vec<UploadResult>> {
         if result.code.as_deref() == Some("backup_already_in_progress") {
             info!("Skipping send: backup already in progress");
@@ -49,7 +50,7 @@ impl BackupService {
                         generated_id.clone(),
                         storage_id.clone(),
                         backup_id,
-                        None,
+                        engine,
                     )
                     .await
                 {

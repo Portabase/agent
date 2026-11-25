@@ -6,6 +6,7 @@ use crate::services::backup::models::{BackupResult, UploadResult};
 use crate::utils::common::BackupMethod;
 use async_trait::async_trait;
 use providers::azure_blob;
+use providers::ftp;
 use providers::google_cloud_storage;
 use providers::google_drive;
 use providers::local;
@@ -13,6 +14,7 @@ use providers::rclone;
 use providers::s3;
 use providers::sftp;
 use providers::smb;
+use providers::webdav;
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -44,6 +46,8 @@ pub fn get_provider(storage: &DatabaseStorage) -> Option<Box<dyn StorageProvider
         "rclone" => Some(Box::new(rclone::RcloneProvider {})),
         "sftp" => Some(Box::new(sftp::SftpProvider {})),
         "smb" => Some(Box::new(smb::SmbProvider {})),
+        "ftp" => Some(Box::new(ftp::FtpProvider {})),
+        "webdav" => Some(Box::new(webdav::WebDavProvider {})),
         _ => {
             error!("Unknown storage provider: {}", storage.provider);
             None
