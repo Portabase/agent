@@ -1,5 +1,5 @@
 use super::models::{DatabaseConfig, DbType, InputDatabaseConfig};
-use super::options::validate_files_options;
+use super::options::{validate_cluster_options, validate_files_options};
 use uuid::Uuid;
 
 fn required<T: Clone>(opt: &Option<T>, db_name: &str, field_name: &str) -> Result<T, String> {
@@ -90,6 +90,9 @@ pub fn build_config(db: InputDatabaseConfig) -> Result<DatabaseConfig, String> {
     };
     if matches!(db.db_type, DbType::Files) {
         validate_files_options(&db.name, db.options.as_ref())?;
+    }
+    if matches!(db.db_type, DbType::PostgresqlCluster) {
+        validate_cluster_options(&db.name, db.options.as_ref())?;
     }
     let max_packet_size = match db.db_type {
         DbType::Mysql | DbType::Mariadb => db.max_packet_size.unwrap_or_else(|| "512M".to_string()),

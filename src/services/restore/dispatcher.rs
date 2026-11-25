@@ -28,6 +28,20 @@ impl RestoreService {
             return;
         }
 
+        if db.data.restore.engine.as_deref() == Some("physical") {
+            let files = db.data.restore.files.clone();
+            let service = Self {
+                ctx: self.ctx.clone(),
+            };
+            let db_cfg = cfg.clone();
+            tokio::spawn(async move {
+                if let Err(error) = service.execute_physical_restore(db_cfg, files).await {
+                    error!("Physical restore failed: {error}");
+                }
+            });
+            return;
+        }
+
         let Some(file_to_restore) = db.data.restore.file.clone() else {
             error!("restore file not found");
             return;

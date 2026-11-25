@@ -5,6 +5,7 @@ pub mod executor;
 pub mod files_engine;
 pub mod helpers;
 pub mod models;
+pub mod physical;
 pub mod result;
 pub mod runner;
 pub mod service;
