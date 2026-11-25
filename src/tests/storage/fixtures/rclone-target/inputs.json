@@ -49,6 +49,26 @@
     "config": { "host": "sftp.example.com", "port": 2222, "username": "backup", "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----\n", "remotePath": "/srv/backups" },
     "expected": { "remoteName": "sftp", "basePath": "/srv/backups" }
   },
+  "smb": {
+    "provider": "smb",
+    "config": { "host": "samba.example.com", "port": 1445, "share": "/backups/", "username": "portabase", "password": "secret", "remotePath": "/daily" },
+    "expected": { "remoteName": "smb", "basePath": "backups/daily" }
+  },
+  "ftp": {
+    "provider": "ftp",
+    "config": { "host": "ftp.example.com", "username": "backup", "password": "secret", "remotePath": "/srv/backups" },
+    "expected": { "remoteName": "ftp", "basePath": "/srv/backups" }
+  },
+  "ftps-explicit": {
+    "provider": "ftp",
+    "config": { "host": "ftp.example.com", "port": 21, "username": "backup", "password": "secret", "remotePath": "/srv/backups", "ftpsMode": "explicit" },
+    "expected": { "remoteName": "ftp", "basePath": "/srv/backups" }
+  },
+  "ftps-implicit": {
+    "provider": "ftp",
+    "config": { "host": "ftp.example.com", "port": 990, "username": "backup", "password": "secret", "remotePath": "/srv/backups", "ftpsMode": "implicit" },
+    "expected": { "remoteName": "ftp", "basePath": "/srv/backups" }
+  },
   "webdav": {
     "provider": "webdav",
     "config": { "url": "https://dav.example.com/root", "username": "backup", "password": "secret", "remotePath": "portabase", "headers": [{ "key": "X-Api-Key", "value": "token" }, { "key": "Cookie", "value": "session=a,b\"c" }] },

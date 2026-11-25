@@ -21,6 +21,10 @@ pub(super) fn expected_ini(name: &str) -> &'static str {
         "google-drive" => include_str!("fixtures/rclone-target/google-drive.ini"),
         "rclone" => include_str!("fixtures/rclone-target/rclone.ini"),
         "sftp-key" => include_str!("fixtures/rclone-target/sftp-key.ini"),
+        "smb" => include_str!("fixtures/rclone-target/smb.ini"),
+        "ftp" => include_str!("fixtures/rclone-target/ftp.ini"),
+        "ftps-explicit" => include_str!("fixtures/rclone-target/ftps-explicit.ini"),
+        "ftps-implicit" => include_str!("fixtures/rclone-target/ftps-implicit.ini"),
         "webdav" => include_str!("fixtures/rclone-target/webdav.ini"),
         other => panic!("no expected fixture for {other}"),
     }
