@@ -1,11 +1,10 @@
-use crate::domain::docker_volume::docker::{client, parse_container_id};
 use crate::domain::factory::DatabaseFactory;
 use crate::domain::mssql::connection;
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::{DatabaseConfig, DbType};
+use crate::tests::shared_folder::{host_path, shared_tempdir};
 use crate::tests::init_tracing_for_test;
 use crate::utils::compress::{compress_to_tar_gz_large, decompress_large_tar_gz};
-use bollard::query_parameters::InspectContainerOptions;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -478,36 +477,14 @@ async fn mssql_restore_refuses_system_database_test() {
     );
 }
 
-async fn shared_folder() -> (String, TempDir) {
-    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
-    let cgroup = std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
-    let container_id = parse_container_id(&mountinfo, &cgroup).expect("tests run inside a container");
-    let inspected = client()
-        .unwrap()
-        .inspect_container(&container_id, None::<InspectContainerOptions>)
-        .await
-        .unwrap();
-    let app_mount = inspected
-        .mounts
-        .unwrap()
-        .into_iter()
-        .find(|mount| mount.destination.as_deref() == Some("/app"))
-        .expect("/app is bind-mounted from the host");
-
-    std::fs::create_dir_all("/app/target").unwrap();
-    let agent_folder = tempfile::Builder::new().prefix("mssql-bak-").tempdir_in("/app/target").unwrap();
-    std::fs::set_permissions(agent_folder.path(), std::fs::Permissions::from_mode(0o777)).unwrap();
-    let relative_path = agent_folder.path().strip_prefix("/app").unwrap().display().to_string();
-    (format!("{}/{}", app_mount.source.unwrap(), relative_path), agent_folder)
-}
-
 async fn start_with_shared_folder() -> (ContainerAsync<GenericImage>, String, u16, TempDir) {
-    let (host_path, agent_folder) = shared_folder().await;
+    let agent_folder = shared_tempdir("mssql-bak-");
+    let host_folder = host_path(agent_folder.path()).await;
     let container = GenericImage::new("mcr.microsoft.com/azure-sql-edge", "latest")
         .with_exposed_port(1433.tcp())
         .with_env_var("ACCEPT_EULA", "Y")
         .with_env_var("MSSQL_SA_PASSWORD", SA_PASSWORD)
-        .with_mount(Mount::bind_mount(host_path, BAK_SERVER_PATH))
+        .with_mount(Mount::bind_mount(host_folder, BAK_SERVER_PATH))
         .start()
         .await
         .expect("azure-sql-edge container started");

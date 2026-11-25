@@ -14,6 +14,7 @@ use crate::services::backup::logger::JobLogger;
 use crate::services::config::{DatabaseConfig, DbType};
 use crate::services::restore::RestoreService;
 use crate::settings::CONFIG;
+use crate::tests::shared_folder::{host_path, shared_tempdir};
 use crate::tests::init_tracing_for_test;
 use crate::utils::compress::decompress_large_tar_gz;
 use crate::utils::edge_key::EdgeKey;
@@ -703,12 +704,12 @@ async fn backup_chain(cfg: &DatabaseConfig) -> (Vec<PathBuf>, Vec<TempDir>) {
 }
 
 /// Where the official postgres image expects the restored directory (18+ keeps PGDATA at <major>/docker).
-fn image_mount(restored: &RestoredCluster) -> (String, String) {
+async fn image_mount(restored: &RestoredCluster) -> (String, String) {
     if restored.major >= 18 {
         let volume = restored.data_dir.parent().and_then(Path::parent).unwrap();
-        (volume.display().to_string(), "/var/lib/postgresql".to_string())
+        (host_path(volume).await, "/var/lib/postgresql".to_string())
     } else {
-        (restored.data_dir.display().to_string(), "/var/lib/postgresql/data".to_string())
+        (host_path(&restored.data_dir).await, "/var/lib/postgresql/data".to_string())
     }
 }
 
@@ -729,7 +730,7 @@ async fn assert_restored_tables(
     assert!(messages.contains(&start_entry), "{messages:#?}");
     assert!(restored.size > 0);
 
-    let (source, target) = image_mount(restored);
+    let (source, target) = image_mount(restored).await;
     let container = GenericImage::new("postgres", &restored.major.to_string())
         .with_exposed_port(5432.tcp())
         .with_wait_for(WaitFor::message_on_stderr(
@@ -773,7 +774,7 @@ async fn chain_restore_round_trip(tag: &str) {
     let lone_full_dir = TempDir::new().unwrap();
     let lone_full = lone_full_dir.path().join(bundles[0].file_name().unwrap());
     std::fs::copy(&bundles[0], &lone_full).unwrap();
-    let restore_root = TempDir::new().unwrap();
+    let restore_root = shared_tempdir("pg-restore-");
     let logger = Arc::new(JobLogger::new());
     let restored = restore::rebuild(&bundles, restore_root.path(), GENERATED_ID, logger.clone())
         .await
@@ -799,7 +800,7 @@ async fn chain_restore_round_trip(tag: &str) {
     );
     assert_restored_tables(&restored, &messages, &cfg, &["rows_a", "rows_b"]).await;
 
-    let lone_full_root = TempDir::new().unwrap();
+    let lone_full_root = shared_tempdir("pg-restore-");
     let lone_full_logger = Arc::new(JobLogger::new());
     let restored_full = restore::rebuild(
         &[lone_full],
@@ -852,7 +853,7 @@ async fn encrypted_chain_restores() {
     }
 
     let service = RestoreService::new(api_context(&server, master_key_b64));
-    let restore_root = TempDir::new().unwrap();
+    let restore_root = shared_tempdir("pg-restore-");
     let logger = Arc::new(JobLogger::new());
     let restored = service
         .rebuild_chain(files, restore_root.path(), GENERATED_ID, logger.clone())
