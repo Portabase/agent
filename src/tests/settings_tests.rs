@@ -1,4 +1,4 @@
-use crate::settings::parse_max_concurrent_backups;
+use crate::settings::{parse_max_concurrent_backups, parse_restore_path};
 use std::env::VarError;
 
 #[test]
@@ -48,4 +48,12 @@ fn malformed_value_panics() {
 fn value_exceeding_semaphore_max_permits_panics() {
     let over_limit = (tokio::sync::Semaphore::MAX_PERMITS as u128 + 1).to_string();
     parse_max_concurrent_backups(Ok(over_limit));
+}
+
+#[test]
+fn restore_path_empty_is_none() {
+    assert_eq!(parse_restore_path(None), None);
+    assert_eq!(parse_restore_path(Some("".to_string())), None);
+    assert_eq!(parse_restore_path(Some("  ".to_string())), None);
+    assert_eq!(parse_restore_path(Some("/restore".to_string())), Some("/restore".to_string()));
 }

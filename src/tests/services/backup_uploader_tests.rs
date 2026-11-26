@@ -86,6 +86,7 @@ async fn failed_upload_reports_failed_status_to_server() {
             false,
             &backup_id,
             logger,
+            None,
         )
         .await
         .unwrap();
@@ -189,6 +190,7 @@ async fn a_failing_upload_is_retried_until_it_succeeds() {
             false,
             &backup_id,
             Arc::clone(&logger),
+            None,
         )
         .await
         .unwrap();
