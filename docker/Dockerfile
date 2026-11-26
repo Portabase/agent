@@ -163,6 +163,7 @@ RUN apt-get update && apt-get install -y \
     redis-tools \
     valkey \
     firebird3.0-utils \
+    tini \
     && rm -rf /var/lib/apt/lists/*
 
 ARG RCLONE_VERSION=1.75.1
@@ -207,4 +208,5 @@ RUN chmod +x /usr/local/bin/mysqldump && ldconfig
 ENV PATH="$PATH:/usr/local/dotnet:/root/.dotnet/tools"
 ENV APP_ENV=production
 
+ENTRYPOINT ["/usr/bin/tini", "-s", "--"]
 CMD ["/entrypoint.sh"]
